@@ -51,7 +51,8 @@ CMD ["node", "--import", "tsx", "scripts/db/migrate.ts"]
 
 FROM base AS browser-runtime
 ENV CHROMIUM_EXECUTABLE_PATH=/opt/chrome/chrome-linux64/chrome \
-    CHROME_DEVEL_SANDBOX=/opt/chrome/chrome-linux64/chrome_sandbox
+    CHROME_DEVEL_SANDBOX=/opt/chrome/chrome-linux64/chrome_sandbox \
+    HOME=/home/nextjs
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
       ca-certificates tini fonts-liberation \
@@ -60,7 +61,7 @@ RUN apt-get update \
       libx11-6 libxcb1 libxcomposite1 libxdamage1 libxext6 libxfixes3 libxkbcommon0 libxrandr2 \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 1001 nextjs \
-    && useradd --system --uid 1001 --gid nextjs --home-dir /app nextjs
+    && useradd --system --uid 1001 --gid nextjs --create-home --home-dir /home/nextjs nextjs
 COPY --from=browser /opt/chrome /opt/chrome
 
 FROM browser-runtime AS jobs-runner

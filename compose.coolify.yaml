@@ -1,12 +1,6 @@
-# Apply after compose.yaml in Coolify raw Compose mode. No env_file is added:
+# Apply after compose.yaml or compose.managed.yaml in Coolify raw Compose mode. No env_file is added:
 # each service receives only its explicit environment from the base manifest.
 services:
-  postgres:
-    labels:
-      - traefik.enable=false
-  redis:
-    labels:
-      - traefik.enable=false
   worker:
     labels:
       - traefik.enable=false
