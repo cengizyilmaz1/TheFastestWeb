@@ -11,6 +11,8 @@ export TFW_COOLIFY_NETWORK="$project"
 export TFW_CHROMIUM_SECCOMP_PROFILE="$repository/runtime/chromium-seccomp.json"
 [ -f "$TFW_CHROMIUM_SECCOMP_PROFILE" ] || { echo 'Chromium seccomp profile is missing' >&2; exit 1; }
 # The managed database resources and their external backend network must already
-# be ready. Do not remove old stopped containers or alter managed DB lifecycles.
+# be ready. This command does not alter managed database lifecycles. Coolify can
+# remove old application-labelled containers before invoking this wrapper; keep
+# their configuration, image IDs and volumes for recreate-based rollback.
 exec docker compose --env-file "$repository/.env" --project-directory "$repository" -p "$project" \
   -f "$repository/compose.managed.yaml" -f "$repository/compose.coolify.yaml" up -d --no-build web worker scheduler
