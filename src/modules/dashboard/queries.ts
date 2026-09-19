@@ -5,6 +5,7 @@ import { adInventory, adReservations, achievements, checkoutOrders, competitionP
   siteAwards, siteClaims, siteScreenshots, sites } from "@/db/schema";
 import { AppError } from "@/lib/http/errors";
 import { siteProPredicate } from "@/modules/payments/entitlements";
+import { variablesSchema } from "@/modules/notifications/templates";
 
 export async function getDashboard(userId: string, siteCursor?: string) {
   const db = getDb();
@@ -15,7 +16,7 @@ export async function getDashboard(userId: string, siteCursor?: string) {
       lifecycle: sites.lifecycle, badgeStatus: sites.badgeStatus, isPro: sql<boolean>`${siteProPredicate(sql`${sites.id}`, sql`${sites.ownerId}`, sql`${sites.tier}`)}`,
       monitoringPaused: sites.monitoringPaused, lastTestedAt: sites.lastTestedAt })
       .from(sites).where(and(eq(sites.ownerId, userId), siteCursor ? sql`${sites.id} > ${siteCursor}::uuid` : sql`true`)).orderBy(sites.id).limit(51),
-    db.select({ id: notifications.id, type: notifications.type, readAt: notifications.readAt, createdAt: notifications.createdAt })
+    db.select({ id: notifications.id, type: notifications.type, readAt: notifications.readAt, createdAt: notifications.createdAt, payload: notifications.payload })
       .from(notifications).where(eq(notifications.userId, userId)).orderBy(desc(notifications.createdAt), desc(notifications.id)).limit(30),
     db.select({ id: checkoutOrders.id, status: checkoutOrders.status, createdAt: checkoutOrders.createdAt, title: sql<string>`${checkoutOrders.productSnapshot}->>'title'` })
       .from(checkoutOrders).where(eq(checkoutOrders.userId, userId)).orderBy(desc(checkoutOrders.createdAt), desc(checkoutOrders.id)).limit(30),
@@ -48,5 +49,6 @@ export async function getDashboard(userId: string, siteCursor?: string) {
       .orderBy(desc(adReservations.createdAt), desc(adReservations.id)).limit(30),
   ]);
   return { ownedSites: ownedSites.slice(0, 50), nextSiteCursor: ownedSites.length > 50 ? ownedSites[49].id : null,
-    messages, orders, payments, claims, grants, rankings, awards, screenshots, totals: totals[0], advertisements };
+    messages: messages.map(({ payload, ...message }) => ({ ...message, details: variablesSchema.safeParse(payload).data ?? {} })),
+    orders, payments, claims, grants, rankings, awards, screenshots, totals: totals[0], advertisements };
 }

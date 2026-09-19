@@ -1,0 +1,36 @@
+# Apply after compose.yaml in Coolify raw Compose mode. No env_file is added:
+# each service receives only its explicit environment from the base manifest.
+services:
+  postgres:
+    labels:
+      - traefik.enable=false
+  redis:
+    labels:
+      - traefik.enable=false
+  worker:
+    labels:
+      - traefik.enable=false
+  scheduler:
+    labels:
+      - traefik.enable=false
+  web:
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${TFW_COOLIFY_NETWORK:?Set the Coolify application resource UUID}
+      - traefik.http.routers.tfw-${TFW_COOLIFY_NETWORK}-http.entrypoints=http
+      - traefik.http.routers.tfw-${TFW_COOLIFY_NETWORK}-http.rule=Host(`${TFW_PUBLIC_HOST:?Set the public hostname without scheme or port}`)
+      - traefik.http.routers.tfw-${TFW_COOLIFY_NETWORK}-http.service=tfw-${TFW_COOLIFY_NETWORK}
+      - traefik.http.routers.tfw-${TFW_COOLIFY_NETWORK}-http.middlewares=tfw-${TFW_COOLIFY_NETWORK}-https
+      - traefik.http.middlewares.tfw-${TFW_COOLIFY_NETWORK}-https.redirectscheme.scheme=https
+      - traefik.http.middlewares.tfw-${TFW_COOLIFY_NETWORK}-https.redirectscheme.permanent=true
+      - traefik.http.routers.tfw-${TFW_COOLIFY_NETWORK}-https.entrypoints=https
+      - traefik.http.routers.tfw-${TFW_COOLIFY_NETWORK}-https.rule=Host(`${TFW_PUBLIC_HOST:?Set the public hostname without scheme or port}`)
+      - traefik.http.routers.tfw-${TFW_COOLIFY_NETWORK}-https.service=tfw-${TFW_COOLIFY_NETWORK}
+      - traefik.http.routers.tfw-${TFW_COOLIFY_NETWORK}-https.tls=true
+      - traefik.http.routers.tfw-${TFW_COOLIFY_NETWORK}-https.tls.certresolver=letsencrypt
+      - traefik.http.services.tfw-${TFW_COOLIFY_NETWORK}.loadbalancer.server.port=3000
+
+networks:
+  default:
+    external: true
+    name: ${TFW_COOLIFY_NETWORK:?Set the Coolify application resource UUID}

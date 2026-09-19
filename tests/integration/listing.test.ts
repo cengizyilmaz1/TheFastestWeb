@@ -128,6 +128,8 @@ describe("listing transactions with the least-privilege application role", () =>
     const [used] = await fixtureSql()`SELECT consumed_at,site_id FROM public.verified_speed_tests WHERE id=${token}`;
     expect(used.consumed_at).toBeInstanceOf(Date);
     expect(used.site_id).toBe(site.id);
+    const [notice] = await fixtureSql()`SELECT payload FROM notifications WHERE event_key=${`site:${site.id}:published`}`;
+    expect(notice.payload).toMatchObject({ siteName: site.name, actionPath: `/site/${site.slug}` });
     expect(await rowCounts()).toEqual({ sites: 1, tests: 1 });
     expect(badge).not.toHaveBeenCalled();
   });
@@ -147,6 +149,7 @@ describe("listing transactions with the least-privilege application role", () =>
     );
     await expect(createListing(owner, input(url, token))).rejects.toMatchObject({ code: "CONFLICT" });
     expect(await rowCounts()).toEqual({ sites: 0, tests: 0 });
+    expect(await fixtureSql()`SELECT id FROM notifications`).toHaveLength(0);
     if (!["missing", "consumed"].includes(scenario)) {
       const [row] = await fixtureSql()`SELECT consumed_at FROM public.verified_speed_tests WHERE id=${token}`;
       expect(row.consumed_at).toBeNull();
@@ -277,6 +280,7 @@ describe("Google identity continuity", () => {
     expect({ ...identity }).toEqual({ id: owner, is_pro: true, name: "New display name", owner_id: owner });
     const [count] = await fixtureSql()`SELECT count(*)::integer AS users FROM public.users`;
     expect(count.users).toBe(1);
+    expect(await fixtureSql()`SELECT id FROM notifications WHERE user_id=${owner} AND type='welcome'`).toHaveLength(0);
   });
 
   it("creates one UUID for concurrent first logins of the same email", async () => {
@@ -285,6 +289,7 @@ describe("Google identity continuity", () => {
       synchronizeGoogleUser({ email: "NEW.OWNER@example.invalid", name: "Second name" }),
     ]);
     expect(results[0]).toBe(results[1]);
+    expect(await fixtureSql()`SELECT id FROM notifications WHERE user_id=${results[0]} AND type='welcome'`).toHaveLength(1);
     const [count] = await fixtureSql()`SELECT count(*)::integer AS users FROM public.users`;
     expect(count.users).toBe(1);
   });

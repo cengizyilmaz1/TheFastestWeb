@@ -166,6 +166,23 @@ export async function listRanking(raw: RankingQuery = {}) {
     performanceMethodVersion: period?.performanceMethodVersion ?? PERFORMANCE_METHOD_VERSION };
 }
 
+/** Website positions reuse the authoritative ranking query, including its visibility and tie rules. */
+export async function getSiteRankingPositions(siteId: string, strategy: PerformanceStrategy = "mobile") {
+  z.uuid().parse(siteId); z.enum(["mobile","desktop"]).parse(strategy);
+  const db=database(),[clock]=await db.execute<{ now_ms: string }>(sql`SELECT extract(epoch FROM now())*1000 AS now_ms`);
+  const now=new Date(Number(clock.now_ms));
+  const groups=await Promise.all((["weekly","monthly","all_time"] as const).map(async kind=>{
+    const bounds=kind==="all_time"?null:getPeriodBounds(kind,now);
+    const rows=await db.execute<{ scope: ScopedRow["scope"]; scopeKey: string; rank: number; score: number }>(sql`
+      ${candidateQuery(bounds?.startAt??null,now,kind==="all_time")}
+      SELECT scope,scope_key AS "scopeKey",rank::int,score FROM ranked
+      WHERE site_id=${siteId} AND strategy=${strategy} AND scope NOT IN ('improved','newcomer')
+      ORDER BY scope,scope_key LIMIT 100`);
+    return rows.map(row=>({...row,kind,periodKey:bounds?.periodKey??null}));
+  }));
+  return { items:groups.flat(),strategy,performanceMethodVersion:PERFORMANCE_METHOD_VERSION,rankingAlgorithmVersion:RANKING_ALGORITHM_VERSION };
+}
+
 export async function listHallOfFame(options: { strategy?: PerformanceStrategy; limit?: number; cursor?: string } = {}) {
   const { strategy="mobile",limit=25,cursor } = options;
   z.enum(["mobile","desktop"]).parse(strategy);

@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ auth: vi.fn(), select: vi.fn() }));
 vi.mock("@/auth", () => ({ auth: mocks.auth }));
-vi.mock("@/db", () => ({ getDb: () => ({ select: mocks.select, selectDistinct: () => query([]) }) }));
+vi.mock("@/db", () => ({ getDb: () => ({ select: mocks.select, selectDistinct: () => query([]),execute:()=>Promise.resolve([]) }) }));
+vi.mock("@/modules/rankings/service",()=>({getSiteRankingPositions:()=>Promise.resolve({items:[]})}));
+vi.mock("@/modules/payments/entitlements",()=>({hasSiteProAccess:()=>Promise.resolve(false)}));
 vi.mock("@/infrastructure/logging/logger", () => ({ logger: { error: vi.fn() } }));
 vi.mock("next/navigation", () => ({ notFound: () => { throw new Error("NOT_FOUND"); } }));
 vi.mock("@phosphor-icons/react/dist/ssr", () => ({ ArrowUpRightIcon: () => null, GlobeHemisphereWestIcon: () => null }));

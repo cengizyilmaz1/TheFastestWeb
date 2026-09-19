@@ -4,6 +4,7 @@ import { getDb } from "@/db";
 import { countries, founders, founderSites, founderSocialLinks, sites, users } from "@/db/schema";
 import { AppError } from "@/lib/http/errors";
 import { normalizePublicUrl } from "@/lib/security/public-url";
+import { readFounderInsights } from "./insights";
 
 const publicUrl = z.string().max(4096).transform((value, ctx) => {
   try { return normalizePublicUrl(value); }
@@ -59,22 +60,24 @@ export async function getOwnFounder(userId: string) {
   return { ...profile, socialLinks: links };
 }
 
-export async function getPublicFounder(slug: string) {
-  const db = database();
+export async function getPublicFounder(slug: string, strategy: "mobile" | "desktop" = "mobile") {
+  return database().transaction(async (db) => {
   // Explicit projection: account UUID/email are never part of a public profile.
   const [profile] = await db.select({ id: founders.id, slug: founders.slug, name: founders.name,
     avatarUrl: founders.avatarUrl, bio: founders.bio, countryCode: founders.countryCode,
     websiteUrl: founders.websiteUrl, createdAt: founders.createdAt }).from(founders)
     .where(and(eq(founders.slug, slug), eq(founders.visibility, "public")));
   if (!profile) return null;
-  const [socialLinks, websiteRows] = await Promise.all([
+  const [socialLinks, websiteRows, insights] = await Promise.all([
     db.select({ platform: founderSocialLinks.platform, url: founderSocialLinks.url }).from(founderSocialLinks)
       .where(eq(founderSocialLinks.founderId, profile.id)).orderBy(asc(founderSocialLinks.platform)),
     db.select({ id: sites.id, slug: sites.slug, name: sites.name, url: sites.url, currentScore: sites.currentScore, faviconUrl: sites.faviconUrl })
       .from(founderSites).innerJoin(sites, eq(sites.id, founderSites.siteId)).where(and(eq(founderSites.founderId, profile.id),
         eq(sites.isListed, true), eq(sites.lifecycle, "active"), isNull(sites.archivedAt))).orderBy(asc(sites.slug)).limit(100),
+    readFounderInsights(db, profile.id, strategy),
   ]);
-  return { ...profile, socialLinks, sites: websiteRows };
+  return { ...profile, socialLinks, sites: websiteRows, insights };
+  }, { isolationLevel: "repeatable read", accessMode: "read only" });
 }
 
 /** Users may attribute their own profile to their own website; no cross-account attribution without consent. */

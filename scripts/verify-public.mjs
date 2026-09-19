@@ -14,14 +14,20 @@ try {
     const page = await context.newPage();
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
-    const routes = ["/", "/explore", "/explore?q=nonexistent-smoke-query", "/leaderboard", "/hall-of-fame", "/founders", "/test", "/submit", "/pricing", "/dashboard", "/auth/login", "/claim", "/about", "/methodology", "/blog", "/privacy", "/terms"];
+    const routes = ["/", "/explore", "/explore?q=nonexistent-smoke-query", "/leaderboard", "/hall-of-fame", "/founders", "/compare", "/test", "/submit", "/pricing", "/featured", "/dashboard", "/auth/login", "/claim", "/about", "/methodology", "/blog", "/privacy", "/terms"];
+    if (process.env.SMOKE_SYNTHETIC_FIXTURE === "true") routes.push("/founders/smoke-owner", "/compare/synthetic-peer~vs~synthetic-smoke");
+    if (process.env.SMOKE_WEEKLY_PERIOD) routes.push(`/weekly/${process.env.SMOKE_WEEKLY_PERIOD}`);
+    if (process.env.SMOKE_MONTHLY_PERIOD) routes.push(`/monthly/${process.env.SMOKE_MONTHLY_PERIOD}`);
     await page.goto(baseURL, { waitUntil: "networkidle", timeout: 90000 });
     const sites = page.locator('a[href^="/site/"]');
     const categories = page.locator('a[href^="/categories/"]');
     const site = await sites.count() ? await sites.first().getAttribute("href") : null;
     const category = await categories.count() ? await categories.first().getAttribute("href") : null;
+    const articles = page.locator('a[href^="/blog/"]');
+    const article = await articles.count() ? await articles.first().getAttribute("href") : null;
     if (site) routes.push(site);
     if (category) routes.push(category);
+    if (article) routes.push(article);
     for (const route of routes) {
       errors.length = 0;
       const response = await page.goto(new URL(route, baseURL).href, { waitUntil: "networkidle", timeout: 90000 });

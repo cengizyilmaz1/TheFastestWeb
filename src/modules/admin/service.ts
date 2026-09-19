@@ -8,6 +8,7 @@ import { AppError } from "@/lib/http/errors";
 import type { AdminActor } from "./access";
 import { approveAdReservation, releaseAdReservation } from "@/modules/payments/ads";
 import { recordAnalyticsEvent } from "@/modules/analytics/events";
+import { enqueueNotification } from "@/modules/notifications/service";
 
 type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 const reason = z.string().trim().min(8).max(500);
@@ -117,8 +118,13 @@ export async function executeAdminAction(actor: AdminActor, raw: unknown, token:
     const before = await beforeState(tx, action);
     if (digest(before) !== preview.stateHash) throw new AppError("CONFLICT", "The target changed. Review a new preview before confirming.", 409);
     if (action.action === "site.lifecycle") {
-      await tx.update(sites).set({ lifecycle: action.lifecycle, isListed: action.lifecycle === "active",
-        archivedAt: action.lifecycle === "archived" ? sql`now()` : null }).where(eq(sites.id, action.siteId));
+      const [published] = await tx.update(sites).set({ lifecycle: action.lifecycle, isListed: action.lifecycle === "active",
+        archivedAt: action.lifecycle === "archived" ? sql`now()` : null }).where(eq(sites.id, action.siteId))
+        .returning({ ownerId: sites.ownerId, name: sites.name, slug: sites.slug });
+      if (action.lifecycle === "active" && before?.lifecycle !== "active" && published?.ownerId) {
+        await enqueueNotification({ userId: published.ownerId, type: "site_approved", eventKey: `admin:${preview.nonce}:published`,
+          variables: { siteName: published.name.slice(0, 200), actionPath: `/site/${encodeURIComponent(published.slug)}` } }, tx);
+      }
     } else if (action.action === "site.monitoring") {
       await tx.update(sites).set({ monitoringPaused: action.paused }).where(eq(sites.id, action.siteId));
     } else if (action.action === "claim.reject") {

@@ -21,7 +21,7 @@ Versions were checked against npm registry metadata and provider documentation. 
 | GitHub Actions | checkout 7.0.1 / setup-node 7.0.0 | Official releases verified through GitHub API, pinned commit SHAs, Node24 action runtime and read-only workflow token |
 | Zod / Pino | 4.6.5 / 10.3.1 | Bounded input/env validation; structured redacted logs |
 
-Removed mandatory Supabase clients, Vercel Chromium helper/config and unsafe Polar SDK consumers. Existing Polar data columns remain for later entitlement migration. Resend is retained only as an explicitly disabled-by-default transition adapter.
+Removed mandatory Supabase clients, Vercel Chromium helper/config, Polar SDK/routes and Resend. Historical Polar data columns remain unchanged; additive legacy entitlements preserve existing access. New payments use Dodo and asynchronous email uses Microsoft Graph.
 
 Compatible transitive updates removed the previous high-severity advisories. A narrowly scoped override uses `esbuild 0.25.12` beneath `@esbuild-kit/core-utils`, replacing the obsolete development-server dependency inherited from Drizzle kit. It changes no production dependency or global esbuild resolution. The code-generation path must remain covered when kit is upgraded; remove this override once upstream retires the old loader.
 

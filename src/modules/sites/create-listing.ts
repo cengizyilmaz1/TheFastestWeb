@@ -10,6 +10,10 @@ import { normalizeSubmittedUrl, type SubmissionInput } from "./input";
 import { PERFORMANCE_METHOD_VERSION } from "@/modules/performance/service";
 import { hasAccountProAccess } from "@/modules/payments/entitlements";
 import { recordAnalyticsEvent } from "@/modules/analytics/events";
+import { enqueueNotification } from "@/modules/notifications/service";
+import { matchingWebsiteIdentity, websiteIdentity } from "./identity";
+import { loadSiteMetadata, type SiteMetadata } from "./metadata";
+import { UnsafeUrlError } from "@/lib/security/public-url";
 
 export async function createListing(userId: string, input: SubmissionInput) {
   const db = getDb();
@@ -22,6 +26,26 @@ export async function createListing(userId: string, input: SubmissionInput) {
   if (!account) throw new AppError("UNAUTHORIZED", "Please sign in again.", 401);
   const accountHasPro = await hasAccountProAccess(userId, account.isPro, db);
   if (!accountHasPro && !input.isListed) throw new AppError("FORBIDDEN", "Private listings require a Pro plan.", 403);
+  let identity = websiteIdentity(url);
+  // Every HTTP publication requires a preparation receipt. Legacy internal
+  // imports can still bind a historic single-device proof directly to its URL.
+  if (input.preparationId) {
+    const [preparation] = await db.select().from(backgroundJobs).where(and(eq(backgroundJobs.id, input.preparationId),
+      eq(backgroundJobs.kind, "submission.prepare"), eq(backgroundJobs.status, "succeeded"),
+      sql`${backgroundJobs.payload}->>'userId'=${userId}`, sql`${backgroundJobs.payload}->>'url'=${url}`));
+    if (!preparation || preparation.result?.mobileProofId !== input.testResultId || preparation.result?.desktopProofId !== input.desktopTestResultId) {
+      throw new AppError("CONFLICT", "Prepare the website again before publishing.", 409);
+    }
+    try {
+      // Reading text fields can fail during preparation, but publishing without
+      // an observed transport identity would bypass redirect duplicate checks.
+      const metadata = preparation.result?.metadata as SiteMetadata | undefined;
+      identity = websiteIdentity(url, metadata ?? await loadSiteMetadata(url));
+    } catch (error) {
+      if (error instanceof UnsafeUrlError) throw new AppError("URL_BLOCKED", "The website must resolve to a public address.", 400);
+      throw new AppError("UPSTREAM_UNAVAILABLE", "We could not verify the website address. Please try publishing again shortly.", 503);
+    }
+  }
   // Network work is bounded and deliberately outside the database transaction.
   let badgeVerified = false;
   if (!accountHasPro && input.isListed) {
@@ -32,14 +56,16 @@ export async function createListing(userId: string, input: SubmissionInput) {
   return db.transaction(async (tx) => {
     // Serialize both per-account allowance and canonical URL creation across replicas.
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${"listing-user:" + userId}, 0))`);
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${"site-url:" + url}, 0))`);
+    // Sorted aliases prevent deadlocks when concurrent source URLs converge on
+    // the same verified final/canonical address. Never lock untrusted hints.
+    for (const key of identity.keys) await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${"site-url:" + key}, 0))`);
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${"site-slug:" + slug}, 0))`);
     const [owner] = await tx.select().from(users).where(eq(users.id, userId)).for("update");
     if (!owner) throw new AppError("UNAUTHORIZED", "Please sign in again.", 401);
     const ownerHasPro = await hasAccountProAccess(userId, owner.isPro, tx);
     if (!ownerHasPro && !input.isListed) throw new AppError("FORBIDDEN", "Private listings require a Pro plan.", 403);
     if (!ownerHasPro && input.isListed && !badgeVerified) throw new AppError("FORBIDDEN", "Verify your badge before listing this website.", 403);
-    const [existing] = await tx.select({ id: sites.id }).from(sites).where(eq(sites.normalizedUrl, url)).limit(1);
+    const [existing] = await tx.select({ id: sites.id }).from(sites).where(matchingWebsiteIdentity(identity.keys)).limit(1);
     if (existing) throw new AppError("CONFLICT", "This website is already registered.", 409);
     const [sameSlug] = await tx.select({ id: sites.id }).from(sites).where(eq(sites.slug, slug)).limit(1);
     if (sameSlug) throw new AppError("CONFLICT", "This name is already in use. Choose another name.", 409);
@@ -93,7 +119,7 @@ export async function createListing(userId: string, input: SubmissionInput) {
     const primary = selectedCategories.find((item) => item.id === categoryIds[0])!;
     const legacyCategories = ["saas", "tool", "directory", "agency", "ecommerce", "blog", "portfolio", "other"];
     const [site] = await tx.insert(sites).values({
-      slug, name: input.name, url, normalizedUrl: url, description: input.description,
+      slug, name: input.name, url, normalizedUrl: identity.normalizedUrl, redirectUrl: identity.redirectUrl, description: input.description,
       tagline: input.tagline || null, countryCode: input.countryCode ?? null, lifecycle: input.isListed ? "active" : "pending",
       faviconUrl, ownerId: userId, ownerName: owner.name, twitterHandle: input.twitterHandle || null,
       // Legacy tier is historical. Expiring provider grants are evaluated at read
@@ -107,6 +133,8 @@ export async function createListing(userId: string, input: SubmissionInput) {
     }).returning();
     await recordAnalyticsEvent({ name: "site_submitted", eventKey: `site:${site.id}:submitted`, siteId: site.id,
       properties: { visibility: input.isListed ? "public" : "private" } }, tx);
+    if (input.isListed) await enqueueNotification({ userId, type: "site_approved", eventKey: `site:${site.id}:published`,
+      variables: { siteName: site.name.slice(0, 200), actionPath: `/site/${encodeURIComponent(site.slug)}` } }, tx);
     await tx.insert(siteCategories).values(categoryIds.map((categoryId, index) => ({ siteId: site.id, categoryId, isPrimary: index === 0 })));
     if (technologyIds.length) {
       const catalog = await tx.select({ id: technologies.id, slug: technologies.slug }).from(technologies).where(inArray(technologies.id, technologyIds));

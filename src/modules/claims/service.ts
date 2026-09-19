@@ -8,6 +8,7 @@ import { AppError } from "@/lib/http/errors";
 import { parsePublicHttpUrl, resolvePublicTarget } from "@/lib/security/public-url";
 import { safeFetchText } from "@/lib/security/safe-fetch";
 import { recordAnalyticsEvent } from "@/modules/analytics/events";
+import { enqueueNotification } from "@/modules/notifications/service";
 
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 export const issueClaimSchema = z.object({ siteId: z.uuid(), method: z.enum(["dns_txt", "well_known"]) }).strict();
@@ -35,7 +36,7 @@ export async function issueSiteClaim(userId: string, raw: unknown) {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`claim:${userId}:${input.siteId}`},0))`);
     const [user] = await tx.select({ id: users.id }).from(users).where(eq(users.id, userId));
     if (!user) throw new AppError("UNAUTHORIZED", "Please sign in again.", 401);
-    const [site] = await tx.select({ url: sites.url, ownerId: sites.ownerId }).from(sites)
+    const [site] = await tx.select({ url: sites.url, name: sites.name, ownerId: sites.ownerId }).from(sites)
       .where(and(eq(sites.id, input.siteId), eq(sites.isListed, true)));
     if (!site) throw new AppError("NOT_FOUND", "Website not found.", 404);
     if (site.ownerId === userId) throw new AppError("CONFLICT", "You already own this website.", 409);
@@ -44,6 +45,8 @@ export async function issueSiteClaim(userId: string, raw: unknown) {
     const [claim] = await tx.insert(siteClaims).values({
       userId, siteId: input.siteId, method: input.method, tokenHash: hash(token), expiresAt: sql`now() + interval '1 day'`,
     }).returning({ id: siteClaims.id, expiresAt: siteClaims.expiresAt });
+    await enqueueNotification({ userId, type: "claim_verification", eventKey: `claim:${claim.id}:issued`,
+      variables: { siteName: site.name.slice(0, 200), actionPath: `/claim?site=${input.siteId}` } }, tx);
     // The raw token is returned once; neither database rows nor queue payloads contain it.
     return { ...claim, method: input.method, token, verification };
   });

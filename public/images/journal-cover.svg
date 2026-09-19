@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#f3f4f2"/>
+  <path d="M72 113H1128M72 515H1128" stroke="#c5c8be" stroke-width="2"/>
+  <text x="72" y="80" font-family="Arial, sans-serif" font-size="26" fill="#4d5751">THEFASTESTWEB / THE PERFORMANCE JOURNAL</text>
+  <text x="72" y="260" font-family="Arial, sans-serif" font-size="77" font-weight="600" fill="#1c2321">Understand.</text>
+  <text x="72" y="355" font-family="Arial, sans-serif" font-size="77" font-weight="600" fill="#1c2321">Measure. Improve.</text>
+  <path d="M960 199h112v112M1072 199L910 361" fill="none" stroke="#9a5800" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="72" y="570" font-family="Arial, sans-serif" font-size="24" fill="#4d5751">Practical notes for people who make the web faster.</text>
+</svg>

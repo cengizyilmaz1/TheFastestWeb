@@ -81,7 +81,7 @@ GRANT SELECT,INSERT,UPDATE,DELETE ON
   public.site_technologies,public.founders,public.founder_sites,public.founder_social_links,
   public.site_social_links,public.site_claims,public.competition_periods,public.achievements,
   public.site_awards,public.site_screenshots,public.admin_roles,public.ad_inventory,
-  public.ad_reservations,public.analytics_events TO tfw_app;
+  public.ad_reservations,public.analytics_events,public.founder_site_invitations TO tfw_app;
 GRANT SELECT,INSERT ON public.ranking_snapshots,public.audit_logs TO tfw_app;
 GRANT SELECT ON public.countries,public.ad_clicks_with_names TO tfw_app;
 GRANT USAGE,SELECT ON SEQUENCE public.ad_slots_id_seq TO tfw_app;

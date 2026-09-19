@@ -92,6 +92,9 @@ describe("bounded ownership proofs", () => {
     expect(stored.token_hash).not.toBe(claim.token);
     expect(stored.token_hash).toMatch(/^[a-f0-9]{64}$/);
     expect(stored.active).toBe(true);
+    const [notice] = await fixtureSql()`SELECT payload FROM notifications WHERE event_key=${`claim:${claim.id}:issued`}`;
+    expect(notice.payload.actionPath).toBe(`/claim?site=${siteId}`);
+    expect(JSON.stringify(notice.payload)).not.toContain(claim.token);
     fetchProof.mockResolvedValue({ html: claim.verification.recordValue });
     await expect(verifySiteClaim(otherId, { claimId: claim.id, token: claim.token })).resolves.toMatchObject({ status: "verified", requiresReview: false });
     const [site] = await fixtureSql()`SELECT owner_id FROM sites WHERE id=${siteId}`;

@@ -1,0 +1,13 @@
+# Comparison pages and the journal
+
+`/compare` accepts two public website slugs. Site profiles prefill the first slug with `?left=...`; the footer also links to the form. The canonical pair is sorted and separated by `~vs~`, so ordinary slugs containing `-vs-` remain unambiguous. Reverse pairs redirect after both records pass public visibility checks. Ownership never permits a private or archived listing to appear in a public comparison.
+
+Metrics, historical changes and finalized rankings use the same device and methodology. The current two-sample PSI method is preferred when both sites have it. A different shared method can be selected explicitly. Missing values stay missing, disjoint methods produce no score arithmetic, and field INP/Core Web Vitals are not inferred from lab measurements. Historical charts are bounded to 365 results. Comparison indexing requires recent current-method samples and sufficient recorded history; query variants, thin comparisons and demo pages are noindex. No pair archive or combinatorial sitemap is generated.
+
+The MDX journal supports `category` (`metrics`, `comparisons`, `frameworks`, `guides`), `tags`, `author`, `coverImage` and `coverAlt` frontmatter in addition to the existing title, description and date. Existing posts retain their original Ramesh Kumar attribution. Category defaults derive from existing filename groups; default tags only identify literal topics already present in the filename. No new editorial facts, review dates or author identities are inferred.
+
+Covers must be existing local raster assets under `/images/`. The default is a 1200×630 branded journal illustration, with its editable SVG source committed alongside the PNG. It represents the journal, not an article-specific photograph or measured performance result. Image metadata is included in Open Graph, Twitter and Article structured data.
+
+The table of contents is collected from the actual compiled MDX heading tree. Inline code remains readable, code fences do not become headings, and duplicate headings receive unique prefixed IDs. Reading time uses article content without frontmatter. Related articles retain topic grouping. Share uses the browser's native user-initiated share dialog or clipboard fallback; it never sends a provider request. Category/tag filters preserve pagination and use a canonical journal URL with noindex query variants.
+
+Validation: five comparison model tests, three real PostgreSQL comparison privacy/methodology tests, and four journal metadata/heading tests. Public browser smoke covers comparison, journal and an existing article at desktop and mobile sizes; the release record reports its latest execution result.

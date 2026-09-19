@@ -23,6 +23,8 @@ import { expireAdReservations } from "@/modules/payments/ads";
 import { notifyPerformanceChange } from "@/modules/notifications/triggers";
 import { siteProPredicate } from "@/modules/payments/entitlements";
 import { recordAnalyticsEvent } from "@/modules/analytics/events";
+import { loadSiteMetadata } from "@/modules/sites/metadata";
+import { identityFieldsForSource, websiteIdentity, type WebsiteIdentity } from "@/modules/sites/identity";
 
 const terminal = ["succeeded", "failed", "cancelled"] as const;
 const leaseMs = 180_000;
@@ -209,8 +211,9 @@ async function finish(tx: Transaction, job: BackgroundJob, result: Record<string
   await tx.insert(jobEvents).values(event(job, "succeeded"));
 }
 
-async function saveMeasurement(job: BackgroundJob, url: string, strategy: PerformanceStrategy, result: PerformanceResult): Promise<Outcome> {
+async function saveMeasurement(job: BackgroundJob, url: string, strategy: PerformanceStrategy, result: PerformanceResult, identity: WebsiteIdentity | null): Promise<Outcome> {
   return database().transaction(async (tx) => {
+    if (identity) for (const key of identity.keys) await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${"site-url:" + key}, 0))`);
     const [owned] = await tx.select().from(backgroundJobs).where(ownsLease(job)).for("update");
     if (!owned) return { status: "deferred" };
     const [site] = await tx.select().from(sites).where(eq(sites.id, job.siteId!)).for("update");
@@ -227,6 +230,7 @@ async function saveMeasurement(job: BackgroundJob, url: string, strategy: Perfor
     }).returning({id:speedTests.id});
     // Legacy current_* columns represent mobile only; desktop has separate history.
     if (strategy === "mobile") await tx.update(sites).set({
+      ...(identity ? identityFieldsForSource(site.url, identity) : {}),
       currentScore: result.score, currentLoadTime: result.loadTime, currentFcp: result.fcp,
       currentLcp: result.lcp, currentCls: result.clsDisplay, currentTbt: result.tbt,
       currentTti: result.tti, currentSi: result.si, lastTestedAt: sql`now()`,
@@ -338,7 +342,14 @@ async function perform(job: BackgroundJob): Promise<Outcome> {
     return true;
   });
   if(!mayStart) return {status:"deferred"};
-  return saveMeasurement(job, site.url, payload.strategy, await runPerformanceTest(site.url, payload.strategy));
+  // Bounded metadata observation runs alongside mobile measurement. A timeout,
+  // private redirect or other transport failure cannot delete history, change
+  // visibility, or turn a temporary outage into a lifecycle transition.
+  const observed = payload.strategy === "mobile"
+    ? loadSiteMetadata(site.url).then((metadata) => websiteIdentity(site.url, metadata)).catch(() => null)
+    : Promise.resolve(null);
+  const [result, identity] = await Promise.all([runPerformanceTest(site.url, payload.strategy), observed]);
+  return saveMeasurement(job, site.url, payload.strategy, result, identity);
 }
 
 async function recordFailure(job: BackgroundJob, error: unknown): Promise<Outcome> {

@@ -10,6 +10,7 @@ import { loadSiteMetadata, type SiteMetadata } from "@/modules/sites/metadata";
 import { runPerformanceTest, PERFORMANCE_METHOD_VERSION, type PerformanceResult } from "@/modules/performance/service";
 import { requestScreenshot, getScreenshot, getScreenshotOriginal } from "@/infrastructure/screenshots/client";
 import { UnsafeUrlError } from "@/lib/security/public-url";
+import { matchingWebsiteIdentity, websiteIdentity } from "@/modules/sites/identity";
 
 export const preparationInput = z.object({ url: z.string().trim().min(1).max(2048) }).strict();
 const payloadSchema = z.object({ userId: z.uuid(), url: z.string().max(2048) }).strict();
@@ -18,9 +19,9 @@ export type PreparationResult = { metadata?: SiteMetadata; warnings?: string[]; 
 function database() { const db = getDb(); if (!db) throw new AppError("DATABASE_UNAVAILABLE", "Website preparation is temporarily unavailable.", 503); return db; }
 const ownsLease = (job: BackgroundJob) => and(eq(backgroundJobs.id, job.id), eq(backgroundJobs.status, "running"), eq(backgroundJobs.leaseToken, job.leaseToken!), sql`${backgroundJobs.leasedUntil}>now()`);
 
-async function duplicate(url: string, userId: string): Promise<ExistingListing | null> {
+async function duplicate(keys: string[], userId: string): Promise<ExistingListing | null> {
   const [site] = await database().select({ id: sites.id, slug: sites.slug, name: sites.name, ownerId: sites.ownerId,
-    isListed: sites.isListed, lifecycle: sites.lifecycle, archivedAt: sites.archivedAt }).from(sites).where(eq(sites.normalizedUrl, url)).limit(1);
+    isListed: sites.isListed, lifecycle: sites.lifecycle, archivedAt: sites.archivedAt }).from(sites).where(matchingWebsiteIdentity(keys)).limit(1);
   if (!site) return null;
   const owned = site.ownerId === userId, isPublic = site.isListed && site.lifecycle === "active" && !site.archivedAt;
   return { existing: true, site: owned || isPublic ? { id: site.id, slug: site.slug, name: site.name, owned } : null, canClaim: isPublic && !owned };
@@ -28,7 +29,7 @@ async function duplicate(url: string, userId: string): Promise<ExistingListing |
 
 export async function startSubmissionPreparation(userId: string, raw: unknown) {
   const url = normalizeSubmittedUrl(preparationInput.parse(raw).url);
-  const existing = await duplicate(url, userId);
+  const existing = await duplicate([url], userId);
   if (existing) return existing;
   return database().transaction(async (tx) => {
     const fingerprint = createHash("sha256").update(url).digest("hex");
@@ -76,16 +77,21 @@ async function measure(job: BackgroundJob, userId: string, url: string, strategy
 export async function processSubmissionPreparation(job: BackgroundJob): Promise<{ status: "pending"; delayMs: number } | { status: "succeeded" }> {
   const input = payloadSchema.parse(job.payload), url = normalizeSubmittedUrl(input.url);
   if (url !== input.url || !job.leaseToken || job.createdAt.getTime() < Date.now() - 86_400_000) throw new AppError("INVALID_REQUEST", "Start a new preparation request.", 400);
-  const existing = await duplicate(url, input.userId);
+  const existing = await duplicate([url], input.userId);
   if (existing) { await savePartial(job, { duplicate: existing }); return { status: "succeeded" }; }
   const previous = (job.result ?? {}) as PreparationResult;
+  let metadata = previous.metadata;
   if (!previous.metadata) {
-    try { await savePartial(job, { metadata: await loadSiteMetadata(url) }); }
+    try { metadata = await loadSiteMetadata(url); await savePartial(job, { metadata }); }
     catch (error) {
       if (error instanceof AppError && error.code === "CONFLICT") throw error;
       if (error instanceof UnsafeUrlError) throw new AppError("URL_BLOCKED", "The website must resolve to a public address.", 400);
       await savePartial(job, { warnings: ["Website details could not be read. You can enter them manually."] });
     }
+  }
+  if (metadata) {
+    const resolved = await duplicate(websiteIdentity(url, metadata).keys, input.userId);
+    if (resolved) { await savePartial(job, { duplicate: resolved }); return { status: "succeeded" }; }
   }
   // Each strategy contains two actual samples. Partial successful strategies are
   // persisted under the lease and reused by a later retry, never invented.
@@ -113,8 +119,11 @@ export async function getSubmissionPreparation(userId: string, id: string) {
     return row ? { id: row.id, result: row.result as PerformanceResult, expiresAt: row.expiresAt.toISOString() } : null;
   };
   const [mobile, desktop] = await Promise.all([proof(result.mobileProofId, "mobile"), proof(result.desktopProofId, "desktop")]);
+  // A cached public duplicate can become private or change owner after the job
+  // completes. Recheck current visibility before exposing a claim target.
+  const currentDuplicate = result.duplicate ? await duplicate(websiteIdentity(input.url, result.metadata).keys, userId) : null;
   return { id: job.id, status: job.status, url: input.url, metadata: result.metadata ?? null, warnings: result.warnings ?? [],
-    duplicate: result.duplicate ?? null, mobile, desktop, hasScreenshot: Boolean(result.screenshotId), errorCode: job.lastErrorCode };
+    duplicate: currentDuplicate, mobile, desktop, hasScreenshot: Boolean(result.screenshotId), errorCode: job.lastErrorCode };
 }
 
 export async function getSubmissionScreenshot(userId: string, id: string) {

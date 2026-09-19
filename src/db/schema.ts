@@ -557,6 +557,25 @@ export const founderSites = pgTable("founder_sites", {
   index("founder_sites_site_idx").on(t.siteId),
 ]);
 
+export const founderSiteInvitations = pgTable("founder_site_invitations", {
+  id:uuid("id").primaryKey().defaultRandom(),
+  siteId:uuid("site_id").notNull().references(()=>sites.id,{onDelete:"cascade"}),
+  founderId:uuid("founder_id").notNull().references(()=>founders.id,{onDelete:"cascade"}),
+  inviterUserId:uuid("inviter_user_id").notNull().references(()=>users.id,{onDelete:"cascade"}),
+  invitedUserId:uuid("invited_user_id").notNull().references(()=>users.id,{onDelete:"cascade"}),
+  status:text("status").$type<"pending"|"accepted"|"declined"|"revoked"|"expired">().default("pending").notNull(),
+  expiresAt:timestamp("expires_at",{withTimezone:true}).default(sql`now()+interval '7 days'`).notNull(),
+  respondedAt:timestamp("responded_at",{withTimezone:true}),
+  createdAt:timestamp("created_at",{withTimezone:true}).defaultNow().notNull(),
+  updatedAt:timestamp("updated_at",{withTimezone:true}).defaultNow().notNull(),
+},(t)=>[
+  uniqueIndex("founder_site_invitations_pending_unique").on(t.siteId,t.founderId).where(sql`${t.status}='pending'`),
+  index("founder_site_invitations_recipient_idx").on(t.invitedUserId,t.status,t.createdAt.desc()),
+  index("founder_site_invitations_site_idx").on(t.siteId,t.status),
+  check("founder_site_invitations_status_valid",sql`${t.status} IN ('pending','accepted','declined','revoked','expired')`),
+  check("founder_site_invitations_expiry_valid",sql`${t.expiresAt}>${t.createdAt}`),
+]);
+
 export const founderSocialLinks = pgTable("founder_social_links", {
   id: uuid("id").primaryKey().defaultRandom(),
   founderId: uuid("founder_id").notNull().references(() => founders.id, { onDelete: "cascade" }),

@@ -68,6 +68,17 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Verify production runtime with isolated data
         run: npx tsx scripts/public-runtime-smoke.ts
+      - name: Preserve synthetic browser evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: synthetic-runtime-evidence
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            test-results/public-smoke/
+            test-results/private-smoke/
+            test-results/load-smoke.json
       - name: Remove disposable Redis fixture
         if: always()
         run: docker rm --force --volumes tfw-ci-redis || true

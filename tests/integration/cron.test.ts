@@ -5,7 +5,8 @@ import type { PSIResult } from "@/lib/pagespeed";
 import { AppError } from "@/lib/http/errors";
 import { cleanupIntegrationDatabase, fixtureSql, prepareIntegrationDatabase, resetIntegrationData } from "./database";
 
-const mocks = vi.hoisted(() => ({ psi: vi.fn(), screenshot: vi.fn(), publish: vi.fn(), auth: vi.fn(), limit: vi.fn(), secret: "synthetic-cron-secret-for-local-integration-tests" }));
+const mocks = vi.hoisted(() => ({ psi: vi.fn(), metadata: vi.fn(), screenshot: vi.fn(), publish: vi.fn(), auth: vi.fn(), limit: vi.fn(), secret: "synthetic-cron-secret-for-local-integration-tests" }));
+vi.mock("@/modules/sites/metadata", () => ({ loadSiteMetadata: mocks.metadata }));
 vi.mock("@/lib/pagespeed", () => ({ runPageSpeedTest: mocks.psi, METHODOLOGY_VERSION: "psi-v1-single-mobile" }));
 vi.mock("@/infrastructure/queue/queues", () => ({ publishJob: mocks.publish }));
 vi.mock("@/modules/security/rate-limit", () => ({ enforceRateLimit: mocks.limit }));
@@ -55,6 +56,7 @@ afterAll(cleanupIntegrationDatabase, 30_000);
 beforeEach(async () => {
   await resetIntegrationData();
   mocks.psi.mockReset().mockResolvedValue(measurement);
+  mocks.metadata.mockReset().mockRejectedValue(new Error("Synthetic metadata transport unavailable"));
   mocks.publish.mockReset().mockResolvedValue(undefined);
   mocks.auth.mockReset().mockResolvedValue(null);
   mocks.limit.mockReset().mockResolvedValue(undefined);
@@ -62,6 +64,36 @@ beforeEach(async () => {
 });
 
 describe("durable retesting with real PostgreSQL transactions", () => {
+  it("records verified redirect and same-origin canonical identities without rewriting source or lifecycle", async () => {
+    const { first, owner } = await fixture();
+    mocks.metadata.mockResolvedValue({ finalUrl: "https://www.example.com/landing", canonicalUrl: "https://www.example.com/product" });
+    const job = await scheduleManualRetest(first, owner);
+    expect(await processBackgroundJob(job.id)).toEqual({ status: "succeeded" });
+    const [site] = await fixtureSql()`SELECT url,normalized_url,redirect_url,lifecycle,is_listed,owner_id FROM sites WHERE id=${first}`;
+    expect(site).toMatchObject({ url: "https://example.com/", normalized_url: "https://www.example.com/product", redirect_url: "https://www.example.com/landing",
+      lifecycle: "active", is_listed: true, owner_id: owner });
+    expect(await history(first)).toHaveLength(2);
+  });
+  it("keeps prior redirect evidence and listing visibility when metadata transport is unavailable", async () => {
+    const { first, owner } = await fixture();
+    await fixtureSql()`UPDATE sites SET normalized_url='https://www.example.com/product',redirect_url='https://www.example.com/landing' WHERE id=${first}`;
+    const job = await scheduleManualRetest(first, owner);
+    expect(await processBackgroundJob(job.id)).toEqual({ status: "succeeded" });
+    expect((await fixtureSql()`SELECT url,normalized_url,redirect_url,lifecycle,is_listed FROM sites WHERE id=${first}`)[0])
+      .toMatchObject({ url: "https://example.com/", normalized_url: "https://www.example.com/product", redirect_url: "https://www.example.com/landing", lifecycle: "active", is_listed: true });
+    expect(await history(first)).toHaveLength(2);
+  });
+  it("retains lookup of an imported raw source without rewriting its historic URL", async () => {
+    const { first, owner } = await fixture(), original = "https://EXAMPLE.com/?utm_source=historic#original";
+    await fixtureSql()`UPDATE sites SET url=${original} WHERE id=${first}`;
+    mocks.metadata.mockResolvedValue({ finalUrl: "https://www.example.com/landing", canonicalUrl: "https://www.example.com/product" });
+    const job = await scheduleManualRetest(first, owner);
+    expect(await processBackgroundJob(job.id)).toEqual({ status: "succeeded" });
+    expect((await fixtureSql()`SELECT url,normalized_url,redirect_url FROM sites WHERE id=${first}`)[0]).toEqual({
+      url: original, normalized_url: "https://example.com/", redirect_url: "https://www.example.com/product",
+    });
+    expect(await history(first)).toHaveLength(2);
+  });
   it("dispatches a persisted manual job with recurring generation disabled",async()=>{
     const {first,owner}=await fixture();const job=await scheduleManualRetest(first,owner);
     const loop=startSchedulerLoop({scheduleDailyRetests,scheduleMaintenance,dispatchDueJobs},1000,{generate:false});

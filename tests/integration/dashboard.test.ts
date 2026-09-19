@@ -24,4 +24,16 @@ describe("private account dashboard", () => {
   it("rejects malformed site pagination before a query", async () => {
     await expect(getDashboard(randomUUID(), "invalid")).rejects.toMatchObject({ status: 400 });
   });
+  it("projects only validated notification details and rejects unsafe destinations", async () => {
+    const user = randomUUID();
+    await fixtureSql()`INSERT INTO users(id,email,name) VALUES(${user},'details@example.invalid','Synthetic')`;
+    await fixtureSql()`INSERT INTO notifications(user_id,event_key,type,payload) VALUES
+      (${user},'details:safe','performance_improved','{"siteName":"Synthetic","score":88,"previousScore":70,"actionPath":"/site/synthetic"}'),
+      (${user},'details:unsafe','welcome','{"actionPath":"//evil.example","secret":"must-not-leak"}')`;
+    const dashboard = await getDashboard(user);
+    expect(dashboard.messages.find((message) => message.type === 'performance_improved')?.details).toMatchObject({ siteName: 'Synthetic', score: 88, previousScore: 70, actionPath: '/site/synthetic' });
+    expect(dashboard.messages.find((message) => message.type === 'welcome')?.details).toEqual({});
+    expect(JSON.stringify(dashboard.messages)).not.toContain('evil.example');
+    expect(JSON.stringify(dashboard.messages)).not.toContain('must-not-leak');
+  });
 });

@@ -14,6 +14,7 @@ The application and maintenance commands use separate credentials. The database 
 - `0004_m5_product_model.sql` adds editable taxonomies, ISO country reference data, private-by-default founder profiles, hashed ownership claims, lifecycle/badge state, screenshots, admin/audit data, achievements and immutable versioned ranking snapshots. Existing measurements receive only explicit sample-count/source metadata; their original values remain unchanged.
 - `0005_ad_inventory.sql` adds explicit ad positions and durable reservations. Only distinct observed legacy `(position, order_index)` pairs become available inventory; no capacity or reservation is invented. A partial unique index permits only one held/paid/active reservation per position. Unknown checkout outcomes retain their hold until a definitive operator/provider resolution; time alone never releases held/paid inventory.
 - `0006_domain_analytics.sql` adds idempotent, server-owned analytics events with an explicit event-name allowlist. Typed event-specific properties exclude user identities, email, IPs, raw URLs and provider payloads; no historical events are invented. Browser/ad interactions are never treated as proof of payment or a verified person.
+- `0007_founder_invitations.sql` adds authenticated cross-account founder consent, seven-day expiry and unique pending invitations. Existing founder relationships and site ownership remain unchanged; no invitation is backfilled. See [FOUNDER-COLLABORATIONS.md](FOUNDER-COLLABORATIONS.md).
 - `scripts/db/migrate.ts` is the only supported migration entry point. It also performs the reviewed canonical URL backfill and final `NOT NULL` change. Running the SQL files alone is incomplete.
 - `app_meta.schema_migrations` records immutable SQL checksums. Catalog fingerprints cover relations, columns, defaults, constraints, indexes, triggers, views, enums, sequence definitions, policies and non-extension routines/types. Sequence *values* and application rows are deliberately excluded.
 
@@ -60,7 +61,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON
   public.founder_social_links, public.site_social_links, public.site_claims,
   public.competition_periods, public.achievements, public.site_awards,
   public.site_screenshots, public.admin_roles, public.ad_inventory, public.ad_reservations,
-  public.analytics_events TO tfw_app;
+  public.analytics_events, public.founder_site_invitations TO tfw_app;
 GRANT SELECT, INSERT ON public.ranking_snapshots, public.audit_logs TO tfw_app;
 GRANT SELECT ON public.ad_clicks_with_names, public.countries TO tfw_app;
 GRANT USAGE, SELECT ON SEQUENCE public.ad_slots_id_seq TO tfw_app;

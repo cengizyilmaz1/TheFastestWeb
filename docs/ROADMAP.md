@@ -163,13 +163,15 @@ Başlangıç tablosu tarihsel fark analizidir. Güncel teslimler:
 | 3 | Dodo, Graph, R2, consent analytics ve entitlement modeli | PROVIDERS.md, PAYMENTS.md, EMAIL.md; gerçek hesap yapılandırması son alan adında |
 | 4 | Ayrı screenshot servisi, mobil/desktop/full-page, özel/public medya | services/screenshot/README.md; sandbox/SSRF Docker testleri geçti |
 | 5 | Taxonomy, ISO ülkeler, founder, claim, lifecycle, immutable yarışmalar | DATABASE.md, MIGRATION.md; eski kolon/değer/kimlik/sahiplik hashleri korundu |
-| 6 | URL → otomatik hazırlık → inceleme → yayın; iki cihaz ölçümleri | Kimlik, duplicate, tek kullanımlık kanıt ve transaction entegrasyon testleri |
+| 6 | URL → otomatik hazırlık → inceleme → yayın; iki cihaz ölçümleri, doğrulanmış redirect/canonical duplicate kontrolü | SUBMISSIONS.md, WEBSITE-IDENTITY.md; kimlik, gizlilik, tek kullanımlık kanıt ve transaction testleri |
 | 7 | Haftalık/aylık/all-time, ülke/kategori/teknoloji, Hall of Fame | METHODOLOGY.md; deterministik sıralama, UTC ve immutable snapshot testleri |
 | 8 | Evidence tabanlı awards, SVG/PNG paylaşım, güvenli badge grace | AWARDS-AND-BADGES.md; tekrar işleme, privacy ve ağ hata testleri |
-| 9 | Opt-in public kurucu profilleri, sahiplik, sosyal bağlantılar | Public privacy ve founder/claim entegrasyon testleri |
-| 10 | Yeni tasarım sistemi, public ekranlar, dashboard/admin/submit/pricing | DESIGN.md; masaüstü/mobil/light/dark 40 public tarayıcı kontrolü geçti |
+| 9 | Opt-in public kurucu profilleri, cihaz bazlı performans/başarı/sıralama özeti, sosyal bağlantılar; hesaplar arası davet/kabul ve bağlantı kaldırma | FOUNDER-COLLABORATIONS.md; 9 davet +4 profil kanıtı gerçek PostgreSQL testi, privacy ve founder/claim kontrolleri |
+| 10 | Yeni tasarım sistemi, public ekranlar, karşılaştırma, blog, dashboard/admin/submit/pricing | DESIGN.md, COMPARE-AND-JOURNAL.md; 54 public kontrol ve 5 authenticated kontrol geçti |
 | 11 | Metadata, canonical, runtime sitemap, robots, llms ve IndexNow değerlendirmesi | SEO.md; demo noindex, final domain doğrulamaları yayın öncesi |
-| 12 | Bildirim tercihleri, audited RBAC admin, consent/revenue, reklam rezervasyonları | ADMIN.md, PROVIDERS.md; domain analytics ve olay tetikleyici son kontrolleri sürüyor |
-| 13 | Demo Coolify kaynağı, restore/release/backup/rollback hazırlığı | RUNBOOK.md, DEPLOYMENT.md; dağıtım ve final provider hesapları ayrı doğrulanır |
+| 12 | Bildirim tercihleri ve ayrıntıları, transactional olaylar, audited RBAC admin, consent/revenue, reklam rezervasyonları | ADMIN.md, EMAIL.md, ANALYTICS.md, PROVIDERS.md; gerçek provider hesap testleri ayrı yayın koşulu |
+| 13 | İzole Coolify PostgreSQL/Redis, raw Compose, restore/release/backup/rollback hazırlığı | COOLIFY-COMPOSE.md, RELEASE-VALIDATION.md; dağıtım ve final provider hesapları ayrı doğrulanır |
 
 Demo için kullanıcı kararı: geçici alan adı, ödeme/e-posta/analytics/zamanlanmış ölçüm kapalı. Gerçek provider gönderimleri, son alan adı OAuth ayarları, bağımsız monitoring ve off-host backup doğrulanmadan ücretli production yayını tamamlandı sayılmaz. Mevcut Pro ve reklam hakları korunur; süresi dolan yeni haklar eski kalıcı alanlara dönüştürülmez.
+
+Güncel veritabanı sürümü `0007_founder_invitations`: toplam sekiz geçiş, 43 public tablo, bir view ve bir sequence. `0000`–`0006` SQL ve katalog fingerprint dosyaları önceki checkpoint ile aynı; `0007` provasında mevcut 42 tablonun ve yedi migration kaydının içerik özetleri değişmedi. Dokuz migration doğrulama grubu fresh/restore/upgrade, eşzamanlı çalışma, tekrar çalıştırma, drift/checksum reddi ve kısıtlı uygulama rolünü kontrol eder.

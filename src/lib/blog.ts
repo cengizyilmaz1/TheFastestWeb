@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import matter from "gray-matter";
+import { BLOG_CATEGORIES, getPostTags, getTopicGroup, validCoverPath, type BlogCategory } from "./blog-content";
 
 const BLOG_DIR = path.join(process.cwd(), "content/blog");
 
@@ -10,6 +11,11 @@ export interface PostMeta {
   description: string;
   date: string;
   readingTime: number;
+  category: BlogCategory;
+  tags: string[];
+  author: string;
+  coverImage: string;
+  coverAlt: string;
 }
 
 export interface Post extends PostMeta {
@@ -17,55 +23,62 @@ export interface Post extends PostMeta {
 }
 
 export const POSTS_PER_PAGE = 10;
+// Repository articles cannot change inside an immutable production image. Cache
+// their metadata per process; development still reads edits on every request.
+let productionMetadata: PostMeta[] | undefined;
+const copyMetadata = (posts: PostMeta[]) => posts.map((post) => ({ ...post, tags: [...post.tags] }));
 
-function getTopicGroup(slug: string): string {
-  if (slug.startsWith("what-is-") && !slug.includes("pagespeed-insights") && !slug.includes("good-pagespeed")) {
-    return "metrics";
-  }
-  if (slug.includes("-vs-")) return "comparisons";
-  if (
-    slug.endsWith("-pagespeed-optimization-guide") ||
-    slug.endsWith("-performance-optimization-guide")
-  ) {
-    return "frameworks";
-  }
-  return "guides";
+function readPost(slug: string, raw: string): Post {
+  const { data, content } = matter(raw);
+  const category = typeof data.category === "string" && Object.hasOwn(BLOG_CATEGORIES, data.category)
+    ? data.category as BlogCategory : getTopicGroup(slug);
+  const hasCover = validCoverPath(data.coverImage) && fs.existsSync(path.join(process.cwd(), "public", data.coverImage));
+  return {
+    slug, title: String(data.title ?? slug), description: String(data.description ?? ""), date: String(data.date ?? ""),
+    readingTime: Math.max(1, Math.round(content.trim().split(/\s+/).length / 200)),
+    category, tags: getPostTags(slug, data.tags),
+    // Preserve the attribution that accompanied the original journal; no new byline is invented.
+    author: typeof data.author === "string" && data.author.trim() ? data.author.trim().slice(0, 100) : "Ramesh Kumar",
+    coverImage: hasCover ? data.coverImage as string : "/images/journal-cover.png",
+    coverAlt: hasCover && typeof data.coverAlt === "string" ? data.coverAlt.slice(0, 200) : "TheFastestWeb performance journal",
+    content,
+  };
 }
 
 export function getAllPosts(): PostMeta[] {
+  if (process.env.NODE_ENV === "production" && productionMetadata) return copyMetadata(productionMetadata);
   if (!fs.existsSync(BLOG_DIR)) return [];
-  return fs
+  const posts = fs
     .readdirSync(BLOG_DIR)
     .filter((f) => f.endsWith(".mdx"))
     .map((filename) => {
       const slug = filename.replace(".mdx", "");
       const raw = fs.readFileSync(path.join(BLOG_DIR, filename), "utf-8");
-      const { data } = matter(raw);
-      const wordCount = raw.split(/\s+/).length;
-      return {
-        slug,
-        title: data.title,
-        description: data.description,
-        date: data.date,
-        readingTime: Math.max(1, Math.round(wordCount / 200)),
-      };
+      const { content: _content, ...meta } = readPost(slug, raw);
+      void _content;
+      return meta;
     })
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  if (process.env.NODE_ENV === "production") productionMetadata = posts;
+  return copyMetadata(posts);
 }
 
-export function getPaginatedPosts(page: number): {
+export function getPaginatedPosts(page: number, filters: { category?: string; tag?: string } = {}): {
   posts: PostMeta[];
   totalPages: number;
   currentPage: number;
+  total: number;
 } {
-  const all = getAllPosts();
-  const totalPages = Math.ceil(all.length / POSTS_PER_PAGE);
+  const all = getAllPosts().filter((post) => (!filters.category || post.category === filters.category)
+    && (!filters.tag || post.tags.includes(filters.tag)));
+  const totalPages = Math.max(1, Math.ceil(all.length / POSTS_PER_PAGE));
   const currentPage = Math.max(1, Math.min(page, totalPages));
   const start = (currentPage - 1) * POSTS_PER_PAGE;
   return {
     posts: all.slice(start, start + POSTS_PER_PAGE),
     totalPages,
     currentPage,
+    total: all.length,
   };
 }
 
@@ -86,14 +99,5 @@ export function getPost(slug: string): Post | null {
   const filePath = path.join(BLOG_DIR, `${slug}.mdx`);
   if (!fs.existsSync(filePath)) return null;
   const raw = fs.readFileSync(filePath, "utf-8");
-  const { data, content } = matter(raw);
-  const wordCount = raw.split(/\s+/).length;
-  return {
-    slug,
-    title: data.title,
-    description: data.description,
-    date: data.date,
-    readingTime: Math.max(1, Math.round(wordCount / 200)),
-    content,
-  };
+  return readPost(slug, raw);
 }

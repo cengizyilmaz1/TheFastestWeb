@@ -25,13 +25,13 @@ beforeEach(async () => {
   mocks.badge.mockReset().mockResolvedValue({ verified: true, status: "verified" });
 });
 async function user() { const id = randomUUID(); await fixtureSql()`INSERT INTO users(id,email,name,is_pro) VALUES(${id},${`${id}@example.invalid`},'Synthetic founder',true)`; return id; }
-async function prepare(owner: string) {
-  const receipt = await startSubmissionPreparation(owner, { url: "https://example.com" });
+async function prepare(owner: string, url = "https://example.com") {
+  const receipt = await startSubmissionPreparation(owner, { url });
   if (!("jobId" in receipt)) throw new Error("Expected new receipt");
   return receipt;
 }
-async function publishingInput(owner: string) {
-  const receipt = await prepare(owner); expect(await processBackgroundJob(receipt.jobId)).toEqual({ status: "succeeded" });
+async function publishingInput(owner: string, url?: string) {
+  const receipt = await prepare(owner, url); expect(await processBackgroundJob(receipt.jobId)).toEqual({ status: "succeeded" });
   const ready = await getSubmissionPreparation(owner, receipt.jobId);
   const [category] = await fixtureSql()`SELECT id FROM categories WHERE slug='tool'`;
   const [technology] = await fixtureSql()`SELECT id FROM technologies WHERE slug='nextjs'`;
@@ -90,7 +90,60 @@ describe("URL-first durable submission", () => {
     const input = await publishingInput(owner);
     const status = await getSubmissionPreparation(owner, input.preparationId);
     expect(status.metadata).toBeNull(); expect(status.warnings).toHaveLength(1);
+    await expect(createListing(owner, { ...input, isListed: false })).rejects.toMatchObject({ code: "UPSTREAM_UNAVAILABLE" });
+    expect(await fixtureSql()`SELECT id FROM sites`).toHaveLength(0);
+    expect((await fixtureSql()`SELECT consumed_at FROM verified_speed_tests`).every((row) => row.consumed_at === null)).toBe(true);
+    // Missing text fields remain editable, but transport identity must recover
+    // before publishing so an outage cannot bypass redirect deduplication.
+    mocks.metadata.mockResolvedValue(parseSiteMetadata("", input.url));
     await createListing(owner, { ...input, isListed: false });
     expect(await startSubmissionPreparation(await user(), { url: input.url })).toEqual({ existing: true, site: null, canClaim: false });
+  });
+  it("detects a verified redirect duplicate before spending measurements and rechecks current privacy", async () => {
+    const owner = await user(), input = await publishingInput(owner), site = await createListing(owner, input);
+    mocks.measure.mockClear();
+    mocks.metadata.mockResolvedValue(parseSiteMetadata("", input.url));
+    const contender = await user(), receipt = await prepare(contender, "http://old.example.com/");
+    expect(await processBackgroundJob(receipt.jobId)).toEqual({ status: "succeeded" });
+    expect((await getSubmissionPreparation(contender, receipt.jobId)).duplicate).toMatchObject({ existing: true, site: { id: site.id }, canClaim: true });
+    expect(mocks.measure).not.toHaveBeenCalled();
+    await fixtureSql()`UPDATE sites SET is_listed=false WHERE id=${site.id}`;
+    expect((await getSubmissionPreparation(contender, receipt.jobId)).duplicate).toEqual({ existing: true, site: null, canClaim: false });
+  });
+  it("serializes different sources converging on the same final and canonical URL without rebinding proofs", async () => {
+    const first = await user(), second = await user();
+    const finalUrl = "https://www.example.com/landing", canonical = "https://www.example.com/product";
+    mocks.metadata.mockResolvedValue(parseSiteMetadata(`<link rel="canonical" href="${canonical}">`, finalUrl));
+    const left = await publishingInput(first, "http://example.com/old");
+    const right = await publishingInput(second, "https://alias.example.org/");
+    const outcomes = await Promise.allSettled([createListing(first, { ...left, name: "Left owner" }), createListing(second, { ...right, name: "Right owner" })]);
+    expect(outcomes.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(1);
+    expect(outcomes.find((outcome) => outcome.status === "rejected")).toMatchObject({ reason: { code: "CONFLICT", status: 409 } });
+    const [site] = await fixtureSql()`SELECT id,url,normalized_url,redirect_url FROM sites`;
+    expect([left.url, right.url]).toContain(site.url);
+    expect(site).toMatchObject({ normalized_url: canonical, redirect_url: finalUrl });
+    expect(await fixtureSql()`SELECT normalized_url FROM verified_speed_tests WHERE consumed_at IS NOT NULL`).toEqual([
+      expect.objectContaining({ normalized_url: site.url }), expect.objectContaining({ normalized_url: site.url }),
+    ]);
+    expect(await fixtureSql()`SELECT id FROM speed_tests`).toHaveLength(2);
+    for (const alias of [site.url, finalUrl, canonical]) {
+      expect(await startSubmissionPreparation(await user(), { url: alias })).toMatchObject({ existing: true, site: { id: site.id }, canClaim: true });
+    }
+  });
+  it("does not let a cross-origin canonical hint reserve or claim another website", async () => {
+    const first = await user(), existing = await createListing(first, await publishingInput(first));
+    mocks.metadata.mockResolvedValue(parseSiteMetadata('<link rel="canonical" href="https://example.com/">', "https://tenant.example.org/"));
+    const owner = await user(), input = await publishingInput(owner, "https://tenant.example.org/");
+    expect((await getSubmissionPreparation(owner, input.preparationId)).duplicate).toBeNull();
+    const site = await createListing(owner, { ...input, name: "Separate tenant" });
+    expect(site).toMatchObject({ url: input.url, normalizedUrl: input.url, redirectUrl: null });
+    expect(site.id).not.toBe(existing.id);
+  });
+  it("refuses to swap the measured source for its redirect target", async () => {
+    mocks.metadata.mockResolvedValue(parseSiteMetadata("", "https://www.example.com/"));
+    const owner = await user(), input = await publishingInput(owner);
+    await expect(createListing(owner, { ...input, url: "https://www.example.com/" })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(await fixtureSql()`SELECT id FROM sites`).toHaveLength(0);
+    expect((await fixtureSql()`SELECT consumed_at FROM verified_speed_tests`).every((row) => row.consumed_at === null)).toBe(true);
   });
 });

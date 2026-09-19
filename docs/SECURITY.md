@@ -27,6 +27,8 @@ The PSI service is external: a successful HTTP response without valid Lighthouse
 
 Founder profiles are opt-in. Public directory/profile/sitemap/award responses exclude account identifiers, emails and raw provider payloads. Private, removed or archived sites disappear from public competition reads without rewriting immutable historical snapshots. Ownership proofs are hashed, expire and never silently transfer an already-owned site. Admin mutations bind a short-lived signed preview to the actor, action and current record and commit with a single-use audit entry.
 
+Cross-account founder attribution requires a seven-day invitation from the current site owner and acceptance by the invited profile's account. Acceptance rechecks ownership, profile visibility and expiry in one transaction; it never transfers site ownership. Owners may remove links and founders may detach themselves. Replaying an accepted invitation cannot restore a removed link. Management views mask another account's private profile name and URL; no automatic invitation email is sent. See [FOUNDER-COLLABORATIONS.md](FOUNDER-COLLABORATIONS.md).
+
 Graph delivery uses scoped application credentials and distinguishes accepted from delivered. Uncertain outcomes are not blindly resent. R2 uses separate private/public buckets and authenticated private reads. Screenshots render in a separate sandboxed service, validate redirects/subresources and retain private captures until explicit public approval. Analytics scripts require consent and remain excluded from private routes; GPC/DNT deny collection.
 
 ## Secrets and accounts
@@ -41,4 +43,4 @@ The repository cannot revoke provider keys, change OAuth ownership or verify rea
 
 Run lint, typecheck, unit and PostgreSQL integration tests, audit, and the Linux production build. SSRF regressions include loopback proxy refusal; listing tests include mismatched/reused/expired results and concurrent writes. Test browser isolation on the actual Coolify host; never resolve a sandbox failure by adding `--no-sandbox`.
 
-The private restore rehearsal is documented separately and never runs through HTTP. No production migration, provider mail, payment mutation or destructive customer-data operation is part of the test suite.
+The private restore rehearsal is documented separately and never runs through HTTP. The reviewed release has eight migrations through `0007`; migrations `0000`–`0006` and their catalog fingerprints remain unchanged from the infrastructure checkpoint. The `0007` rehearsal preserved all 42 pre-existing public tables and seven prior migration entries, producing 43 public tables without creating invitation data. No production migration, provider mail, payment mutation or destructive customer-data operation is part of the test suite.

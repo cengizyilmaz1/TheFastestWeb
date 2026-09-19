@@ -9,6 +9,7 @@ import { AppError } from "@/lib/http/errors";
 import { assertSameOrigin, readJson } from "@/modules/security/request";
 import { enforceRateLimit } from "@/modules/security/rate-limit";
 import { scheduleScreenshot } from "@/modules/screenshots/service";
+import { normalizePublicUrl } from "@/lib/security/public-url";
 
 type Context = { params: Promise<{ slug: string }> };
 const input = z.object({ device: z.enum(["desktop", "mobile"]).optional(), mode: z.enum(["viewport", "fullpage"]).optional(),
@@ -16,7 +17,7 @@ const input = z.object({ device: z.enum(["desktop", "mobile"]).optional(), mode:
 async function publicSite(slug: string) {
   const db = getDb();
   if (!db) throw new AppError("DATABASE_UNAVAILABLE", "Screenshot history is temporarily unavailable.", 503);
-  const [site] = await db.select({ id: sites.id, normalizedUrl: sites.normalizedUrl }).from(sites).where(and(eq(sites.slug, slug), eq(sites.isListed, true), eq(sites.lifecycle, "active"), isNull(sites.archivedAt)));
+  const [site] = await db.select({ id: sites.id, url: sites.url }).from(sites).where(and(eq(sites.slug, slug), eq(sites.isListed, true), eq(sites.lifecycle, "active"), isNull(sites.archivedAt)));
   if (!site) throw new AppError("NOT_FOUND", "Website not found.", 404);
   return { site, db };
 }
@@ -24,7 +25,7 @@ export const GET = withApi<Context>(async (_request, context) => {
   const { site, db } = await publicSite((await context.params).slug);
   const screenshots = await db.select({ id: siteScreenshots.id, device: siteScreenshots.device, mode: siteScreenshots.mode,
     publicUrl: siteScreenshots.publicUrl, width: siteScreenshots.width, height: siteScreenshots.height, capturedAt: siteScreenshots.capturedAt,
-    retentionUntil: siteScreenshots.retentionUntil }).from(siteScreenshots).where(and(eq(siteScreenshots.siteId, site.id), eq(siteScreenshots.sourceUrl, site.normalizedUrl), eq(siteScreenshots.status, "ready"),
+    retentionUntil: siteScreenshots.retentionUntil }).from(siteScreenshots).where(and(eq(siteScreenshots.siteId, site.id), eq(siteScreenshots.sourceUrl, normalizePublicUrl(site.url)), eq(siteScreenshots.status, "ready"),
     gt(siteScreenshots.retentionUntil, sql`now()`))).orderBy(desc(siteScreenshots.capturedAt)).limit(50);
   return NextResponse.json({ screenshots }, { headers: { "Cache-Control": "no-store" } });
 });

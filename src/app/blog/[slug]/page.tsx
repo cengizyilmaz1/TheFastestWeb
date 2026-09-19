@@ -3,8 +3,11 @@ import { safeJsonLd } from "@/lib/seo/json-ld";
 import { notFound } from "next/navigation";
 import { Metadata } from "next";
 import Link from "next/link";
-import { MDXRemote } from "next-mdx-remote/rsc";
+import Image from "next/image";
+import { compileMDX } from "next-mdx-remote/rsc";
 import { getAllPosts, getPost, getRelatedPosts } from "@/lib/blog";
+import { BLOG_CATEGORIES, headingIds, type TableOfContentsEntry } from "@/lib/blog-content";
+import { ShareArticle } from "@/components/blog/ShareArticle";
 
 export const revalidate = 3600;
 
@@ -24,15 +27,24 @@ export async function generateMetadata({
     title: post.title,
     description: post.description,
     alternates: { canonical: `${siteConfig.url}/blog/${slug}` },
+    robots: { index: !siteConfig.isDemo, follow: true },
+    authors: [{ name: post.author }],
     openGraph: {
       title: post.title,
       description: post.description,
       type: "article",
       publishedTime: post.date,
+      url: `${siteConfig.url}/blog/${slug}`,
+      authors: [post.author],
+      section: BLOG_CATEGORIES[post.category],
+      tags: post.tags,
+      images: [{ url: post.coverImage, alt: post.coverAlt }],
     },
     twitter: {
       title: post.title,
       description: post.description,
+      card: "summary_large_image",
+      images: [post.coverImage],
     },
   };
 }
@@ -46,6 +58,8 @@ export default async function BlogPostPage({
   const post = getPost(slug);
   if (!post) notFound();
   const related = getRelatedPosts(slug);
+  const toc: TableOfContentsEntry[] = [];
+  const { content } = await compileMDX({ source: post.content, options: { mdxOptions: { rehypePlugins: [headingIds(toc)] } } });
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -55,8 +69,7 @@ export default async function BlogPostPage({
     datePublished: post.date,
     author: {
       "@type": "Person",
-      name: "Ramesh Kumar",
-      url: "https://x.com/ramesh_mkumar",
+      name: post.author,
     },
     publisher: {
       "@type": "Organization",
@@ -64,6 +77,10 @@ export default async function BlogPostPage({
       url: siteConfig.url,
     },
     url: `${siteConfig.url}/blog/${slug}`,
+    mainEntityOfPage: `${siteConfig.url}/blog/${slug}`,
+    image: `${siteConfig.url}${post.coverImage}`,
+    articleSection: BLOG_CATEGORIES[post.category],
+    keywords: post.tags.join(", "),
   };
 
   return (
@@ -81,8 +98,9 @@ export default async function BlogPostPage({
 
       {/* Header */}
       <div className="mb-8">
+        <Link href={"/blog?category=" + post.category} className="page-eyebrow mb-4 inline-block hover:text-accent">{BLOG_CATEGORIES[post.category]}</Link>
         <div className="flex items-center gap-2 text-[0.75rem] text-text-muted mb-3">
-          <span>{new Date(post.date).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</span>
+          <time dateTime={post.date}>{new Date(post.date).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" })}</time>
           <span>·</span>
           <span>{post.readingTime} min read</span>
         </div>
@@ -92,14 +110,18 @@ export default async function BlogPostPage({
         <p className="text-text-secondary text-[1rem] leading-relaxed">
           {post.description}
         </p>
-        <p className="mt-5 text-xs text-text-muted">From the original TheFastestWeb journal · Ramesh Kumar</p>
+        <p className="mt-5 text-xs text-text-muted">By {post.author} · TheFastestWeb journal</p>
+        <div className="my-5 flex flex-wrap gap-2">{post.tags.map((tag) => <Link key={tag} href={"/blog?tag=" + encodeURIComponent(tag)} className="rounded border border-border px-2 py-1 text-xs text-text-secondary hover:border-border-light">{tag}</Link>)}</div>
+        <ShareArticle title={post.title} url={`${siteConfig.url}/blog/${slug}`} />
       </div>
 
+      <Image src={post.coverImage} alt={post.coverAlt} width={1200} height={630} sizes="(max-width: 800px) 100vw, 736px" className="mb-8 h-auto w-full rounded-lg border border-border" />
+      {toc.length > 0 && <nav aria-label="In this article" className="mb-8 rounded-lg border border-border bg-bg-card p-5"><h2 className="mb-3 font-medium">In this article</h2><ol className="space-y-2 text-sm">{toc.map((entry) => <li key={entry.id} className={entry.depth === 3 ? "ml-4" : undefined}><a className="text-text-secondary hover:text-accent" href={"#" + entry.id}>{entry.text}</a></li>)}</ol></nav>}
       <hr className="border-border mb-8" />
 
       {/* MDX Content */}
       <div className="prose prose-sm max-w-none
-        prose-headings:font-display prose-headings:font-medium prose-headings:text-text-primary prose-headings:tracking-[-0.02em]
+        prose-headings:font-display prose-headings:font-medium prose-headings:text-text-primary prose-headings:tracking-[-0.02em] prose-headings:scroll-mt-24
         prose-h2:text-[1.3rem] prose-h2:mt-10 prose-h2:mb-3
         prose-h3:text-[1.1rem] prose-h3:mt-6 prose-h3:mb-2
         prose-p:text-text-secondary prose-p:leading-relaxed prose-p:text-[0.95rem]
@@ -109,7 +131,7 @@ export default async function BlogPostPage({
         prose-pre:bg-bg-elevated prose-pre:border prose-pre:border-border prose-pre:rounded-[10px]
         prose-ul:text-text-secondary prose-li:text-[0.95rem]
         prose-blockquote:border-accent prose-blockquote:text-text-muted">
-        <MDXRemote source={post.content} />
+        {content}
       </div>
 
       <hr className="border-border mt-12 mb-8" />
@@ -117,9 +139,9 @@ export default async function BlogPostPage({
       {/* Related Posts */}
       {related.length > 0 && (
         <div className="mb-10">
-          <h3 className="font-display font-[800] text-[1rem] tracking-[-0.01em] mb-4 text-text-primary">
+          <h2 className="font-display font-[800] text-[1rem] tracking-[-0.01em] mb-4 text-text-primary">
             Related Guides
-          </h3>
+          </h2>
           <div className="flex flex-col gap-3">
             {related.map((r) => (
               <Link

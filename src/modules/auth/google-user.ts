@@ -3,6 +3,7 @@ import { eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { users } from "@/db/schema";
 import { AppError } from "@/lib/http/errors";
+import { enqueueNotification } from "@/modules/notifications/service";
 
 /** Email is accepted only from Google's verified OAuth profile. Never recreate restored IDs. */
 export async function synchronizeGoogleUser(profile: { email: string; name?: string | null; image?: string | null }): Promise<string> {
@@ -20,6 +21,8 @@ export async function synchronizeGoogleUser(profile: { email: string; name?: str
     }
     const id = randomUUID();
     await tx.insert(users).values({ id, email, name, avatarUrl });
+    await enqueueNotification({ userId: id, type: "welcome", eventKey: `user:${id}:welcome`,
+      variables: { name: name.slice(0, 120), actionPath: "/dashboard" } }, tx);
     return id;
   });
 }

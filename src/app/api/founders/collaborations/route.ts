@@ -1,0 +1,14 @@
+import { NextResponse } from "next/server";
+import { requireUser } from "@/lib/auth";
+import { withApi } from "@/lib/http/api";
+import { enforceRateLimit } from "@/modules/security/rate-limit";
+import { readJson } from "@/modules/security/request";
+import { inviteFounder,inviteFounderSchema,listCollaborations,removeFounderLink,removeFounderSchema,respondFounderInvitation,respondFounderInvitationSchema } from "@/modules/founders/collaborations";
+const response=(value:unknown)=>NextResponse.json(value,{headers:{"Cache-Control":"no-store"}});
+export const GET=withApi(async()=>{const user=await requireUser();return response(await listCollaborations(user.id));});
+export const POST=withApi(async(request)=>{const user=await requireUser(request);await enforceRateLimit("founder-invite",user.id,20,86_400);
+  return response(await inviteFounder(user.id,await readJson(request,inviteFounderSchema)));});
+export const PATCH=withApi(async(request)=>{const user=await requireUser(request);await enforceRateLimit("founder-respond",user.id,60,3600);
+  return response(await respondFounderInvitation(user.id,await readJson(request,respondFounderInvitationSchema)));});
+export const DELETE=withApi(async(request)=>{const user=await requireUser(request);await enforceRateLimit("founder-remove",user.id,60,3600);
+  return response(await removeFounderLink(user.id,await readJson(request,removeFounderSchema)));});

@@ -1,7 +1,7 @@
 # Coolify deployment
 
-The stack contains web, PostgreSQL, Redis, a worker and an explicitly enabled
-scheduler. Dodo, Microsoft Graph, R2, consent analytics and the isolated screenshot
+The stack contains web, PostgreSQL, Redis, a worker and a dispatcher with explicitly
+enabled scheduled generation. Dodo, Microsoft Graph, R2, consent analytics and the isolated screenshot
 service are implemented behind explicit configuration gates. Passing health checks
 does not certify provider credentials or delivery. See [PROVIDERS.md](PROVIDERS.md).
 
@@ -86,7 +86,8 @@ to bootstrap PostgreSQL, never to authenticate the web service.
 1. Create the PostgreSQL 18.6 service and a persistent volume. Compose mounts
    `/var/lib/postgresql`, the parent of the PostgreSQL 18 versioned data directory.
    The database port is not published publicly.
-2. Restore the approved backup into staging, prepare the migration baseline and
+2. Restore the approved backup into staging, validate all eight migrations through
+   `0007_founder_invitations`, and
    provision the application role with only necessary table/sequence privileges.
    The migration/admin role stays separate from `DATABASE_URL`.
 3. Validate users, sites, historical tests and ownership using the documented
@@ -94,13 +95,13 @@ to bootstrap PostgreSQL, never to authenticate the web service.
 4. Configure the web resource to build `Dockerfile`, expose port 3000 and bind the
    domain above. Supply secrets only in the runtime environment, never build args.
 5. Route only healthy instances. `/health/live` checks process liveness;
-   `/health/ready` checks the schema through migration 0005 with a zero-row query and verifies that the
+   `/health/ready` checks the schema through migration 0007 with a zero-row query and verifies that the
    application role has no administrator flags, database/table ownership or
    `CREATE` privilege on the public schema. It checks queue-table write grants,
    Redis connectivity, bounded memory, `noeviction` and healthy AOF persistence.
    The complete dependency check has a three-second deadline. The aliases
    `/api/health` and `/api/ready` remain available. All are
-   uncached and return `503` while shutting down. A missing M1 column/table, grant
+   uncached and return `503` while shutting down. A missing required column/table, grant
    or unsafe role returns `503`. Readiness does not replace full migration/data
    validation or checks of external providers. Configure Coolify's ingress health
    check to use `/health/ready`; the image's own liveness probe uses `/health/live`.
@@ -162,8 +163,10 @@ it does not generate scheduled monitoring or maintenance work. Its health respon
 identifies `dispatch-only` mode. To stop dispatch, stop the process explicitly.
 Enable scheduled generation in this order:
 
-1. Apply and validate all migrations through 0006 on a restored staging copy,
-   including provider, product, ranking, audit and ad inventory tables.
+1. Apply and validate all eight migrations through 0007 on a restored staging copy,
+   including provider, product, ranking, audit, ad inventory, domain analytics and
+   founder invitation tables. The reviewed schema contains 43 public tables, one
+   public view and one public sequence; the migration ledger is separate in `app_meta`.
    Grant the runtime role the documented table permissions and verify readiness.
 2. Deploy Redis, worker and dispatcher, then verify readiness. Keep new scheduled
    generation disabled while the old scheduling mechanism still runs.
