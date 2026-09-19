@@ -40,6 +40,28 @@ const envSchema = z.object({
   DB_CONNECT_TIMEOUT_SECONDS: positiveInteger(10, 120),
   DB_IDLE_TIMEOUT_SECONDS: positiveInteger(20, 600),
   DB_STATEMENT_TIMEOUT_MS: positiveInteger(10000, 300000),
+  REDIS_URL: optionalString.refine((value) => {
+    if (!value) return true;
+    try {
+      const parsed = new URL(value);
+      decodeURIComponent(parsed.password);
+      return ["redis:", "rediss:"].includes(parsed.protocol)
+        && Boolean(parsed.hostname) && !parsed.search && !parsed.hash
+        && /^\/(?:[0-9]|1[0-5])?$/.test(parsed.pathname || "/");
+    } catch {
+      return false;
+    }
+  }, "Must be a Redis connection string with a database index from 0 to 15"),
+  QUEUE_PREFIX: z.preprocess((value) => value === "" || value === undefined ? "tfw" : value,
+    z.string().regex(/^[a-zA-Z0-9-]{1,40}$/)),
+  WORKER_CONCURRENCY: positiveInteger(2, 8),
+  PSI_REQUESTS_PER_MINUTE: positiveInteger(10, 120),
+  PSI_REQUESTS_PER_DAY: positiveInteger(1000, 100000),
+  SCHEDULER_ENABLED: flag,
+  SCHEDULER_INTERVAL_SECONDS: positiveInteger(60, 300),
+  JOB_MAX_ATTEMPTS: positiveInteger(3, 10),
+  WORKER_HEALTH_PORT: positiveInteger(3001, 65535),
+  SCHEDULER_HEALTH_PORT: positiveInteger(3002, 65535),
   AUTH_SECRET: optionalString.refine((value) => !value || value.length >= 32, "Must contain at least 32 characters"),
   AUTH_GOOGLE_ID: optionalString,
   AUTH_GOOGLE_SECRET: optionalString,
@@ -56,6 +78,7 @@ const envSchema = z.object({
 });
 
 export type Env = z.infer<typeof envSchema>;
+export type RuntimeRole = "web" | "worker" | "scheduler";
 
 export class EnvironmentError extends Error {
   readonly code = "CONFIGURATION_INVALID";
@@ -68,7 +91,7 @@ export class EnvironmentError extends Error {
 
 export function parseEnv(
   raw: Record<string, string | undefined>,
-  options: { requireProductionSecrets?: boolean } = {},
+  options: { requireProductionSecrets?: boolean; role?: RuntimeRole } = {},
 ): Env {
   const result = envSchema.safeParse(raw);
   if (!result.success) {
@@ -77,13 +100,19 @@ export function parseEnv(
   const config = result.data;
   const missing: string[] = [];
   if (options.requireProductionSecrets && config.NODE_ENV === "production") {
-    for (const key of ["DATABASE_URL", "AUTH_SECRET", "AUTH_GOOGLE_ID", "AUTH_GOOGLE_SECRET"] as const) {
+    for (const key of ["DATABASE_URL", "REDIS_URL"] as const) {
       if (!config[key]) missing.push(key);
     }
-    if (!config.SITE_URL.startsWith("https://")) missing.push("SITE_URL");
-    if (config.AUTH_URL && !config.AUTH_URL.startsWith("https://")) missing.push("AUTH_URL");
-    if (config.AUTH_URL && new URL(config.AUTH_URL).origin !== new URL(config.SITE_URL).origin) missing.push("AUTH_URL");
-    if (!config.AUTH_TRUST_HOST) missing.push("AUTH_TRUST_HOST");
+    if (config.REDIS_URL && decodeURIComponent(new URL(config.REDIS_URL).password).length < 32) missing.push("REDIS_URL");
+    if (!options.role || options.role === "web") {
+      for (const key of ["AUTH_SECRET", "AUTH_GOOGLE_ID", "AUTH_GOOGLE_SECRET"] as const) {
+        if (!config[key]) missing.push(key);
+      }
+      if (!config.SITE_URL.startsWith("https://")) missing.push("SITE_URL");
+      if (config.AUTH_URL && !config.AUTH_URL.startsWith("https://")) missing.push("AUTH_URL");
+      if (config.AUTH_URL && new URL(config.AUTH_URL).origin !== new URL(config.SITE_URL).origin) missing.push("AUTH_URL");
+      if (!config.AUTH_TRUST_HOST) missing.push("AUTH_TRUST_HOST");
+    }
   }
   if (config.ENABLE_LEGACY_RESEND && !config.RESEND_API_KEY) missing.push("RESEND_API_KEY");
   if (missing.length) throw new EnvironmentError([...new Set(missing)]);
@@ -98,7 +127,7 @@ export function getEnv(): Env {
 }
 
 /** Called by instrumentation before a production instance handles requests. */
-export function validateRuntimeEnv(): Env {
-  cached = parseEnv(process.env, { requireProductionSecrets: true });
+export function validateRuntimeEnv(role: RuntimeRole = "web"): Env {
+  cached = parseEnv(process.env, { requireProductionSecrets: true, role });
   return cached;
 }

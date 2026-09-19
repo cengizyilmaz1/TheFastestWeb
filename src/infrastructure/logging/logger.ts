@@ -1,9 +1,9 @@
 import pino from "pino";
 import { getCorrelationId } from "@/lib/http/correlation";
 
-const sensitiveKeys = /^(?:authorization|cookie|set-cookie|password|secret|token|accessToken|refreshToken|apiKey|database_url|auth_secret|auth_google_secret|email|ip|userAgent|user_agent|headers|body|url|connectionString|name|username|twitterHandle|referrer|avatarUrl)$/i;
+const sensitiveKeys = /^(?:authorization|cookie|set-cookie|password|secret|token|accessToken|refreshToken|apiKey|database_url|redis_url|auth_secret|auth_google_secret|email|ip|userAgent|user_agent|headers|body|url|connectionString|name|username|twitterHandle|referrer|avatarUrl)$/i;
 const secretEnvironmentKeys = [
-  "DATABASE_URL", "AUTH_SECRET", "NEXTAUTH_SECRET", "AUTH_GOOGLE_SECRET",
+  "DATABASE_URL", "REDIS_URL", "REDIS_PASSWORD", "AUTH_SECRET", "NEXTAUTH_SECRET", "AUTH_GOOGLE_SECRET",
   "GOOGLE_PSI_API_KEY", "GOOGLE_PSI_API_KEY_BACKUP", "CRON_SECRET",
   "UNAVATAR_API_KEY", "RESEND_API_KEY",
 ] as const;
@@ -28,7 +28,7 @@ export function sanitizeLogValue(value: unknown, depth = 0): unknown {
       if (secret && secret.length >= 6) sanitized = sanitized.split(secret).join("[REDACTED_SECRET]");
     }
     return sanitized
-      .replace(/(?:postgres(?:ql)?|https?):\/\/\S+/gi, "[REDACTED_URL]")
+      .replace(/(?:postgres(?:ql)?|rediss?|https?):\/\/\S+/gi, "[REDACTED_URL]")
       .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[REDACTED_EMAIL]")
       .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, "[REDACTED_IP]")
       .replace(/\bBearer\s+\S+/gi, "Bearer [REDACTED]")
@@ -51,7 +51,7 @@ export const logger = pino({
     },
   },
   redact: {
-    paths: ["req", "res", "headers", "body", "email", "password", "token", "secret", "DATABASE_URL", "AUTH_SECRET"],
+    paths: ["req", "res", "headers", "body", "email", "password", "token", "secret", "DATABASE_URL", "REDIS_URL", "REDIS_PASSWORD", "AUTH_SECRET"],
     censor: "[REDACTED]",
   },
 });

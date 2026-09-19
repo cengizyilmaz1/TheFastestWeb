@@ -2,6 +2,7 @@ import { z } from "zod";
 import { getEnv } from "@/config/env";
 import { AppError } from "@/lib/http/errors";
 import { resolvePublicTarget } from "@/lib/security/public-url";
+import { consumePageSpeedBudget } from "@/modules/jobs/provider-budget";
 
 const PSI_API = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed";
 export const METHODOLOGY_VERSION = "psi-v1-single-mobile";
@@ -45,6 +46,7 @@ export function parsePageSpeedResponse(input: unknown) {
 export type PSIResult = ReturnType<typeof parsePageSpeedResponse>;
 
 async function fetchPSI(url: string, strategy: "mobile" | "desktop", apiKey: string | undefined): Promise<PSIResult> {
+  await consumePageSpeedBudget();
   const params = new URLSearchParams({ url, strategy, category: "performance" });
   if (apiKey) params.set("key", apiKey);
   let response: Response;

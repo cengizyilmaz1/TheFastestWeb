@@ -5,7 +5,7 @@ import postgres from "postgres";
 import { normalizePublicUrl } from "../../src/lib/security/public-url";
 
 const migrationsDirectory = new URL("../../src/db/migrations/", import.meta.url);
-const versions = ["0000_snapshot_baseline", "0001_m1_verified_results"] as const;
+const versions = ["0000_snapshot_baseline", "0001_m1_verified_results", "0002_m2_job_ledger"] as const;
 type Catalog = Record<string, unknown[]>;
 type MigrationOptions = { databaseUrl: string; log?: (message: string) => void };
 

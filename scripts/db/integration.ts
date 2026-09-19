@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import postgres from "postgres";
 import { migrateDatabase } from "./migrate";
@@ -48,7 +48,7 @@ async function main(): Promise<void> {
       (SELECT count(*) FROM app_meta.schema_migrations)::integer AS migrations,
       (SELECT count(*) FROM pg_class WHERE relnamespace='public'::regnamespace AND relkind='r' AND relrowsecurity)::integer AS rls,
       (SELECT count(*) FROM public.verified_speed_tests)::integer AS verified`;
-    assert.deepEqual({ ...state }, { migrations: 2, rls: 0, verified: 0 });
+    assert.deepEqual({ ...state }, { migrations: 3, rls: 0, verified: 0 });
     console.log("PASS fresh database, concurrent runners, idempotence, and final RLS state");
 
     const restored = await isolated("restored");
@@ -60,6 +60,53 @@ async function main(): Promise<void> {
       normalized_url: "https://example.com/", test_id: speedId, score: 87, lcp_ms: 1240, methodology_version: "legacy-unspecified" });
     await migrateDatabase({ databaseUrl: restored.url, log: () => undefined });
     console.log("PASS restored baseline adoption preserves UUIDs, ownership, URL, score and history");
+
+    const m1 = await isolated("m1upgrade");
+    await fixture(m1.sql);
+    const m1Source = (await readFile(new URL("../../src/db/migrations/0001_m1_verified_results.sql", import.meta.url), "utf8")).replace(/\r\n/g, "\n");
+    await m1.sql.unsafe(m1Source);
+    await m1.sql`UPDATE public.sites SET normalized_url='https://example.com/' WHERE id=${siteId}`;
+    await m1.sql`ALTER TABLE public.sites ALTER COLUMN normalized_url SET NOT NULL`;
+    await m1.sql`CREATE SCHEMA app_meta`;
+    await m1.sql`CREATE TABLE app_meta.schema_migrations (version text PRIMARY KEY, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now())`;
+    for (const [version, source] of [["0000_snapshot_baseline", baseline], ["0001_m1_verified_results", m1Source]]) {
+      await m1.sql`INSERT INTO app_meta.schema_migrations (version,checksum) VALUES (${version},${createHash("sha256").update(source.replace(/\r\n/g, "\n")).digest("hex")})`;
+    }
+    const oldLedger = await m1.sql`SELECT version,checksum,applied_at FROM app_meta.schema_migrations ORDER BY version`;
+    const [m1History] = await m1.sql`SELECT to_jsonb(t) AS data FROM public.speed_tests t WHERE id=${speedId}`;
+    const upgradeLog: string[] = [];
+    await migrateDatabase({ databaseUrl: m1.url, log: (message) => upgradeLog.push(message) });
+    assert.deepEqual(upgradeLog, ["Applied 0002_m2_job_ledger."]);
+    const keptLedger = await m1.sql`SELECT version,checksum,applied_at FROM app_meta.schema_migrations WHERE version < '0002' ORDER BY version`;
+    const [m2History] = await m1.sql`SELECT to_jsonb(t)-'background_job_id' AS data, background_job_id FROM public.speed_tests t WHERE id=${speedId}`;
+    assert.deepEqual([...keptLedger], [...oldLedger]);
+    assert.deepEqual(m2History.data, m1History.data);
+    assert.equal(m2History.background_job_id, null);
+    console.log("PASS M1 upgrade appends only M2 and preserves existing ledger timestamps/checksums and history");
+
+    const jobId = randomUUID();
+    const jobKey = `integration:${jobId}`;
+    await restored.sql`INSERT INTO public.background_jobs (id,queue,kind,job_key,payload,site_id)
+      VALUES (${jobId},'retest','site.retest',${jobKey},${restored.sql.json({ siteId })},${siteId})`;
+    const [job] = await restored.sql`SELECT status,attempts,max_attempts,lease_token,leased_until,
+      correlation_id IS NOT NULL AS correlated FROM public.background_jobs WHERE id=${jobId}`;
+    assert.deepEqual({ ...job }, { status: "pending", attempts: 0, max_attempts: 3, lease_token: null, leased_until: null, correlated: true });
+    await assert.rejects(restored.sql`INSERT INTO public.background_jobs (queue,kind,job_key,payload)
+      VALUES ('retest','site.retest',${jobKey},'{}')`, { code: "23505" });
+    await assert.rejects(restored.sql`UPDATE public.background_jobs SET status='unknown' WHERE id=${jobId}`, { code: "23514" });
+    await assert.rejects(restored.sql`UPDATE public.background_jobs SET attempts=-1 WHERE id=${jobId}`, { code: "23514" });
+    await assert.rejects(restored.sql`UPDATE public.background_jobs SET max_attempts=0 WHERE id=${jobId}`, { code: "23514" });
+    await assert.rejects(restored.sql`UPDATE public.background_jobs SET lease_token=${randomUUID()} WHERE id=${jobId}`, { code: "23514" });
+    await assert.rejects(restored.sql`UPDATE public.background_jobs SET payload='[]' WHERE id=${jobId}`, { code: "23514" });
+    await assert.rejects(restored.sql`UPDATE public.background_jobs SET result='[]' WHERE id=${jobId}`, { code: "23514" });
+    await restored.sql`INSERT INTO public.job_events (job_id,event,actor) VALUES (${jobId},'enqueued','service')`;
+    await restored.sql`INSERT INTO public.speed_tests (site_id,score,background_job_id) VALUES (${siteId},90,${jobId})`;
+    await assert.rejects(restored.sql`INSERT INTO public.speed_tests (site_id,score,background_job_id) VALUES (${siteId},91,${jobId})`, { code: "23505" });
+    await assert.rejects(restored.sql`DELETE FROM public.background_jobs WHERE id=${jobId}`, { code: "23503" });
+    await restored.sql`INSERT INTO public.provider_usage (day,provider,used) VALUES ('2026-09-19','google-psi',1)`;
+    await assert.rejects(restored.sql`UPDATE public.provider_usage SET used=-1 WHERE provider='google-psi'`, { code: "23514" });
+    await assert.rejects(restored.sql`INSERT INTO public.provider_usage (day,provider,used) VALUES ('2026-09-19','google-psi',1)`, { code: "23505" });
+    console.log("PASS job deduplication, lease/state/payload guards, at-most-once measurement and durable provider-budget constraints");
 
     const drift = await isolated("drift");
     await drift.sql.unsafe(baseline);

@@ -1,4 +1,4 @@
-name: Foundation validation
+name: Foundation and queue validation
 on:
   push:
   pull_request:
@@ -35,6 +35,27 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
+      - name: Create isolated Redis test credentials
+        shell: bash
+        run: |
+          redis_password="$(openssl rand -hex 32)"
+          echo "::add-mask::$redis_password"
+          printf 'REDIS_PASSWORD=%s\nREDIS_TEST_URL=redis://:%s@127.0.0.1:6379/15\n' \
+            "$redis_password" "$redis_password" >> "$GITHUB_ENV"
+      - name: Start authenticated persistent Redis fixture
+        shell: bash
+        run: |
+          docker build --target redis -t tfw-ci-redis .
+          docker run --detach --name tfw-ci-redis \
+            --publish 127.0.0.1:6379:6379 --env REDIS_PASSWORD \
+            --health-cmd 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli --raw ping | grep -qx PONG' \
+            --health-interval 2s --health-timeout 2s --health-retries 10 tfw-ci-redis
+          for attempt in $(seq 1 20); do
+            if [ "$(docker inspect --format '{{.State.Health.Status}}' tfw-ci-redis)" = healthy ]; then exit 0; fi
+            sleep 1
+          done
+          echo 'Redis fixture did not become healthy.' >&2
+          exit 1
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
@@ -42,3 +63,7 @@ jobs:
       - run: npm run test:integration
       - run: npm audit
       - run: npm run build
+      - run: npm run build:jobs
+      - name: Remove disposable Redis fixture
+        if: always()
+        run: docker rm --force --volumes tfw-ci-redis || true

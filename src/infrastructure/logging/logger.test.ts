@@ -32,6 +32,19 @@ describe("structured log sanitization", () => {
     expect(JSON.stringify(sanitizeLogValue(value))).toContain("[TRUNCATED]");
   });
 
+  it("redacts Redis connections and configured Redis passwords", () => {
+    vi.stubEnv("REDIS_PASSWORD", "synthetic-redis-password-with-no-prefix");
+    try {
+      expect(sanitizeLogValue({ REDIS_URL: "redis://app:test@redis/0" })).toEqual({ REDIS_URL: "[REDACTED]" });
+      expect(sanitizeLogValue("connect rediss://app:private-value@redis/0"))
+        .toBe("connect [REDACTED_URL]");
+      expect(sanitizeLogValue("failure: synthetic-redis-password-with-no-prefix"))
+        .toBe("failure: [REDACTED_SECRET]");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("removes configured secrets even when embedded in an unstructured message", () => {
     vi.stubEnv("AUTH_SECRET", "synthetic-secret-without-a-provider-prefix");
     try {

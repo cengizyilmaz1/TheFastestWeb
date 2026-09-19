@@ -1,6 +1,6 @@
 # Master plan karşılaştırması ve uygulama sırası
 
-Bu dosya kullanıcı master planındaki **0–141 maddelerinin tamamını** başlangıç codebase'iyle karşılaştırır. Durumlar başlangıç fark analizidir; tamamlanma iddiası değildir. M1 uygulama kanıtları [Milestone 1](MILESTONE-1.md), migration kanıtları [DATABASE](DATABASE.md) ve [MIGRATION](MIGRATION.md) içindedir. Tek aktif uygulama kapsamı madde 141'deki Foundation & Security'dir.
+Bu dosya kullanıcı master planındaki **0–141 maddelerinin tamamını** başlangıç codebase'iyle karşılaştırır. Durumlar başlangıç fark analizidir; tamamlanma iddiası değildir. M1 uygulama kanıtları [Milestone 1](MILESTONE-1.md), migration kanıtları [DATABASE](DATABASE.md) ve [MIGRATION](MIGRATION.md) içindedir. M1 tamamlandıktan sonra kullanıcı devam talebiyle M2 altyapısı uygulandı; güncel kanıtlar [Milestone 2](MILESTONE-2.md) içindedir. Aşağıdaki başlangıç tablosu tarihsel fark analizidir.
 
 - **Already exists:** kaynak/veri veya ilke mevcut; tüm gelecek ürün özelliklerinin hazır olduğu anlamına gelmez.
 - **Needs modification:** mevcut işlevin bir kısmı korunarak değişecek.
@@ -158,8 +158,8 @@ Bu dosya kullanıcı master planındaki **0–141 maddelerinin tamamını** baş
 | Aşama | Somut teslim | Geçiş koşulu |
 |---|---|---|
 | 0 | Kaynağın kontrollü içe alınması, özel dump ve secret envanteri, gerçek restore analizi | Kaynak/UUID/history korunur, özel dosyalar Git dışında |
-| 1 — aktif | Node24, Docker/Coolify, typed ENV, auth, SSRF, güvenli JSON-LD, doğrulanmış test kaydı, baseline, log/health, lint/test/CI | Otomatik kontroller, yerel gerçek restore, data integrity; harici testler açıkça ayrılır |
-| 2 | Redis/BullMQ, worker/scheduler, idempotency, retry/backoff, outbox | Aynı iş iki kez etkide bulunmaz; eski scheduler kapatılır |
+| 1 — doğrulandı | Node24, Docker/Coolify, typed ENV, auth, SSRF, güvenli JSON-LD, doğrulanmış test kaydı, baseline, log/health, lint/test/CI | Otomatik kontroller, yerel gerçek restore, data integrity; harici testler açıkça ayrılır |
+| 2 — uygulandı | Redis/BullMQ, worker/scheduler, idempotency, retry/backoff, outbox | Aynı iş iki kez etkide bulunmaz; eski scheduler kapatılır |
 | 3 | Dodo, Graph, R2, yeni analytics adapter'ları | Sandbox webhook replay, mail delivery ve entitlement koruma testleri |
 | 4 | Paylaşılan Screenshot Service ve ölçüm standardı | IndieTools erişimi, izolasyon ve render regression |
 | 5 | Founder/taxonomy/competition/claim/entitlement modelleri | Additive migration + mevcut kullanıcı/site/ad sahipliği doğrulanır |
@@ -172,5 +172,5 @@ Bu dosya kullanıcı master planındaki **0–141 maddelerinin tamamını** baş
 | 12 | Analytics/growth/admin operasyon | Gerçek olaylar, consent/retention, RBAC/audit |
 | 13 | Production yayın | Master plan madde136'nın bütün kontrolleri; backup restore, monitoring, rollback |
 
-M1 bitmeden M2 başlatılmaz. Dodo/Graph/R2 ve paylaşılan screenshot servisinin bu branch'te var olduğu varsayılmaz. Yeni UI tasarımı M10 kapsamındadır; M1 görünür tasarımı yalnız güvenlik ve doğruluk gerektiğinde değiştirir.
+M2, M1 doğrulandıktan sonra uygulandı. Maddeler33–36,103–104 için kuyruk, worker, scheduler, kalıcı iş kaydı ve kurtarma altyapısı hazırdır. Madde58 için email kuyruğu adı ayrıldı; Graph tüketicisi M3'te uygulanacak. Madde77 için özel operatör CLI hazırdır; yetkili admin arayüzü sonraki domain/RBAC aşamasındadır. Dodo/Graph/R2 ve paylaşılan screenshot servisi henüz uygulanmadı. Sonraki çalışma M3 sağlayıcı entegrasyonları; modern görsel tasarım M10 kapsamındadır.
 

@@ -13,26 +13,32 @@
     "test:integration": "tsx scripts/db/integration.ts && vitest run --config vitest.integration.config.mts",
     "db:migrate": "tsx scripts/db/migrate.ts",
     "audit:production": "npm audit --omit=dev",
-    "test:runtime": "vitest run src/config/shutdown.test.ts"
+    "test:runtime": "vitest run src/config/shutdown.test.ts",
+    "build:jobs": "node scripts/build-jobs.mjs",
+    "worker": "node dist/jobs/worker.cjs",
+    "scheduler": "node dist/jobs/scheduler.cjs",
+    "queue:admin": "node dist/jobs/queue-admin.cjs"
   },
   "dependencies": {
     "@tailwindcss/typography": "0.5.20",
+    "bullmq": "6.3.8",
     "dotenv": "18.0.1",
     "drizzle-orm": "0.45.2",
     "gray-matter": "4.0.3",
+    "ioredis": "6.0.0",
+    "ipaddr.js": "2.5.0",
     "next": "16.3.5",
     "next-auth": "4.24.15",
     "next-mdx-remote": "6.0.0",
+    "parse5": "8.0.1",
+    "pino": "10.3.1",
     "postgres": "3.4.9",
     "puppeteer-core": "25.11.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "recharts": "3.10.1",
     "resend": "6.28.1",
-    "zod": "4.6.5",
-    "pino": "10.3.1",
-    "ipaddr.js": "2.5.0",
-    "parse5": "8.0.1"
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.3.3",
@@ -40,12 +46,13 @@
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "drizzle-kit": "0.31.10",
+    "esbuild": "0.28.2",
     "eslint": "9.39.5",
     "eslint-config-next": "16.3.5",
     "tailwindcss": "4.3.3",
+    "tsx": "4.23.13",
     "typescript": "6.0.3",
-    "vitest": "5.0.1",
-    "tsx": "4.23.13"
+    "vitest": "5.0.1"
   },
   "engines": {
     "node": ">=24.0.0 <25",

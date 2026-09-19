@@ -13,6 +13,8 @@ import {
   foreignKey,
   pgView,
   check,
+  date,
+  primaryKey,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type { PSIResult } from "@/lib/pagespeed";
@@ -38,6 +40,8 @@ export const paymentStatusEnum = pgEnum("payment_status", [
   "failed",
 ]);
 export const adPositionEnum = pgEnum("ad_position", ["left", "right"]);
+export const backgroundJobStatuses = ["pending", "queued", "running", "succeeded", "failed", "cancelled"] as const;
+export type BackgroundJobStatus = typeof backgroundJobStatuses[number];
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -92,6 +96,62 @@ export const sites = pgTable("sites", {
   index("sites_leaderboard_idx").on(table.isListed, table.currentScore.desc(), table.createdAt),
 ]);
 
+/** Authoritative job state and transactional outbox; Redis is a recoverable transport. */
+export const backgroundJobs = pgTable("background_jobs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  queue: text("queue").notNull(),
+  kind: text("kind").notNull(),
+  jobKey: text("job_key").unique().notNull(),
+  payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+  status: text("status").$type<BackgroundJobStatus>().default("pending").notNull(),
+  attempts: integer("attempts").default(0).notNull(),
+  maxAttempts: integer("max_attempts").default(3).notNull(),
+  availableAt: timestamp("available_at", { withTimezone: true }).defaultNow().notNull(),
+  leaseToken: uuid("lease_token"),
+  leasedUntil: timestamp("leased_until", { withTimezone: true }),
+  result: jsonb("result").$type<Record<string, unknown>>(),
+  lastErrorCode: text("last_error_code"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  finishedAt: timestamp("finished_at", { withTimezone: true }),
+  siteId: uuid("site_id").references(() => sites.id, { onDelete: "set null" }),
+  correlationId: uuid("correlation_id").defaultRandom().notNull(),
+}, (table) => [
+  index("background_jobs_status_available_idx").on(table.status, table.availableAt),
+  index("background_jobs_leased_until_idx").on(table.leasedUntil),
+  index("background_jobs_site_id_idx").on(table.siteId),
+  check("background_jobs_status_valid", sql`${table.status} IN ('pending', 'queued', 'running', 'succeeded', 'failed', 'cancelled')`),
+  check("background_jobs_attempts_valid", sql`${table.attempts} >= 0 AND ${table.maxAttempts} >= 1`),
+  check("background_jobs_lease_pair", sql`(${table.leaseToken} IS NULL) = (${table.leasedUntil} IS NULL)`),
+  check("background_jobs_payload_object", sql`jsonb_typeof(${table.payload}) = 'object'`),
+  check("background_jobs_result_object", sql`${table.result} IS NULL OR jsonb_typeof(${table.result}) = 'object'`),
+]);
+
+export const jobEvents = pgTable("job_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  jobId: uuid("job_id").notNull().references(() => backgroundJobs.id, { onDelete: "cascade" }),
+  event: text("event").notNull(),
+  // Service/operator category only. Do not put names, email addresses or IPs here.
+  actor: text("actor").notNull(),
+  attempt: integer("attempt").default(0).notNull(),
+  errorCode: text("error_code"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("job_events_job_created_idx").on(table.jobId, table.createdAt),
+  check("job_events_attempt_valid", sql`${table.attempt} >= 0`),
+]);
+
+/** Durable daily provider budget; Redis restarts must not reset consumed requests. */
+export const providerUsage = pgTable("provider_usage", {
+  day: date("day", { mode: "string" }).notNull(),
+  provider: text("provider").notNull(),
+  used: integer("used").default(0).notNull(),
+}, (table) => [
+  primaryKey({ name: "provider_usage_day_provider_pk", columns: [table.day, table.provider] }),
+  check("provider_usage_used_valid", sql`${table.used} >= 0`),
+]);
+
 export const speedTests = pgTable("speed_tests", {
   id: uuid("id").primaryKey().defaultRandom(),
   siteId: uuid("site_id")
@@ -108,6 +168,8 @@ export const speedTests = pgTable("speed_tests", {
   rawResponse: jsonb("raw_response"),
   strategy: strategyEnum("strategy").default("mobile").notNull(),
   methodologyVersion: text("methodology_version").default("legacy-unspecified").notNull(),
+  // Retain the ledger reference: deleting a job must never permit duplicate measurements.
+  backgroundJobId: uuid("background_job_id").unique().references(() => backgroundJobs.id),
   testedAt: timestamp("tested_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
@@ -245,3 +307,6 @@ export type AdSlot = typeof adSlots.$inferSelect;
 export type SpeedCheck = typeof speedChecks.$inferSelect;
 export type CronLog = typeof cronLogs.$inferSelect;
 export type VerifiedSpeedTest = typeof verifiedSpeedTests.$inferSelect;
+export type BackgroundJob = typeof backgroundJobs.$inferSelect;
+export type JobEvent = typeof jobEvents.$inferSelect;
+export type ProviderUsage = typeof providerUsage.$inferSelect;

@@ -1,4 +1,4 @@
-# Architecture — M1
+# Architecture — M2
 
 Next.js 16 App Router provides server-rendered pages and route handlers. React 19 renders the existing UI. PostgreSQL 18 is the source of truth through a single bounded postgres.js pool and Drizzle ORM.
 
@@ -7,10 +7,12 @@ src/app                 HTTP routes and server-rendered pages
 src/components          Existing UI, updated only for safety/correctness in M1
 src/modules/auth        Google user synchronization preserving UUIDs
 src/modules/sites       Validated submission, metadata, transactional listing creation
-src/modules/security    Shared request validation and durable quota adapter
+src/modules/security    Shared request validation and Redis quota adapter
+src/modules/jobs        Durable outbox, leases, retesting and provider budgets
 src/modules/billing     Explicitly unavailable writes until secure replacement
 src/lib/security        URL policy, DNS-pinned bounded HTTP(S) fetch
-src/infrastructure      Sandboxed browser / egress proxy and structured logging
+src/infrastructure      Browser / egress proxy, logging, Redis/BullMQ and health
+src/bin                 Independent worker, scheduler and operator entrypoints
 src/config              Typed runtime environment, public site config, lifecycle
 src/db                  Schema, one lazy pool, reviewed SQL baseline
 scripts/db              Guarded migration, private restore preparation, integration tests
@@ -29,9 +31,9 @@ Historical canonical duplicates remain separate records. New writes use a transa
 
 ## Boundaries and limits
 
-No durable queue or worker exists in M1. The synchronous cron compatibility route handles **at most one listed, unpaused site per request** with a transaction-level shared lock and UTC daily selection. It refuses absent/incorrect cron credentials. Never point old and new schedulers at this simultaneously. M2 replaces it with a queue.
+The scheduler materializes daily jobs and dispatches the PostgreSQL outbox to BullMQ. Separate workers claim fenced leases and atomically save measurements plus completion. A site/day/mobile key deduplicates manual and daily retests. Redis can be rebuilt from nonterminal PostgreSQL records; expired leases are reconciled. The authenticated cron compatibility route now returns202 after enqueueing only. See [queue contracts](QUEUES.md).
 
-Public speed tests have shared anonymous and global provider quotas; authenticated requests also have per-user limits. This deliberately avoids trusting forwarded IP headers as a cost-control boundary. Quotas are atomic PostgreSQL rows shared across replicas. Redis migration is M2.
+Public speed tests have shared anonymous and global quotas; authenticated requests also have per-user limits. Redis atomically enforces request windows without storing raw IPs. Every actual PSI request, including a backup-key retry, also reserves a durable PostgreSQL daily budget. Web and workers share that budget and a Redis minute limit. Unavailable dependencies fail closed before requesting a measurement.
 
 Browser sessions use a DNS-pinned loopback proxy, request/traffic/time limits and sandboxed Linux Chrome. Badge failures do not delete or unlist data. The shared screenshot/media service is not implemented here.
 

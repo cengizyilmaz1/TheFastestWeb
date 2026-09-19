@@ -19,7 +19,9 @@ Only the Coolify proxy may reach the web container. It must overwrite forwarded 
 
 The app DB role must not own tables, have superuser/BYPASSRLS/role-creation capabilities, or access the migration ledger. Legacy RLS without policies is replaced by explicit application authorization and least-privilege grants. Migrations use a separate owner. See DATABASE.md.
 
-Bounded PostgreSQL quotas are temporary until Redis/BullMQ. Public anonymous speed tests share a quota; global quotas protect upstream cost even when forwarded addresses can be changed. New ad-click records retain a daily HMAC pseudonym, not raw IP/user-agent/referrer. Historical private analytics data is retained for later reviewed privacy migration.
+Atomic Redis request windows are shared across replicas; actors are hashed. Public anonymous speed tests share a quota, and every primary/backup PSI request also reserves a durable PostgreSQL UTC daily budget. Both dependency failures deny provider work. New ad-click records retain a daily HMAC pseudonym, not raw IP/user-agent/referrer. Historical private analytics data is retained for later reviewed privacy migration.
+
+Background job payloads in Redis contain only job/correlation UUIDs. PostgreSQL lease tokens and a unique measurement/job reference prevent stale workers from committing duplicate history. Manual retest/status routes enforce current ownership; the operator CLI is private to host/container access. Failed provider text is reduced to safe error codes. Cancellation fences results but cannot undo an already transmitted upstream request.
 
 The PSI service is external: a successful HTTP response without valid Lighthouse metrics is a failure, never an invented 0. M1 records one sample; it does not claim statistical stability.
 

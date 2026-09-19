@@ -1,6 +1,21 @@
+x-job-environment: &job-environment
+  NODE_ENV: production
+  DATABASE_URL: ${DATABASE_URL:?Set the least-privilege application database URL}
+  REDIS_URL: ${REDIS_URL:?Set the authenticated private Redis URL}
+  QUEUE_PREFIX: ${QUEUE_PREFIX:-tfw}
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  DB_MAX_CONNECTIONS: ${DB_MAX_CONNECTIONS:-10}
+  DB_CONNECT_TIMEOUT_SECONDS: ${DB_CONNECT_TIMEOUT_SECONDS:-10}
+  DB_IDLE_TIMEOUT_SECONDS: ${DB_IDLE_TIMEOUT_SECONDS:-20}
+  DB_STATEMENT_TIMEOUT_MS: ${DB_STATEMENT_TIMEOUT_MS:-10000}
+  PSI_REQUESTS_PER_MINUTE: ${PSI_REQUESTS_PER_MINUTE:-10}
+  PSI_REQUESTS_PER_DAY: ${PSI_REQUESTS_PER_DAY:-1000}
+  JOB_MAX_ATTEMPTS: ${JOB_MAX_ATTEMPTS:-3}
+  WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
+
 services:
   postgres:
-    image: postgres:18-bookworm
+    image: postgres:18.6-bookworm
     environment:
       POSTGRES_DB: thefastestweb
       POSTGRES_USER: postgres
@@ -8,10 +23,30 @@ services:
       TZ: UTC
       PGTZ: UTC
     volumes:
-      # PostgreSQL 18 images store versioned data beneath /var/lib/postgresql.
       - postgres_data:/var/lib/postgresql
+    networks: [backend]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d thefastestweb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+  redis:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: redis
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Generate a new 64-character hexadecimal Redis password}
+      REDIS_MAXMEMORY_MB: ${REDIS_MAXMEMORY_MB:-256}
+    volumes:
+      - redis_data:/data
+    networks: [backend]
+    mem_limit: 768m
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli --raw ping | grep -qx PONG"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -22,10 +57,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: runner
     environment:
-      NODE_ENV: production
+      <<: *job-environment
       SITE_URL: ${SITE_URL:-https://thefastestweb.site}
-      DATABASE_URL: ${DATABASE_URL:?Set the least-privilege application database URL}
       AUTH_SECRET: ${AUTH_SECRET:?Generate a new auth secret}
       AUTH_GOOGLE_ID: ${AUTH_GOOGLE_ID:?Set your Google OAuth client ID}
       AUTH_GOOGLE_SECRET: ${AUTH_GOOGLE_SECRET:?Set your Google OAuth client secret}
@@ -35,20 +70,71 @@ services:
       GOOGLE_PSI_API_KEY_BACKUP: ${GOOGLE_PSI_API_KEY_BACKUP:-}
       CRON_SECRET: ${CRON_SECRET:-}
       UNAVATAR_API_KEY: ${UNAVATAR_API_KEY:-}
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-      DB_MAX_CONNECTIONS: ${DB_MAX_CONNECTIONS:-10}
-      DB_CONNECT_TIMEOUT_SECONDS: ${DB_CONNECT_TIMEOUT_SECONDS:-10}
-      DB_IDLE_TIMEOUT_SECONDS: ${DB_IDLE_TIMEOUT_SECONDS:-20}
-      DB_STATEMENT_TIMEOUT_MS: ${DB_STATEMENT_TIMEOUT_MS:-10000}
       ENABLE_LEGACY_RESEND: "false"
-    expose:
-      - "3000"
+    expose: ["3000"]
+    networks: [default, backend]
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     shm_size: 256mb
     restart: unless-stopped
     stop_grace_period: 30s
 
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: jobs-runner
+    environment:
+      <<: *job-environment
+      WORKER_HEALTH_PORT: ${WORKER_HEALTH_PORT:-3001}
+      GOOGLE_PSI_API_KEY: ${GOOGLE_PSI_API_KEY:-}
+      GOOGLE_PSI_API_KEY_BACKUP: ${GOOGLE_PSI_API_KEY_BACKUP:-}
+    command: ["node", "dist/jobs/worker.cjs"]
+    expose: ["3001"]
+    networks: [default, backend]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 160s
+
+  scheduler:
+    profiles: [scheduler]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: jobs-runner
+    environment:
+      <<: *job-environment
+      SCHEDULER_ENABLED: ${SCHEDULER_ENABLED:-false}
+      SCHEDULER_INTERVAL_SECONDS: ${SCHEDULER_INTERVAL_SECONDS:-60}
+      SCHEDULER_HEALTH_PORT: ${SCHEDULER_HEALTH_PORT:-3002}
+    command: ["node", "dist/jobs/scheduler.cjs"]
+    expose: ["3002"]
+    networks: [backend]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:'+process.env.SCHEDULER_HEALTH_PORT+'/health/ready',{signal:AbortSignal.timeout(4000)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 160s
+
+networks:
+  backend:
+    internal: true
+
 volumes:
   postgres_data:
+  redis_data:

@@ -1,11 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { VerifiedPerformanceResult } from "@/db/schema";
-import { closeDb, getDb } from "@/db";
+import { getDb } from "@/db";
 import { sql as drizzleSql } from "drizzle-orm";
 import { createListing } from "@/modules/sites/create-listing";
 import { synchronizeGoogleUser } from "@/modules/auth/google-user";
-import { enforceRateLimit } from "@/modules/security/rate-limit";
 import { submissionSchema, type SubmissionInput } from "@/modules/sites/input";
 import { normalizePublicUrl } from "@/lib/security/public-url";
 import { cleanupIntegrationDatabase, fixtureSql, prepareIntegrationDatabase, resetIntegrationData } from "./database";
@@ -242,35 +241,5 @@ describe("Google identity continuity", () => {
     expect(results[0]).toBe(results[1]);
     const [count] = await fixtureSql()`SELECT count(*)::integer AS users FROM public.users`;
     expect(count.users).toBe(1);
-  });
-});
-
-describe("durable request quotas", () => {
-  it("admits only the configured number of concurrent requests across database connections", async () => {
-    const results = await Promise.allSettled(Array.from({ length: 20 }, () => enforceRateLimit("integration:psi", "203.0.113.7", 3, 60)));
-    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(3);
-    const rejected = results.filter((result) => result.status === "rejected") as PromiseRejectedResult[];
-    expect(rejected).toHaveLength(17);
-    for (const result of rejected) expect(result.reason).toMatchObject({ code: "RATE_LIMITED", status: 429 });
-    const rows = await fixtureSql()`SELECT key,count FROM public.request_rate_limits`;
-    expect(rows).toHaveLength(1);
-    expect(rows[0].key).toMatch(/^[a-f0-9]{64}$/);
-    expect(rows[0].key).not.toContain("203.0.113.7");
-    expect(rows[0].count).toBeGreaterThan(3);
-    await closeDb();
-    await expect(enforceRateLimit("integration:psi", "203.0.113.7", 3, 60)).rejects.toMatchObject({ code: "RATE_LIMITED" });
-  });
-
-  it("resets an expired window in the same row and isolates other scopes", async () => {
-    await enforceRateLimit("integration:psi", "synthetic-actor", 1, 60);
-    await expect(enforceRateLimit("integration:psi", "synthetic-actor", 1, 60)).rejects.toMatchObject({ code: "RATE_LIMITED" });
-    const [original] = await fixtureSql()`SELECT key FROM public.request_rate_limits`;
-    await fixtureSql()`UPDATE public.request_rate_limits SET window_started_at=now()-interval '2 minutes'`;
-    await enforceRateLimit("integration:psi", "synthetic-actor", 1, 60);
-    const [reset] = await fixtureSql()`SELECT key,count FROM public.request_rate_limits`;
-    expect({ ...reset }).toEqual({ key: original.key, count: 1 });
-    await enforceRateLimit("integration:submit", "synthetic-actor", 1, 60);
-    const [rows] = await fixtureSql()`SELECT count(*)::integer AS rows FROM public.request_rate_limits`;
-    expect(rows.rows).toBe(2);
   });
 });

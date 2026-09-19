@@ -3,9 +3,17 @@ FROM node:24.21.0-bookworm-slim AS base
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 
+FROM redis:8.10.1-alpine AS redis
+COPY --chmod=755 runtime/redis-entrypoint.sh /usr/local/bin/tfw-redis-entrypoint.sh
+ENTRYPOINT ["/usr/local/bin/tfw-redis-entrypoint.sh"]
+
 FROM base AS dependencies
 COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci
+
+FROM base AS production-dependencies
+COPY package.json package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev
 
 FROM base AS browser
 # Must match the puppeteer-core version in package-lock.json.
@@ -28,6 +36,26 @@ CMD ["npm", "test"]
 FROM test-runner AS builder
 # No ARG/ENV secrets are accepted. Build must work with an empty environment.
 RUN npm run build && node runtime/prepare-standalone.mjs
+
+FROM test-runner AS jobs-builder
+RUN npm run build:jobs
+
+FROM base AS jobs-runner
+ENV NODE_ENV=production TZ=UTC WORKER_HEALTH_PORT=3001 SCHEDULER_HEALTH_PORT=3002
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates tini \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system --gid 1001 nextjs \
+    && useradd --system --uid 1001 --gid nextjs --home-dir /app nextjs
+COPY --from=production-dependencies --chown=nextjs:nextjs /app/node_modules ./node_modules
+COPY --from=jobs-builder --chown=nextjs:nextjs /app/dist/jobs ./dist/jobs
+USER nextjs
+EXPOSE 3001 3002
+STOPSIGNAL SIGTERM
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:'+process.env.WORKER_HEALTH_PORT+'/health/ready',{signal:AbortSignal.timeout(4000)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["node", "dist/jobs/worker.cjs"]
 
 FROM base AS runner
 ENV NODE_ENV=production \
