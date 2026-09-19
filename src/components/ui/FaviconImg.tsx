@@ -12,6 +12,7 @@ interface FaviconImgProps {
 
 export function FaviconImg({ url, src: initialSrc, alt = "", className = "" }: FaviconImgProps) {
   const [fallbackLevel, setFallbackLevel] = useState(0);
+  const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
 
   let domain = "";
   try {
@@ -36,22 +37,11 @@ export function FaviconImg({ url, src: initialSrc, alt = "", className = "" }: F
 
   const currentSrc = sources[fallbackLevel];
   const letter = domain ? domain.replace("www.", "").charAt(0).toUpperCase() : "?";
+  // The shared letter tile. Utilities passed by the caller (size, radius) win over the .monogram defaults.
   const letterPlaceholder = (
-    <div
-      className={className}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        backgroundColor: "#2A2725",
-        color: "#9C9590",
-        fontWeight: 700,
-        fontSize: "1rem",
-        borderRadius: "6px",
-      }}
-    >
+    <span aria-hidden={alt ? undefined : true} role={alt ? "img" : undefined} aria-label={alt || undefined} className={"monogram " + className}>
       {letter}
-    </div>
+    </span>
   );
 
   if (!currentSrc || !domain) {
@@ -59,16 +49,20 @@ export function FaviconImg({ url, src: initialSrc, alt = "", className = "" }: F
   }
 
   return (
+    <span role={alt ? "img" : undefined} aria-label={alt || undefined} aria-hidden={alt ? undefined : true} className={"monogram relative overflow-hidden " + className}>
+    <span aria-hidden>{loadedSrc === currentSrc ? "" : letter}</span>
     <Image
       unoptimized
       width={64}
       height={64}
       src={currentSrc}
-      alt={alt}
-      className={className}
+      alt=""
+      className={"absolute inset-0 h-full w-full object-contain transition-opacity " + (loadedSrc === currentSrc ? "opacity-100" : "opacity-0")}
       onError={handleError}
+      onLoad={() => setLoadedSrc(currentSrc)}
       loading="lazy"
       fetchPriority="low"
     />
+    </span>
   );
 }

@@ -1,39 +1,34 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useId } from "react";
 import { createPortal } from "react-dom";
+import { InfoIcon } from "@phosphor-icons/react";
 import { METRIC_INFO } from "@/lib/metric-info";
 
 interface MetricInfoTipProps {
   metric: string;
 }
 
+const TOOLTIP_WIDTH = 264;
+
 export function MetricInfoTip({ metric }: MetricInfoTipProps) {
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const [pos, setPos] = useState<{ top: number; left: number; above: boolean } | null>(null);
+  const tooltipId = useId();
   const info = METRIC_INFO[metric];
 
   const updatePosition = useCallback(() => {
     if (!buttonRef.current) return;
     const rect = buttonRef.current.getBoundingClientRect();
-    const tooltipWidth = 230;
-    let left = rect.left + rect.width / 2 - tooltipWidth / 2;
-    // Keep tooltip within viewport
+    let left = rect.left + rect.width / 2 - TOOLTIP_WIDTH / 2;
+    // Keep the tooltip within the viewport.
+    if (left + TOOLTIP_WIDTH > window.innerWidth - 8) left = window.innerWidth - TOOLTIP_WIDTH - 8;
     if (left < 8) left = 8;
-    if (left + tooltipWidth > window.innerWidth - 8) left = window.innerWidth - tooltipWidth - 8;
 
-    const spaceBelow = window.innerHeight - rect.bottom;
-    let top: number;
-    if (spaceBelow < 180) {
-      // Show above
-      top = rect.top + window.scrollY - 8;
-    } else {
-      // Show below
-      top = rect.bottom + window.scrollY + 8;
-    }
-    setPos({ top, left });
+    const above = window.innerHeight - rect.bottom < 200;
+    setPos({ top: (above ? rect.top - 8 : rect.bottom + 8) + window.scrollY, left, above });
   }, []);
 
   useEffect(() => {
@@ -51,10 +46,18 @@ export function MetricInfoTip({ metric }: MetricInfoTipProps) {
       setOpen(false);
     }
 
+    function handleKey(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      setOpen(false);
+      buttonRef.current?.focus();
+    }
+
     document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleKey);
     window.addEventListener("scroll", handleScroll, true);
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKey);
       window.removeEventListener("scroll", handleScroll, true);
     };
   }, [open]);
@@ -65,30 +68,32 @@ export function MetricInfoTip({ metric }: MetricInfoTipProps) {
     <>
       <button
         ref={buttonRef}
+        type="button"
         onClick={() => {
           if (!open) updatePosition();
           setOpen(!open);
         }}
-        className="w-[18px] h-[18px] rounded-full border border-border-light text-text-muted flex items-center justify-center cursor-pointer bg-transparent hover:text-accent hover:border-accent transition-colors"
+        className="relative inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-transparent text-text-muted transition-[background-color,color,transform] duration-150 before:absolute before:-inset-2 before:content-[''] hover:bg-bg-card-hover hover:text-text-primary active:scale-90 aria-expanded:bg-text-primary aria-expanded:text-bg-main"
         aria-label={`Tips for ${metric}`}
+        aria-expanded={open}
+        aria-controls={open ? tooltipId : undefined}
       >
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <circle cx="5" cy="2" r="0.8" fill="currentColor" />
-          <rect x="4.2" y="3.5" width="1.6" height="4.5" rx="0.8" fill="currentColor" />
-        </svg>
+        <InfoIcon size={16} weight={open ? "fill" : "regular"} aria-hidden />
       </button>
 
       {open && pos && typeof document !== "undefined" && createPortal(
         <div
           ref={tooltipRef}
-          className="fixed z-[9999] w-[230px] bg-bg-elevated border border-border-light rounded-[10px] p-3 text-left shadow-lg animate-fade-in-up"
-          style={{ top: pos.top, left: pos.left, position: "absolute" }}
+          id={tooltipId}
+          role="status"
+          className={"absolute z-[9999] " + (pos.above ? "-translate-y-full" : "")}
+          style={{ top: pos.top, left: pos.left, width: TOOLTIP_WIDTH }}
         >
-          <div className="text-[0.72rem] font-semibold text-text-primary mb-1">{info.name}</div>
-          <div className="text-[0.65rem] text-green font-mono font-semibold mb-1.5">
-            Target: {info.good}
+          <div className="panel animate-modal-in rounded-xl p-4 text-left shadow-pop">
+            <p className="text-sm font-semibold leading-snug text-text-primary">{info.name}</p>
+            <p className="mt-2 flex items-baseline justify-between gap-3 border-y border-border py-2 text-[13px] text-text-secondary">Target<span className="stat-value font-medium text-green">{info.good}</span></p>
+            <p className="mt-2.5 text-[13px] leading-relaxed text-text-secondary">{info.tip}</p>
           </div>
-          <div className="text-[0.65rem] text-text-secondary leading-[1.5]">{info.tip}</div>
         </div>,
         document.body
       )}

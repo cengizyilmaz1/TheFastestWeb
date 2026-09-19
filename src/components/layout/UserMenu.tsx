@@ -55,7 +55,7 @@ export function UserMenu({ userId, name, avatarUrl, twitterHandle, isPro }: User
         onClick={() => setOpen(!open)}
         aria-label="Account menu"
         aria-expanded={open}
-        className="flex min-h-11 items-center gap-2 ml-1 px-2 py-1 rounded-lg border-none bg-transparent cursor-pointer transition-colors hover:bg-bg-card"
+        className="flex min-h-11 items-center gap-2 ml-1 px-2 py-1 rounded-full border-none bg-transparent cursor-pointer transition-colors hover:bg-bg-card-hover"
       >
         {displayAvatar ? (
           <Image
@@ -76,14 +76,14 @@ export function UserMenu({ userId, name, avatarUrl, twitterHandle, isPro }: User
           {name.split(" ")[0]}
         </span>
         {isPro && (
-          <span className="px-1.5 py-px rounded text-[0.55rem] font-bold bg-gradient-to-r from-accent to-accent-bright text-bg-deep uppercase leading-none">
+          <span className="rounded-full bg-brand px-2 py-1 text-[0.65rem] font-bold leading-none text-on-brand">
             Pro
           </span>
         )}
       </button>
 
       {open && (
-        <div className="absolute right-0 top-[calc(100%+6px)] w-[180px] bg-bg-main border border-border rounded-[10px] shadow-[0_8px_30px_rgba(0,0,0,0.4)] overflow-hidden z-50 animate-fade-in-up">
+        <div className="animate-modal-in absolute right-0 top-[calc(100%+14px)] z-50 w-[200px] origin-top-right overflow-hidden rounded-2xl border border-border bg-bg-main p-1.5 shadow-pop [&>a]:rounded-xl [&>button]:rounded-xl">
           <Link
             href="/dashboard"
             onClick={() => setOpen(false)}

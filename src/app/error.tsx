@@ -1,4 +1,9 @@
 "use client";
-export default function ErrorPage({ reset }: { reset: () => void }) {
-  return <div className="page-shell mx-auto max-w-[720px] py-20"><p className="page-eyebrow mb-4">A short pause</p><h1 className="page-title">This page is taking a moment.</h1><p className="page-description mt-5">We could not load the information for this page. Please try again.</p><button type="button" onClick={reset} className="button-primary mt-8">Try again</button></div>;
+import Link from "next/link";
+import { ArrowClockwiseIcon } from "@phosphor-icons/react";
+import { StatusPage } from "@/components/layout/StatusPage";
+
+export default function ErrorPage({ error, reset }: { error?: Error & { digest?: string }; reset: () => void }) {
+  return <StatusPage eyebrow="A short pause" title="This page is taking a moment." description="We could not load the information for this page. Try again, or carry on from the directory while we catch up." reference={error?.digest}
+    actions={<><button type="button" onClick={reset} className="button-primary min-h-12 px-6 text-[15px]! font-semibold!"><ArrowClockwiseIcon size={18} weight="bold" aria-hidden />Try again</button><Link href="/explore" className="button-secondary min-h-12 px-6 text-[15px]">Explore websites</Link><Link href="/" className="link-underline text-sm">Back to home</Link></>} />;
 }

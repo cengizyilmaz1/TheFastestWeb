@@ -32,16 +32,15 @@ export default async function SubmitPage() {
   } : null;
 
   return (
-    <div className="mx-auto max-w-3xl px-5 py-10 sm:px-8 sm:py-14">
-      <div className="mb-10">
-        <p className="page-eyebrow mb-4">A place for your work</p>
-        <h1 className="page-title">
+    <div className="mx-auto max-w-[1240px] px-5 pb-20 pt-12 sm:px-8 sm:pb-28 sm:pt-20">
+      <header className="mb-10 sm:mb-14">
+        <h1 className="page-title max-w-[16ch]">
           Put your website on the map.
         </h1>
-        <p className="page-description mt-4">
+        <p className="page-description mt-6 sm:text-lg">
           Start with a URL. Review your details and real measurements, then share your website with the community.
         </p>
-      </div>
+      </header>
 
       <Suspense fallback={null}>
         <SubmitPageForm user={submissionUser} siteUrl={siteConfig.url} catalog={catalog} founder={founder} />

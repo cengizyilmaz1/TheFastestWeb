@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
+import { ChartLineIcon } from "@phosphor-icons/react";
 import { ANALYTICS_CONSENT_COOKIE, isAnalyticsPage, readAnalyticsConsent, type AnalyticsConsent, type PublicAnalyticsConfig } from "./consent";
 
 type AnalyticsWindow = Window & { dataLayer?: unknown[]; gtag?: (...args: unknown[]) => void; [key: `ga-disable-${string}`]: boolean };
@@ -105,6 +106,13 @@ export default function ConsentAnalytics({ config }: { config: PublicAnalyticsCo
     } else setConsent(choice);
   }
   if (!config.enabled || !loaded || pathname.startsWith("/unsubscribe")) return null;
-  if (consent !== "unset") return <div className="fixed bottom-3 left-3 z-40 max-w-sm rounded border border-border bg-bg-elevated p-2 text-xs"><button type="button" className="px-2 py-1" onClick={() => choose(consentError || consent === "granted" ? "denied" : "granted")}>{consentError ? "Retry preference update" : consent === "granted" ? "Disable analytics" : "Allow analytics"}</button>{consentError && <p role="alert" className="p-2">{consentError}</p>}</div>;
-  return <aside aria-label="Analytics preferences" className="fixed bottom-4 left-4 right-4 z-50 max-w-xl rounded-lg border border-border bg-bg-elevated p-5 shadow-lg"><p className="text-sm">Allow optional Google Analytics and DataFast measurement? Your choice does not affect website access. <a href="/privacy" className="underline">Privacy details</a></p><div className="mt-4 flex gap-3"><button type="button" className="button-secondary" onClick={() => choose("denied")}>Decline</button><button type="button" className="button-primary" onClick={() => choose("granted")}>Allow analytics</button></div></aside>;
+  if (consent !== "unset") return <div className="fixed bottom-3 left-3 z-40 max-w-[min(24rem,calc(100vw-1.5rem))] rounded-[20px] border border-border bg-bg-elevated p-1 text-xs shadow-panel">
+    <button type="button" className="inline-flex min-h-9 items-center gap-2 rounded-full px-3.5 font-medium text-text-secondary transition-[background-color,color,transform] duration-200 hover:bg-bg-card-hover hover:text-text-primary active:scale-[.97]" onClick={() => choose(consentError || consent === "granted" ? "denied" : "granted")}><ChartLineIcon size={15} aria-hidden />{consentError ? "Retry preference update" : consent === "granted" ? "Disable analytics" : "Allow analytics"}</button>
+    {consentError && <p role="alert" className="px-3.5 pb-2.5 pt-1 leading-relaxed text-text-primary">{consentError}</p>}
+  </div>;
+  return <aside aria-label="Analytics preferences" className="fixed bottom-4 left-4 right-4 z-50 max-w-[34rem] rounded-2xl border border-border bg-bg-elevated p-5 shadow-pop sm:p-6">
+    <p className="text-[15px] font-semibold leading-snug tracking-[-.01em] text-text-primary">Allow optional Google Analytics and DataFast measurement?</p>
+    <p className="mt-1.5 text-sm leading-relaxed text-text-secondary">Your choice does not affect website access. <a href="/privacy" className="link-underline">Privacy details</a></p>
+    <div className="mt-5 flex flex-wrap gap-2.5"><button type="button" className="button-secondary" onClick={() => choose("denied")}>Decline</button><button type="button" className="button-ink" onClick={() => choose("granted")}>Allow analytics</button></div>
+  </aside>;
 }

@@ -18,5 +18,11 @@ export const metadata: Metadata = {
 };
 
 export default function TestPage() {
-  return <div className="mx-auto max-w-3xl px-5 py-10 sm:px-8 sm:py-14"><header className="mb-10"><p className="page-eyebrow mb-4">Measure before you improve</p><h1 className="page-title">See how your website performs.</h1><p className="page-description mt-4">Start with a real measurement. Understand what renders quickly, what blocks interaction, and where to focus next.</p></header><TestForm /></div>;
+  return <div className="mx-auto max-w-[1240px] px-5 pb-20 pt-12 sm:px-8 sm:pb-28 sm:pt-20">
+    <header className="mb-10 sm:mb-14">
+      <h1 className="page-title max-w-[16ch]">See how your website performs.</h1>
+      <p className="page-description mt-6 sm:text-lg">Start with a real measurement. Understand what renders quickly, what blocks interaction, and where to focus next.</p>
+    </header>
+    <TestForm />
+  </div>;
 }

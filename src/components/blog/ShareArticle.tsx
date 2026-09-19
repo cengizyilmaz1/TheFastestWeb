@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ShareNetworkIcon } from "@phosphor-icons/react";
+import { CheckIcon, ShareNetworkIcon } from "@phosphor-icons/react";
 
 export function ShareArticle({ title, url }: { title: string; url: string }) {
   const [message, setMessage] = useState("");
@@ -20,5 +20,9 @@ export function ShareArticle({ title, url }: { title: string; url: string }) {
       if (!(error instanceof Error && error.name === "AbortError")) setMessage("Sharing is unavailable. Copy the article address from your browser.");
     } finally { setBusy(false); }
   }
-  return <div className="flex flex-wrap items-center gap-3"><button type="button" className="button-secondary" onClick={share} disabled={busy}><ShareNetworkIcon aria-hidden size={17} />Share article</button><span role="status" className="text-sm text-text-muted">{message}</span></div>;
+  const copied = message === "Article link copied.";
+  return <div className="flex flex-wrap items-center gap-x-4 gap-y-2 lg:flex-col lg:items-start">
+    <button type="button" className="button-secondary text-sm! font-semibold!" onClick={share} disabled={busy}>{copied ? <CheckIcon aria-hidden size={17} weight="bold" className="text-green" /> : <ShareNetworkIcon aria-hidden size={17} />}Share article</button>
+    <span role="status" className="min-h-5 max-w-[30ch] text-[13px] leading-snug text-text-secondary">{message}</span>
+  </div>;
 }

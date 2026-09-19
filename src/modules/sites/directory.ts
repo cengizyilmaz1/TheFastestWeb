@@ -10,9 +10,9 @@ export const directorySchema = z.object({
   category: z.string().regex(/^[a-z0-9-]{0,80}$/).default(""),
   technology: z.string().regex(/^[a-z0-9-]{0,80}$/).default(""),
   country: z.string().regex(/^(?:[A-Z]{2})?$/).default(""),
-  sort: z.enum(["score", "newest"]).default("score"),
+  sort: z.enum(["score", "newest", "lcp", "name"]).default("score"),
   page: z.coerce.number().int().min(1).max(400).default(1),
-  limit: z.coerce.number().int().min(1).max(48).default(24),
+  limit: z.coerce.number().int().min(1).max(60).default(24),
   minScore: z.coerce.number().int().min(0).max(100).optional(),
 });
 export type DirectoryQuery = z.input<typeof directorySchema>;
@@ -25,6 +25,9 @@ export const publicSiteProjection = {
 export const publiclyActive = () => and(eq(sites.isListed, true), isNull(sites.archivedAt), inArray(sites.lifecycle, ["active", "verified"]));
 function database() { const db = getDb(); if (!db) throw new AppError("DATABASE_UNAVAILABLE", "The directory is temporarily unavailable.", 503); return db; }
 
+// LCP is stored as a display string ("763ms", "1.1s", "13.5 s"); order by its value in milliseconds.
+const lcpMilliseconds = sql`CASE WHEN ${sites.currentLcp} ~ '^[0-9]+([.][0-9]+)?[[:space:]]*ms$' THEN regexp_replace(${sites.currentLcp}, '[[:space:]]*ms$', '')::numeric WHEN ${sites.currentLcp} ~ '^[0-9]+([.][0-9]+)?[[:space:]]*s$' THEN regexp_replace(${sites.currentLcp}, '[[:space:]]*s$', '')::numeric * 1000 ELSE NULL END`;
+
 export async function listDirectory(raw: DirectoryQuery = {}) {
   const query = directorySchema.parse(raw), db = database();
   const escaped = query.q.replace(/[\\%_]/g, "\\$&");
@@ -36,7 +39,7 @@ export async function listDirectory(raw: DirectoryQuery = {}) {
   const where = and(...conditions);
   const [rows, [count]] = await Promise.all([
     db.select(publicSiteProjection).from(sites).where(where)
-      .orderBy(...(query.sort === "newest" ? [desc(sites.createdAt), asc(sites.id)] : [desc(sites.currentScore), asc(sites.id)]))
+      .orderBy(...(query.sort === "newest" ? [desc(sites.createdAt), asc(sites.id)] : query.sort === "name" ? [asc(sql`lower(${sites.name})`), asc(sites.id)] : query.sort === "lcp" ? [sql`${lcpMilliseconds} ASC NULLS LAST`, desc(sites.currentScore), asc(sites.id)] : [desc(sites.currentScore), asc(sites.id)]))
       .limit(query.limit).offset((query.page - 1) * query.limit),
     db.select({ total: sql<number>`count(*)::int` }).from(sites).where(where),
   ]);

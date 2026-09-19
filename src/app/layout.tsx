@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Outfit, JetBrains_Mono } from "next/font/google";
+import { Mona_Sans, Geist_Mono } from "next/font/google";
 import { Suspense } from "react";
 import { Nav } from "@/components/layout/Nav";
 import { NavigationProgress } from "@/components/layout/NavigationProgress";
@@ -16,14 +16,16 @@ import ConsentAnalytics from "@/infrastructure/analytics/consent-analytics";
 import { getPublicAnalyticsConfig } from "@/infrastructure/analytics/config";
 import "./globals.css";
 
-const outfit = Outfit({
-  variable: "--font-outfit",
+// The width axis carries the display voice: headlines run expanded, body copy stays at normal width.
+const monaSans = Mona_Sans({
+  variable: "--font-mona",
   subsets: ["latin"],
+  axes: ["wdth"],
   display: "swap",
 });
 
-const jetbrainsMono = JetBrains_Mono({
-  variable: "--font-jetbrains-mono",
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
   subsets: ["latin"],
   display: "swap",
 });
@@ -104,11 +106,9 @@ export default async function RootLayout({
     : [];
 
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className={`${monaSans.variable} ${geistMono.variable}`} data-scroll-behavior="smooth" suppressHydrationWarning>
       <head><script dangerouslySetInnerHTML={{ __html: "try{var t=localStorage.getItem('tfw-theme');document.documentElement.dataset.theme=t==='light'||t==='dark'?t:matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'}catch{}" }} /></head>
-      <body
-        className={`${outfit.variable} ${jetbrainsMono.variable} antialiased`}
-      >
+      <body className="antialiased">
         <a href="#main-content" className="skip-link">Skip to content</a>
         <script
           type="application/ld+json"
@@ -142,9 +142,9 @@ export default async function RootLayout({
         <Suspense fallback={null}>
           <NavigationProgress />
         </Suspense>
+        {siteConfig.isDemo && <div className="border-b border-border bg-bg-main px-5 py-2 text-center text-xs text-text-secondary"><span className="mr-2 font-semibold text-text-primary">Demo preview</span>Payments, email delivery and scheduled monitoring are disabled.</div>}
         <Nav user={navigationUser} />
-        {siteConfig.isDemo && <div className="border-b border-border bg-accent-glow px-5 py-2 text-center text-xs text-text-secondary">Demo preview · Payments, email delivery and scheduled monitoring are disabled.</div>}
-        <div className="mx-auto grid min-h-[70vh] max-w-[1600px] grid-cols-1 2xl:grid-cols-[180px_minmax(0,1fr)_180px]">
+        <div className="mx-auto grid min-h-[70dvh] max-w-[1600px] grid-cols-1 2xl:grid-cols-[204px_minmax(0,1fr)_204px]">
           <Sidebar position="left" adSlots={activeAdSlots} />
           <main id="main-content" tabIndex={-1} className="min-w-0">{children}</main>
           <Sidebar position="right" adSlots={activeAdSlots} />

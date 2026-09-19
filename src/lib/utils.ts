@@ -68,9 +68,16 @@ export function isValidUrl(input: string): boolean {
   }
 }
 
+// Letters that Unicode decomposition leaves intact. Everything else with a diacritic folds through NFKD.
+const SLUG_LETTERS: Record<string, string> = { "ı": "i", "ß": "ss", "æ": "ae", "œ": "oe", "ø": "o", "đ": "d", "ð": "d", "ł": "l", "þ": "th" };
+
+/** URL slug for a name. Accented and Turkish letters transliterate ("Çilingir" gives "cilingir") instead of being dropped. */
 export function slugify(text: string): string {
   return text
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
+    .replace(/[ıßæœøđðłþ]/g, (letter) => SLUG_LETTERS[letter] ?? letter)
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
 }
