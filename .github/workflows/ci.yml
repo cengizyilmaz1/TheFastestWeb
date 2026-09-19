@@ -1,0 +1,44 @@
+name: Foundation validation
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18.6-bookworm
+        env:
+          POSTGRES_DB: tfw_test_ci
+          # Ephemeral runner-only test data. Never use trust authentication in production.
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d tfw_test_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      MIGRATION_TEST_DATABASE_URL: postgres://postgres@127.0.0.1:5432/tfw_test_ci
+      NEXT_TELEMETRY_DISABLED: "1"
+      LOG_LEVEL: silent
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run test:integration
+      - run: npm audit
+      - run: npm run build
