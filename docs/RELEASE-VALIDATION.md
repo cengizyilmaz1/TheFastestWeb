@@ -1,6 +1,6 @@
 # Release validation — 2026-09-19
 
-The product release is prepared for an isolated Coolify demo. This record distinguishes checked application behavior from provider-account and hosting acceptance. The deployed commit and hosting evidence are recorded in the pull request and the private operations record; a source test does not establish that a remote deployment is healthy.
+The product release is deployed to an isolated Coolify demo at application revision `2e4f1b8b730aabc48852cc711d1164607e214d7d`. This record distinguishes checked application behavior from provider-account and hosting acceptance. The private operations record binds the deployment, image IDs and restore evidence; a source test does not establish that a remote deployment is healthy.
 
 ## Interface refresh
 
@@ -13,7 +13,8 @@ The local preview at `http://localhost:3100` uses the restored dataset. Its 44 p
 - Production Next.js build and TypeScript: passed with no application credentials supplied at build time.
 - ESLint: no errors or warnings. Production dependency audit: no reported advisories at execution time.
 - Unit suite after the interface refresh: **317 tests / 43 files** passed.
-- Full PostgreSQL/Redis integration suite at application release `1505b25`: **240 tests / 25 files** passed against disposable loopback databases and isolated queue prefixes. The interface refresh additionally passed **32 focused PostgreSQL tests / 2 files** covering public privacy and listings.
+- Full PostgreSQL/Redis integration suite: **240 tests / 25 files** passed against disposable loopback databases and isolated queue prefixes. The interface refresh additionally passed **32 focused PostgreSQL tests / 2 files** covering public privacy and listings.
+- Deployed revision `2e4f1b8`: both [pull-request CI](https://github.com/cengizyilmaz1/TheFastestWeb/actions/runs/35465507091) and [push CI](https://github.com/cengizyilmaz1/TheFastestWeb/actions/runs/35465504287) passed, including full integration/migration checks and isolated production browser validation.
 - Migration rehearsal: eight migrations through `0007`; 43 public tables, one view and one sequence. The seven previous SQL/fingerprint files are unchanged. The existing 42 tables and seven migration ledger entries retained their content hashes when adding invitations. Nine migration verification groups cover restore/fresh/upgrade, replay, concurrency, drift rejection and restricted roles.
 - Actual original-export restore checks preserve 444 users, 187 websites and 17,595 historical measurements, their IDs/ownership and existing access. No public founders or competition results were fabricated from legacy measurements.
 
@@ -49,9 +50,13 @@ Best practices loses points only for external favicon 404 responses for the synt
 
 ## Hosting and external release gates
 
-The deployed Coolify demo remains pinned to application release `1505b25`; the subsequent interface refresh is available locally and in the pull request. All five remote services were healthy, HTTPS and demo authorization/indexing checks passed, and the original restore plus all eight migrations were verified. PostgreSQL and Redis have dedicated persistent volumes, publish no host ports and receive only their explicit environment entries. Coolify raw Compose and disabled Dockerfile ARG injection preserve runtime secret separation; see [COOLIFY-COMPOSE.md](COOLIFY-COMPOSE.md).
+The [Coolify demo](https://tfw-demo.54.36.101.109.sslip.io) is pinned to application release `2e4f1b8`, including the interface refresh and managed infrastructure. The project contains three Resources: Web + Jobs (web, worker, scheduler), PostgreSQL and Redis. All five containers and all Resource cards report healthy. The public read-only verification passed all nine checks: HTTPS/security headers, liveness, dependency readiness, demo robots/sitemap restrictions, disabled OAuth, anonymous private API/admin denial and HTTP-to-HTTPS redirect.
 
-Sandboxed Chromium is still a remote activation gate. Its root-owned home initially prevents Crashpad startup; a temporary writable home resolves that error but reveals `No usable sandbox!` and denied nonroot namespace creation. The responsible host isolation layer has not been established. No sandbox bypass or host-policy weakening was applied. Screenshots and automatic monitoring remain disabled.
+PostgreSQL and Redis retain their original persistent volumes and private backend network, publish no host ports and receive only their explicit environment entries. The application services do not receive database administrator passwords. Actual TCP checks confirm the application's restricted database role, private migration ledger and protected append-only history. Resource limits and bounded logs were verified in all five containers. Coolify raw Compose and disabled Dockerfile ARG injection preserve runtime secret separation; see [COOLIFY-COMPOSE.md](COOLIFY-COMPOSE.md).
+
+The native database cutover preserved content hashes for all 44 tables, including the migration ledger. Both the pre-cutover custom dump and the first native scheduled `pg_dumpall` backup were restored successfully in isolated temporary databases. The latter included roles and reproduced all 44 table hashes. Daily native backups retain seven local copies for up to seven days. Offsite recovery remains pending an authorized private destination.
+
+Sandboxed Chromium passed in the actual deployed web and worker containers. A dedicated writable home fixes Crashpad startup; a reviewed container-specific seccomp profile extends Docker's default with only the namespace operations needed by Chromium. Both containers retain UID 1001, all capabilities dropped, no privilege escalation and default AppArmor. Renderer checks verified separate user/network/PID namespaces, zero effective capabilities and Chromium's additional seccomp filter. No sandbox opt-out, privileged container, unconfined profile or host-wide policy change was used. See [CHROMIUM_SANDBOX.md](../runtime/CHROMIUM_SANDBOX.md). This clears the host browser gate; external screenshot/storage accounts and recurring monitoring remain disabled pending their own configuration.
 
 Before accepting a particular remote release, verify its pinned Git revision, private restore/migration integrity, least-privilege runtime role, all service health checks, sandboxed Chromium on that host, HTTPS redirect/TLS, demo indexing restrictions and anonymous admin/API denial. `DEMO_BASE_URL=https://the-demo-host node scripts/verify-demo.mjs` performs the read-only public checks without credentials.
 

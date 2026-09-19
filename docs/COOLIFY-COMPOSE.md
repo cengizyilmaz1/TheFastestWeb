@@ -12,6 +12,7 @@ Configure the application with `docker_compose_location=/compose.managed.yaml` a
 
 - `TFW_COOLIFY_NETWORK`: supplied by the wrappers from the application resource UUID; this is the external Traefik network.
 - `TFW_BACKEND_NETWORK`: the existing private Docker network registered as the native resources' destination. The managed manifest declares it external and cannot create or remove it.
+- `TFW_CHROMIUM_SECCOMP_PROFILE=runtime/chromium-seccomp.json`: a nonsecret, runtime-only parser value for Coolify's intermediate `docker compose pull --ignore-buildable`. Both managed wrappers override it with the artifact-absolute path before building or starting containers. Omitting it fails that intermediate step even though the wrappers set it themselves.
 - `DATABASE_URL` and `REDIS_URL`: authenticated runtime connection strings using the new native resource hostnames on that network. Do not leave old Compose service-name aliases in them.
 - `TFW_PUBLIC_HOST`, `SITE_URL` and `AUTH_URL`: the matching public host and HTTPS origin.
 
@@ -31,6 +32,14 @@ Managed process limits are web 1 GiB / 2 CPUs / 512 PIDs, worker 2 GiB / 2 CPUs 
 The inspected Coolify proxy automatically joins networks used by managed containers, including private backend networks. A dedicated backend prevents membership by unrelated application containers, but does not exclude Coolify's proxy. Keep database ports unpublished and authenticated; do not describe this as isolation from the host's management plane.
 
 Native PostgreSQL Resources support scheduled logical backups. Configure a valid schedule and retention, trigger a backup, check its completed execution, and verify restoration. Local backup files alone do not provide offsite recovery; configure an authorized private S3-compatible destination separately. Preserve Redis AOF, `appendfsync everysec`, bounded `maxmemory` and `noeviction`; verify authenticated PONG and application readiness after cutover.
+
+In Coolify 4.3.23 the native Redis probe is fixed to `redis-cli ping`. Configure `REDISCLI_AUTH` on the Redis Resource with the existing password and `is_literal=false`: this native environment path otherwise includes literal quote characters in the password. Do not expose the value or pass it as a CLI argument. The probe alone can report healthy for a Redis authentication error because `redis-cli` can return exit code zero; acceptance must check that its output is exactly `PONG` and that the application's dependency-aware `/health/ready` passes. The supported native API exposes health timing settings, not a custom probe command. Recheck authenticated readiness after password changes.
+
+### Verified demo cutover — 2026-09-19
+
+Application release `2e4f1b8b730aabc48852cc711d1164607e214d7d` runs web, worker and scheduler alongside separate PostgreSQL 18.6 and Redis 8.10.1 Resources. All five containers and all three Coolify Resource cards report healthy. PostgreSQL has a 2 GiB / 2 CPU limit and Redis 768 MiB / 1 CPU; all five containers have bounded JSON logs. The database volumes and private backend network are unchanged. The application's authenticated TCP role remains restricted, with no schema creation, private migration metadata access or destructive access to protected history.
+
+All 44 tables, including the migration ledger, matched their pre-cutover content hashes. The native daily PostgreSQL backup uses `15 0 * * *`, retains at most seven local backups for seven days and includes database roles. Its first successful `pg_dumpall` backup was restored in an isolated temporary database and all 44 table hashes matched. A separate pre-cutover custom-format backup was also restored successfully. No offsite destination is configured yet. See [RELEASE-VALIDATION.md](RELEASE-VALIDATION.md) for source, runtime and remaining account acceptance checks.
 
 ## Five-service stack and common raw-mode settings
 
