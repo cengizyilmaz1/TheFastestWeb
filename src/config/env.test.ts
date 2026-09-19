@@ -12,6 +12,14 @@ const production = {
 };
 
 describe("runtime environment", () => {
+  it("permits a read-only demo without OAuth but retains core security requirements", () => {
+    const demo = { ...production, DEPLOYMENT_MODE: "demo", AUTH_GOOGLE_ID: "", AUTH_GOOGLE_SECRET: "" };
+    expect(parseEnv(demo, { requireProductionSecrets: true }).DEPLOYMENT_MODE).toBe("demo");
+    for (const change of [{ AUTH_SECRET: "" }, { SITE_URL: "http://example.com" }, { AUTH_TRUST_HOST: "false" },
+      { SCHEDULER_ENABLED: "true" }, { EMAIL_ENABLED: "true" }, { PAYMENTS_ENABLED: "true" }, { ANALYTICS_ENABLED: "true" }]) {
+      expect(() => parseEnv({ ...demo, ...change }, { requireProductionSecrets: true })).toThrow(EnvironmentError);
+    }
+  });
   it("allows production builds without runtime secrets", () => {
     expect(parseEnv({ NODE_ENV: "production" }).SITE_URL).toBe("https://thefastestweb.site");
   });

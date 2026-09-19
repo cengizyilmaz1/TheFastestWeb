@@ -4,6 +4,14 @@ import { users, User } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { logger } from "@/infrastructure/logging/logger";
 import { AppError } from "@/lib/http/errors";
+import { assertSameOrigin } from "@/modules/security/request";
+
+export async function requireUser(request?: Request): Promise<User> {
+  if (request) assertSameOrigin(request);
+  const user = await getCurrentUser();
+  if (!user) throw new AppError("UNAUTHORIZED", "Sign in to continue.", 401);
+  return user;
+}
 
 export async function getCurrentUser(): Promise<User | null> {
   // Next's cookies/headers access can throw its prerender control-flow signal.

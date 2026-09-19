@@ -67,7 +67,7 @@ export default async function BlogPostPage({
   };
 
   return (
-    <div className="py-[40px] px-5 pb-[80px] max-w-[720px] mx-auto">
+    <article className="page-shell max-w-[800px] mx-auto">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(jsonLd) }} />
 
       {/* Breadcrumb */}
@@ -86,19 +86,20 @@ export default async function BlogPostPage({
           <span>·</span>
           <span>{post.readingTime} min read</span>
         </div>
-        <h1 className="font-display text-[clamp(1.6rem,3vw,2.4rem)] font-[900] tracking-[-0.03em] mb-4">
+        <h1 className="page-title mb-5">
           {post.title}
         </h1>
         <p className="text-text-secondary text-[1rem] leading-relaxed">
           {post.description}
         </p>
+        <p className="mt-5 text-xs text-text-muted">From the original TheFastestWeb journal · Ramesh Kumar</p>
       </div>
 
       <hr className="border-border mb-8" />
 
       {/* MDX Content */}
-      <div className="prose prose-invert prose-sm max-w-none
-        prose-headings:font-display prose-headings:font-[800] prose-headings:tracking-[-0.02em]
+      <div className="prose prose-sm max-w-none
+        prose-headings:font-display prose-headings:font-medium prose-headings:text-text-primary prose-headings:tracking-[-0.02em]
         prose-h2:text-[1.3rem] prose-h2:mt-10 prose-h2:mb-3
         prose-h3:text-[1.1rem] prose-h3:mt-6 prose-h3:mb-2
         prose-p:text-text-secondary prose-p:leading-relaxed prose-p:text-[0.95rem]
@@ -144,14 +145,14 @@ export default async function BlogPostPage({
       {/* CTA */}
       <div className="rounded-[14px] bg-bg-card border border-border p-6 text-center">
         <p className="font-display font-[800] text-[1.1rem] mb-2">How fast is your site?</p>
-        <p className="text-text-secondary text-[0.88rem] mb-4">Get your PageSpeed score in seconds — free, no sign-up needed.</p>
+        <p className="text-text-secondary text-sm mb-4">Measure your website with the current lab testing method.</p>
         <Link
           href="/test"
-          className="inline-flex items-center gap-2 px-5 py-[10px] rounded-[10px] text-[0.88rem] font-semibold bg-gradient-to-br from-accent to-accent-bright text-bg-deep no-underline transition-all duration-200 hover:-translate-y-0.5"
+          className="button-primary"
         >
           Test Your Site →
         </Link>
       </div>
-    </div>
+    </article>
   );
 }

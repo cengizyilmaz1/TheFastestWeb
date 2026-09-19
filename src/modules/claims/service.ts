@@ -7,6 +7,7 @@ import { siteClaims, sites, users } from "@/db/schema";
 import { AppError } from "@/lib/http/errors";
 import { parsePublicHttpUrl, resolvePublicTarget } from "@/lib/security/public-url";
 import { safeFetchText } from "@/lib/security/safe-fetch";
+import { recordAnalyticsEvent } from "@/modules/analytics/events";
 
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 export const issueClaimSchema = z.object({ siteId: z.uuid(), method: z.enum(["dns_txt", "well_known"]) }).strict();
@@ -104,6 +105,8 @@ export async function verifySiteClaim(userId: string, raw: unknown) {
       await tx.update(sites).set({ ownerId: userId, ownerName: user.name }).where(eq(sites.id, site.id));
     }
     await tx.update(siteClaims).set({ status: "verified", verifiedAt: sql`now()` }).where(eq(siteClaims.id, claim.id));
+    if (!requiresReview) await recordAnalyticsEvent({ name: "site_claimed", eventKey: `claim:${claim.id}:completed`, siteId: site.id,
+      properties: { method: claim.method === "dns_txt" ? "dns" : "file" } }, tx);
     return { id: claim.id, siteId: site.id, status: "verified" as const, requiresReview };
   });
 }

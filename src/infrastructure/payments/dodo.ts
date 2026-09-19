@@ -1,10 +1,12 @@
 import DodoPayments from "dodopayments";
 import type { Payment } from "dodopayments/resources/payments";
 import type { Subscription } from "dodopayments/resources/subscriptions";
+import type { Product } from "dodopayments/resources/products/products";
 import { getEnv } from "@/config/env";
 import { AppError } from "@/lib/http/errors";
 
-export type CheckoutInput = { orderId: string; productId: string; email: string; name: string };
+export type CheckoutInput = { orderId: string; productId: string; email: string; name: string;
+  amountCents: number; currency: string; billingInterval: "one_time" | "month" | "year" };
 export interface PaymentProvider {
   createCheckout(input: CheckoutInput): Promise<{ id: string; url: string }>;
   getPayment(id: string): Promise<Payment>;
@@ -41,9 +43,24 @@ export function validateCheckoutUrl(value: string): string {
   return url.toString();
 }
 
+export function assertCatalogPrice(product: Product, expected: Pick<CheckoutInput, "productId" | "amountCents" | "currency" | "billingInterval">) {
+  const price = product.price;
+  const wrong = product.product_id !== expected.productId || price.type === "usage_based_price"
+    || !("price" in price) || price.price !== expected.amountCents || price.currency !== expected.currency
+    || ("discount" in price && Boolean(price.discount)) || ("discount_bps" in price && Boolean(price.discount_bps))
+    || ("purchasing_power_parity" in price && price.purchasing_power_parity)
+    || (price.type === "one_time_price" && (expected.billingInterval !== "one_time" || price.pay_what_you_want))
+    || (price.type === "recurring_price" && (expected.billingInterval === "one_time" || price.payment_frequency_count !== 1
+      || price.payment_frequency_interval.toLowerCase() !== expected.billingInterval || Boolean(price.trial_period_days)));
+  if (wrong) throw new AppError("CONFLICT", "This product's provider price needs reconciliation before purchase.", 409);
+}
+
 export const dodo: PaymentProvider = {
   async createCheckout(input) {
     const sdk = client();
+    // No session exists yet, so failure of this read is definitively safe.
+    try { assertCatalogPrice(await sdk.products.retrieve(input.productId), input); }
+    catch (error) { if (error instanceof AppError) throw error; throw new PaymentProviderError(false); }
     try {
       const session = await sdk.checkoutSessions.create({
         product_cart: [{ product_id: input.productId, quantity: 1 }],

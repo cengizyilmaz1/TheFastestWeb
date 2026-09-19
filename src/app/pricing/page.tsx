@@ -1,101 +1,22 @@
-import { siteConfig } from "@/config/site";
-import { safeJsonLd } from "@/lib/seo/json-ld";
 import type { Metadata } from "next";
-import { PricingTiers } from "@/components/pricing/PricingTiers";
+import Link from "next/link";
+import { eq } from "drizzle-orm";
+import { siteConfig } from "@/config/site";
+import { getDb } from "@/db";
+import { sites } from "@/db/schema";
 import { getCurrentUser } from "@/lib/auth";
+import { listProducts } from "@/modules/payments/service";
+import { listAvailableAdInventory } from "@/modules/payments/ads";
+import { isPaymentsEnabled } from "@/infrastructure/payments/dodo";
+import { PricingTiers } from "@/components/pricing/PricingTiers";
 
-export const metadata: Metadata = {
-  title: "Pricing | TheFastestWeb",
-  description:
-    "Submit your site for free. Existing Pro memberships remain active; new upgrades and advertising purchases are temporarily unavailable.",
-  alternates: { canonical: `${siteConfig.url}/pricing` },
-  openGraph: {
-    title: "Pricing | TheFastestWeb",
-    description: "Submit your site for free. Existing Pro memberships remain active; new upgrades and advertising purchases are temporarily unavailable.",
-  },
-  twitter: {
-    title: "Pricing | TheFastestWeb",
-    description: "Submit your site for free. Existing Pro memberships remain active; new upgrades and advertising purchases are temporarily unavailable.",
-  },
-};
-
-const faqJsonLd = {
-  "@context": "https://schema.org",
-  "@type": "FAQPage",
-  mainEntity: [
-    {
-      "@type": "Question",
-      name: "Is TheFastestWeb free to use?",
-      acceptedAnswer: {
-        "@type": "Answer",
-        text: "Yes. You can submit one website for free and get daily speed monitoring, a public leaderboard listing, and score history tracking at no cost.",
-      },
-    },
-    {
-      "@type": "Question",
-      name: "What does the Pro plan include?",
-      acceptedAnswer: {
-        "@type": "Answer",
-        text: "Existing Pro members retain unlimited site submissions, dofollow backlinks, and listings without a badge requirement. New upgrades are temporarily unavailable.",
-      },
-    },
-    {
-      "@type": "Question",
-      name: "Can I upgrade to Pro now?",
-      acceptedAnswer: {
-        "@type": "Answer",
-        text: "New Pro upgrades are temporarily unavailable. Existing Pro plans remain active.",
-      },
-    },
-    {
-      "@type": "Question",
-      name: "What is an ad slot?",
-      acceptedAnswer: {
-        "@type": "Answer",
-        text: "Ad slots are featured sponsor placements in the sidebar of TheFastestWeb. New advertising purchases are temporarily unavailable.",
-      },
-    },
-    {
-      "@type": "Question",
-      name: "How is my website speed score calculated?",
-      acceptedAnswer: {
-        "@type": "Answer",
-        text: "The score comes from one mobile lab test run by Google PageSpeed Insights. We retain the reported Lighthouse score and metrics; lab conditions can vary between measurements.",
-      },
-    },
-  ],
-};
-
+export const dynamic = "force-dynamic";
+export const metadata: Metadata = { title: "Plans and pricing", description: "Start with a free verified website listing. Explore available plans and preserved account access.", alternates: { canonical: `${siteConfig.url}/pricing` } };
 export default async function PricingPage() {
-  const user = await getCurrentUser();
-
-  return (
-    <div className="py-[60px] px-5 pb-[80px]">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(faqJsonLd) }} />
-      <div className="text-center mb-12">
-        <h1 className="font-display text-[clamp(1.8rem,3.5vw,2.6rem)] font-[900] tracking-[-0.03em] mb-3">
-          Simple,{" "}
-          <span className="bg-gradient-to-br from-accent-bright via-orange to-accent bg-clip-text text-transparent">
-            Transparent
-          </span>{" "}
-          Pricing
-        </h1>
-        <p className="text-text-secondary text-[0.95rem] max-w-[460px] mx-auto">
-          Start with a free website listing and a mobile PageSpeed measurement.
-        </p>
-      </div>
-
-      <PricingTiers isPro={user?.isPro ?? false} />
-
-      <div className="text-center mt-10 text-text-muted text-[0.8rem]">
-        Questions?{" "}
-        <a
-          href="mailto:thefastestwebsite@gmail.com"
-          className="text-accent no-underline hover:underline"
-        >
-          thefastestwebsite@gmail.com
-        </a>
-      </div>
-    </div>
-  );
+  const [user, products, adInventory] = await Promise.all([getCurrentUser(), listProducts(), isPaymentsEnabled() ? listAvailableAdInventory() : Promise.resolve([])]);
+  const db = getDb();
+  const ownedSites = user && db ? await db.select({ id: sites.id, name: sites.name }).from(sites).where(eq(sites.ownerId, user.id)).orderBy(sites.id).limit(100) : [];
+  return <main className="page-shell"><header className="mb-10 max-w-3xl"><p className="page-eyebrow">A place for fast websites</p><h1 className="page-title mt-4">Start free.<br />Grow with evidence.</h1><p className="page-description mt-5">List your website, measure what matters and build a public performance record. Paid placement never changes measured scores or competitive ranking rules.</p></header><PricingTiers products={products} signedIn={Boolean(user)} sites={ownedSites} adInventory={adInventory} />
+    <section className="mt-12 border-t border-border pt-8"><h2 className="text-2xl font-semibold tracking-tight">Before you choose</h2><div className="mt-6 grid gap-8 md:grid-cols-2"><div><h3 className="font-semibold">What happens to existing Pro access?</h3><p className="mt-3 text-sm leading-relaxed text-text-secondary">Existing memberships and valid entitlements are retained. Sign in to see the access recorded for your account and websites.</p></div><div><h3 className="font-semibold">Can I buy a sidebar placement?</h3><p className="mt-3 text-sm leading-relaxed text-text-secondary">Available sidebar products reserve a specific placement before checkout. Creative is reviewed after confirmed payment; the purchased duration starts when approved. Existing placements retain their recorded expiry.</p></div><div><h3 className="font-semibold">How are payments confirmed?</h3><p className="mt-3 text-sm leading-relaxed text-text-secondary">Checkout opens on Dodo Payments. Access is granted after a verified provider confirmation, with the final amount and tax stored in your payment history.</p></div><div><h3 className="font-semibold">How do rankings work?</h3><p className="mt-3 text-sm leading-relaxed text-text-secondary">Rankings use published measurement rules and finalized evidence. <Link href="/methodology" className="underline">Read the methodology</Link> before comparing results.</p></div></div></section>
+  </main>;
 }

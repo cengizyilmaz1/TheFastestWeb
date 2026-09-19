@@ -60,4 +60,8 @@ describe("background process health", () => {
     expect((await fetch(`${base}/`)).status).toBe(404);
     expect((await fetch(`${base}/health/live`, { method: "POST" })).status).toBe(405);
   });
+  it("identifies a dispatcher-only scheduler without exposing configuration",async()=>{
+    server.removeAllListeners("request");server.on("request",createBackgroundHealthHandler("scheduler",{isReady:()=>true,mode:"dispatch-only"}));
+    expect(await (await fetch(`${base}/health/ready`)).json()).toEqual({status:"ready",role:"scheduler",mode:"dispatch-only"});
+  });
 });

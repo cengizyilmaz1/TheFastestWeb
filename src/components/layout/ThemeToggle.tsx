@@ -2,8 +2,6 @@
 
 import { MoonIcon, SunIcon } from "@phosphor-icons/react";
 
-export const themeInitialization = `try{var t=localStorage.getItem('tfw-theme');document.documentElement.dataset.theme=t==='light'||t==='dark'?t:matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'}catch{}`;
-
 export function ThemeToggle() {
   function toggle() {
     const theme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";

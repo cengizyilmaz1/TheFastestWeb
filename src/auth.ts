@@ -12,7 +12,8 @@ export function createAuthOptions(): NextAuthOptions {
   const env = getEnv();
   return {
     secret: env.AUTH_SECRET,
-    providers: [Google({ clientId: env.AUTH_GOOGLE_ID || "", clientSecret: env.AUTH_GOOGLE_SECRET || "", checks: ["pkce", "state"] })],
+    providers: env.AUTH_GOOGLE_ID && env.AUTH_GOOGLE_SECRET
+      ? [Google({ clientId: env.AUTH_GOOGLE_ID, clientSecret: env.AUTH_GOOGLE_SECRET, checks: ["pkce", "state"] })] : [],
     session: { strategy: "jwt" },
     pages: { signIn: "/auth/login", error: "/auth/login" },
     logger: {

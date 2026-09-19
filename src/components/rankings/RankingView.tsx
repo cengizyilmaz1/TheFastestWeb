@@ -1,0 +1,33 @@
+import Link from "next/link";
+import { TrophyIcon, DeviceMobileIcon, DesktopIcon } from "@phosphor-icons/react/dist/ssr";
+import { listRanking, type RankingQuery } from "@/modules/rankings/service";
+import { EmptyState } from "@/components/directory/WebsiteList";
+import { getDiscovery } from "@/modules/sites/directory";
+
+export async function RankingView({ query = {} }: { query?: RankingQuery }) {
+  const [outcome, discovery] = await Promise.allSettled([listRanking(query), getDiscovery()]);
+  const data = outcome.status === "fulfilled" ? outcome.value : null;
+  const kind = query.kind || "weekly", strategy = query.strategy || "mobile";
+  const href = (changes: Partial<RankingQuery>) => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries({ ...query, ...changes })) if (value !== undefined && value !== "" && key !== "limit") params.set(key, String(value));
+    return `/leaderboard?${params}`;
+  };
+  return <div className="page-shell mx-auto max-w-[1120px]">
+    <div className="flex flex-wrap items-start justify-between gap-5"><div><p className="page-eyebrow mb-4">A shared standard</p><h1 className="page-title">The speed leaderboard.</h1><p className="page-description mt-4">Measured the same way. Ranked on performance. Discover who is making every millisecond count.</p></div><Link href="/hall-of-fame" className="button-secondary"><TrophyIcon size={18} aria-hidden />Hall of fame</Link></div>
+    <nav aria-label="Competition period" className="mt-9 flex flex-wrap gap-2 border-b border-border pb-5">
+      {[["weekly", "This week"], ["monthly", "This month"], ["all_time", "All time"]].map(([value, label]) => <Link key={value} href={href({ kind: value as RankingQuery["kind"], periodKey: undefined, cursor: undefined, scope: "overall", scopeKey: "" })} aria-current={kind === value ? "page" : undefined} className={kind === value ? "button-primary" : "button-secondary"}>{label}</Link>)}
+      <span className="flex-1" /><Link href={href({ strategy: "mobile", cursor: undefined })} className={strategy === "mobile" ? "button-primary" : "button-secondary"}><DeviceMobileIcon size={18} aria-hidden />Mobile</Link><Link href={href({ strategy: "desktop", cursor: undefined })} className={strategy === "desktop" ? "button-primary" : "button-secondary"}><DesktopIcon size={18} aria-hidden />Desktop</Link>
+    </nav>
+    <form action="/leaderboard" className="my-5 flex flex-wrap items-end gap-3">
+      <input type="hidden" name="kind" value={kind} /><input type="hidden" name="strategy" value={strategy} />{query.periodKey && <input type="hidden" name="periodKey" value={query.periodKey} />}
+      <label className="text-xs text-text-secondary">Ranking<select name="scope" className="form-field mt-1" defaultValue={query.scope || "overall"}><option value="overall">Overall</option><option value="country">Country</option><option value="category">Category</option><option value="technology">Technology</option>{kind !== "all_time" && <><option value="improved">Most improved</option><option value="newcomer">Newcomers</option></>}</select></label>
+      <label className="text-xs text-text-secondary">Collection<select className="form-field mt-1" name="scopeKey" defaultValue={query.scopeKey || ""}><option value="">All / not required</option>{discovery.status === "fulfilled" && <><optgroup label="Countries">{discovery.value.countries.map((row) => <option key={row.code} value={row.code}>{row.name}</option>)}</optgroup><optgroup label="Categories">{discovery.value.categories.map((row) => <option key={row.slug} value={row.slug}>{row.name}</option>)}</optgroup><optgroup label="Technologies">{discovery.value.technologies.map((row) => <option key={row.slug} value={row.slug}>{row.name}</option>)}</optgroup></>}</select></label><button className="button-secondary" type="submit">Apply</button>
+    </form>
+    {data ? <><div className="mb-4 flex flex-wrap justify-between gap-3 text-xs text-text-muted"><span>{data.period ? `${data.period.periodKey} · ${data.period.startAt.toISOString().slice(0, 10)} to ${data.period.endAt.toISOString().slice(0, 10)} UTC` : "Best eligible result for each website"}</span><span>{data.status === "closed" ? "Final · results preserved" : "In progress · results may change"}</span></div>
+      {!data.items.length ? <EmptyState title="The starting line is open" description="No eligible measurements are available for this selection yet. Rankings use two lab samples per device under the current method; historical scores remain in the directory." href="/explore" action="Explore historical measurements" /> : <div className="overflow-x-auto"><table className="w-full border-collapse text-left text-sm"><caption className="sr-only">Standardized {strategy} performance ranking</caption><thead className="border-b border-border text-xs text-text-muted"><tr><th className="py-3 font-normal">Rank</th><th className="px-3 py-3 font-normal">Website</th><th className="px-3 py-3 text-right font-normal">Score</th><th className="px-3 py-3 text-right font-normal">LCP</th><th className="hidden px-3 py-3 text-right font-normal sm:table-cell">CLS</th><th className="hidden px-3 py-3 text-right font-normal sm:table-cell">TBT</th></tr></thead><tbody>{data.items.map((row) => <tr key={row.siteId} className="border-b border-border hover:bg-bg-card"><td className="py-5 font-mono text-text-muted">{row.rank.toString().padStart(2, "0")}</td><td className="px-3 py-5 font-medium"><Link href={`/site/${String(row.siteSnapshot.slug || "")}`} className="hover:text-accent">{String(row.siteSnapshot.name || "Website")}</Link></td><td className="px-3 py-5 text-right font-mono text-lg text-green">{row.score}</td><td className="px-3 py-5 text-right font-mono text-xs">{row.lcpMs === null ? "—" : `${(row.lcpMs / 1000).toFixed(2)}s`}</td><td className="hidden px-3 py-5 text-right font-mono text-xs sm:table-cell">{row.cls?.toFixed(3) ?? "—"}</td><td className="hidden px-3 py-5 text-right font-mono text-xs sm:table-cell">{row.tbtMs === null ? "—" : `${row.tbtMs}ms`}</td></tr>)}</tbody></table></div>}
+      {data.nextCursor && <Link className="button-secondary mt-6" href={href({ cursor: data.nextCursor })}>Next results</Link>}
+      <p className="mt-6 text-xs leading-relaxed text-text-muted">{data.performanceMethodVersion} · {data.rankingAlgorithmVersion} · Two samples per measurement. Ties use LCP, CLS, TBT, then a stable website ID. <Link href="/methodology" className="underline underline-offset-4">Read the methodology</Link>.</p>
+    </> : <EmptyState title="This ranking could not be loaded" description="Check your selected collection and try again. Rankings also need an available measurement database." href="/leaderboard" action="Reset filters" />}
+  </div>;
+}

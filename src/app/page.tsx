@@ -1,189 +1,59 @@
-import { siteConfig } from "@/config/site";
+import type { Metadata } from "next";
 import Link from "next/link";
-import Image from "next/image";
-import { Suspense } from "react";
-import { unstable_cache } from "next/cache";
-import { Metadata } from "next";
-import { LeaderboardTable } from "@/components/leaderboard/LeaderboardTable";
-import { AdSuccessBanner } from "@/components/ads/AdSuccessBanner";
-import { Site, sites } from "@/db/schema";
-import { getDb } from "@/db/index";
-import { desc, eq, sql } from "drizzle-orm";
+import { ArrowRightIcon, ArrowUpRightIcon, CheckCircleIcon, GaugeIcon } from "@phosphor-icons/react/dist/ssr";
+import { siteConfig } from "@/config/site";
+import { listDirectory, getDiscovery, listSponsoredPlacements } from "@/modules/sites/directory";
+import { SponsoredPlacements } from "@/components/directory/SponsoredPlacements";
+import { WebsiteList, EmptyState } from "@/components/directory/WebsiteList";
+import { getAllPosts } from "@/lib/blog";
 
-export const metadata: Metadata = {
-  title: "TheFastestWeb: Speed Rankings for the Web",
-  description:
-    "Discover, benchmark, and showcase the world's fastest websites. Submit yours and prove you belong on the leaderboard.",
-  alternates: {
-    canonical: siteConfig.url,
-  },
-};
-
-export const revalidate = 300;
-
-const getSites = unstable_cache(
-  async (): Promise<Site[]> => {
-    const db = getDb();
-    if (!db) return [];
-
-    const result = await db
-      .select()
-      .from(sites)
-      .where(eq(sites.isListed, true))
-      .orderBy(desc(sites.currentScore))
-      .limit(50);
-
-    // Throw on empty so unstable_cache doesn't store the failure —
-    // next request will retry the DB instead of serving cached [].
-    if (result.length === 0) throw new Error("getSites: empty result");
-    return result;
-  },
-  ["leaderboard-sites"],
-  { revalidate: 300 }
-);
-
-const getStats = unstable_cache(
-  async (): Promise<{ total: number; avgTop10: number }> => {
-    const db = getDb();
-    if (db) {
-      try {
-        const [{ count }] = await db
-          .select({ count: sql<number>`count(*)::int` })
-          .from(sites)
-          .where(eq(sites.isListed, true));
-
-        const top10 = await db
-          .select({ score: sites.currentScore })
-          .from(sites)
-          .where(eq(sites.isListed, true))
-          .orderBy(desc(sites.currentScore))
-          .limit(10);
-
-        const avg = top10.length > 0
-          ? top10.reduce((sum, r) => sum + r.score, 0) / top10.length
-          : 0;
-
-        return { total: count, avgTop10: Math.round(avg * 10) / 10 };
-      } catch {
-        // fallback below
-      }
-    }
-    return { total: 0, avgTop10: 0 };
-  },
-  ["leaderboard-stats"],
-  { revalidate: 300 }
-);
-
-async function LeaderboardSection() {
-  let siteList: Site[] = [];
-  try {
-    siteList = await getSites();
-  } catch {
-    // DB error — render empty table, client will load via /api/sites
-  }
-  return <LeaderboardTable initialSites={siteList} />;
-}
+export const metadata: Metadata = { title: "TheFastestWeb — A faster web starts here", description: "Discover the people and websites making the web faster. Explore real performance measurements, transparent rankings and weekly competitions.", alternates: { canonical: "/" } };
 
 export default async function HomePage() {
-  const stats = await getStats();
-
-  return (
-    <>
-      <Suspense fallback={null}>
-        <AdSuccessBanner />
-      </Suspense>
-
-      {/* Hero */}
-      <section className="pt-8 pb-1 px-8 text-center relative overflow-hidden">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[350px] bg-[radial-gradient(ellipse,rgba(245,158,11,0.08)_0%,transparent_70%)] pointer-events-none" />
-        <div className="mb-4 animate-fade-in-up flex justify-center">
-          <a href="https://frogdr.com/thefastestweb.site?utm_source=thefastestweb.site" target="_blank" rel="noopener noreferrer">
-            <Image unoptimized src="https://frogdr.com/thefastestweb.site/badge-white-sm.svg?round=1" alt="Monitor your Domain Rating with FrogDR" width={249} height={36} />
-          </a>
-        </div>
-        <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-accent-glow border border-[rgba(245,158,11,0.2)] text-[0.72rem] font-semibold text-accent-bright mb-5 font-mono tracking-[0.03em] animate-fade-in-up">
-          FREE DAILY SPEED MONITORING
-        </div>
-        <h1 className="font-display text-[clamp(2rem,4vw,3.2rem)] font-[900] leading-[1.1] tracking-[-0.03em] mb-3.5 animate-fade-in-up-1">
-          <span className="bg-gradient-to-br from-accent-bright via-orange to-accent bg-clip-text text-transparent">
-            How Fast Is
-          </span>
-          <br />
-          Your Website?
-        </h1>
-        <p className="text-base text-text-secondary max-w-[500px] mx-auto mb-6 animate-fade-in-up-2">
-          Submit your site and we&apos;ll track your speed score every day, for free. See how you rank against other websites and prove you&apos;re fast.
-        </p>
-        <div className="flex gap-3 justify-center animate-fade-in-up-3 max-[640px]:flex-col max-[640px]:items-center">
-          <Link
-            href="/submit"
-            className="inline-flex items-center gap-2 px-5 py-[11px] rounded-[10px] text-[0.9rem] font-semibold bg-gradient-to-br from-accent to-accent-bright text-bg-deep no-underline shadow-[0_0_30px_var(--color-accent-glow),0_4px_12px_rgba(0,0,0,0.3)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_0_40px_rgba(245,158,11,0.3),0_6px_20px_rgba(0,0,0,0.3)]"
-          >
-            Submit Your Site
-          </Link>
-          <Link
-            href="/test"
-            className="inline-flex items-center gap-2 px-5 py-[11px] rounded-[10px] text-[0.9rem] font-semibold bg-bg-card text-text-primary border border-border no-underline transition-all duration-200 hover:bg-bg-card-hover hover:border-border-light"
-          >
-            Test Your Speed
-          </Link>
-        </div>
-
-        {/* Trusted by */}
-        <div className="flex items-center justify-center gap-2.5 mt-5 animate-fade-in-up-3">
-          <div className="flex items-center -space-x-2">
-            {[
-              { handle: "jakobjelling", ext: "png" },
-              { handle: "anthovdo", ext: "jpg" },
-              { handle: "bhargavk_", ext: "jpg" },
-              { handle: "vladbuilds", ext: "jpg" },
-              { handle: "0hr_maker", ext: "jpg" },
-              { handle: "KerjaRemote_", ext: "jpg" },
-            ].map(({ handle, ext }) => (
-              <a
-                key={handle}
-                href={`https://x.com/${handle}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                title={`@${handle}`}
-              >
-                <Image
-                  width={28}
-                  height={28}
-                  src={`/avatars/${handle}.${ext}`}
-                  alt={handle}
-                  className="w-7 h-7 rounded-full border-2 border-bg-deep object-cover hover:scale-110 transition-transform"
-                />
-              </a>
-            ))}
-          </div>
-          <span className="text-[0.78rem] text-text-muted">Trusted by indie founders</span>
-        </div>
-      </section>
-
-      {/* Pulse Bar */}
-      <div className="flex justify-center gap-8 pt-2 pb-3 px-4 mb-2 animate-fade-in-up-4 max-[640px]:flex-col max-[640px]:items-center max-[640px]:gap-2">
-        <div className="flex items-center gap-1.5 text-[0.8rem] text-text-muted">
-          <div className="w-1.5 h-1.5 rounded-full bg-green animate-pulse-dot" />
-          <strong className="text-text-secondary font-mono font-semibold">
-            {stats.total.toLocaleString()}
-          </strong>
-          &nbsp;websites indexed
-        </div>
-        <div className="flex items-center gap-1.5 text-[0.8rem] text-text-muted">
-          <div className="w-1.5 h-1.5 rounded-full bg-green animate-pulse-dot" />
-          <strong className="text-text-secondary font-mono font-semibold">
-            {stats.avgTop10}
-          </strong>
-          &nbsp;avg top-10 score
-        </div>
+  const [leaders, recent, discovery, sponsored] = await Promise.allSettled([
+    listDirectory({ limit: 5 }), listDirectory({ sort: "newest", limit: 3 }), getDiscovery(), listSponsoredPlacements(1, 6),
+  ]);
+  const posts = getAllPosts().slice(0, 3);
+  return <div className="mx-auto max-w-[1240px]">
+    <section className="grid grid-cols-1 items-center gap-10 px-5 py-12 sm:px-8 sm:py-16 lg:grid-cols-[1fr_1.02fr] lg:gap-14 lg:py-20">
+      <div className="min-w-0">
+        <p className="page-eyebrow mb-6 flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full bg-accent" /> Built for a faster web</p>
+        <h1 className="max-w-[11ch] text-[clamp(3rem,5.8vw,5.6rem)] font-semibold leading-[.98] tracking-[-.055em]">Good websites.<br /><span className="text-accent">Great speed.</span></h1>
+        <p className="mt-7 max-w-[39ch] text-lg leading-relaxed text-text-secondary">Meet the makers who care about every millisecond. Discover fast websites, measure yours, and see how you compare.</p>
+        <div className="mt-8 flex flex-wrap gap-3"><Link href="/submit" className="button-primary">Put your site on the map <ArrowUpRightIcon size={18} aria-hidden /></Link><Link href="/explore" className="button-secondary">Explore websites</Link></div>
+        <div className="mt-7 flex flex-wrap gap-x-5 gap-y-2 text-xs text-text-muted"><span className="inline-flex items-center gap-1.5"><CheckCircleIcon size={15} aria-hidden /> Real measurements</span><span className="inline-flex items-center gap-1.5"><CheckCircleIcon size={15} aria-hidden /> Transparent methodology</span></div>
       </div>
-
-      {/* Leaderboard */}
-      <Suspense fallback={null}>
-        <LeaderboardSection />
-      </Suspense>
-
-    </>
-  );
+      <div className="min-w-0 rounded-[20px] border border-border bg-bg-main px-5 pb-5 pt-6 sm:px-7">
+        <div className="flex items-start justify-between gap-3"><div><p className="page-eyebrow mb-2">From the directory</p><h2 className="text-xl font-medium tracking-tight">Speed worth discovering.</h2></div><GaugeIcon size={26} className="text-accent" aria-hidden /></div>
+        <p className="mb-2 mt-2 text-xs text-text-muted">Latest recorded mobile lab scores · out of 100</p>
+        {leaders.status === "fulfilled" ? <WebsiteList sites={leaders.value.sites} compact /> : <EmptyState title="The directory is taking a moment" description="Website measurements are temporarily unavailable. Please check back shortly." />}
+        <Link href="/explore" className="mt-5 flex items-center justify-between text-sm font-medium text-text-secondary hover:text-accent">Explore the directory <ArrowRightIcon size={18} aria-hidden /></Link>
+      </div>
+    </section>
+    <section className="mx-5 flex flex-wrap items-center justify-between gap-5 border-y border-border py-5 sm:mx-8">
+      <p className="text-sm text-text-secondary">Small improvements. A better experience for everyone.</p>
+      <div className="flex flex-wrap gap-6 text-xs text-text-muted"><span>Mobile & desktop</span><span>PageSpeed Insights</span><Link href="/methodology" className="inline-flex items-center gap-1 hover:text-accent">How we measure <ArrowUpRightIcon size={14} aria-hidden /></Link></div>
+    </section>
+    <section className="px-5 py-16 sm:px-8">
+      <div className="mb-8 flex flex-wrap items-end justify-between gap-4"><div><p className="page-eyebrow mb-3">Find your next favorite</p><h2 className="text-3xl font-medium tracking-tight">Built with purpose.</h2></div><Link href="/explore" className="nav-link">All categories <ArrowRightIcon size={16} className="ml-2" aria-hidden /></Link></div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {discovery.status === "fulfilled" && discovery.value.categories.length ? discovery.value.categories.map((category) => <Link key={category.slug} href={"/categories/" + category.slug} className="group flex min-h-28 flex-col justify-between rounded-xl border border-border bg-bg-main p-5 hover:border-border-light"><span className="flex justify-between text-sm font-medium">{category.name}<ArrowUpRightIcon size={16} className="text-text-muted transition-transform group-hover:-translate-y-0.5" aria-hidden /></span><span className="mt-5 font-mono text-xs text-text-muted">{category.count} websites</span></Link>)
+          : <div className="col-span-full"><EmptyState title="Every kind of website belongs" description="Browse the directory as websites are added to the available categories." href="/explore" action="Browse websites" /></div>}
+      </div>
+    </section>
+    {sponsored.status === "fulfilled" && sponsored.value.items.length > 0 && <section className="border-t border-border px-5 py-12 sm:px-8"><div className="mb-6 flex flex-wrap items-end justify-between gap-4"><div><p className="page-eyebrow mb-3">Sponsored placements</p><h2 className="text-3xl font-medium tracking-tight">Meet our supporters.</h2></div><Link className="nav-link" href="/featured">View all</Link></div><SponsoredPlacements sites={sponsored.value.items} /></section>}
+    <section className="border-y border-border bg-bg-main px-5 py-12 sm:px-8">
+      <div className="grid gap-8 md:grid-cols-[.8fr_1.2fr] md:items-center">
+        <div><p className="page-eyebrow mb-3">The weekly race</p><h2 className="max-w-[17ch] text-3xl font-medium leading-tight tracking-tight">A little competition.<br />A much faster web.</h2><p className="mt-4 max-w-[42ch] text-sm leading-relaxed text-text-secondary">Compare like with like. Mobile and desktop have separate rankings, measured with the same method. Completed competitions keep their results.</p><Link href="/leaderboard" className="button-secondary mt-6">View the rankings <ArrowRightIcon size={16} aria-hidden /></Link></div>
+        <div className="grid grid-cols-3 divide-x divide-border py-6"><div className="px-3 text-center"><span className="font-mono text-3xl text-accent">02</span><p className="mt-3 text-xs text-text-secondary">Samples per device</p></div><div className="px-3 text-center"><span className="font-mono text-3xl text-accent">02</span><p className="mt-3 text-xs text-text-secondary">Device strategies</p></div><div className="px-3 text-center"><span className="font-mono text-3xl text-accent">UTC</span><p className="mt-3 text-xs text-text-secondary">One shared calendar</p></div></div>
+      </div>
+    </section>
+    <section className="px-5 py-16 sm:px-8">
+      <div className="mb-6 flex items-end justify-between gap-4"><div><p className="page-eyebrow mb-3">Fresh perspectives</p><h2 className="text-3xl font-medium tracking-tight">Just joined the directory.</h2></div><Link href="/explore?sort=newest" className="nav-link">View all <ArrowRightIcon size={16} className="ml-2" aria-hidden /></Link></div>
+      {recent.status === "fulfilled" ? <WebsiteList sites={recent.value.sites} /> : <EmptyState title="Recent websites are unavailable" description="We could not load this part of the directory. Try again shortly." />}
+    </section>
+    {posts.length > 0 && <section className="border-t border-border px-5 py-16 sm:px-8"><div className="mb-8 flex items-end justify-between gap-4"><div><p className="page-eyebrow mb-3">The performance journal</p><h2 className="text-3xl font-medium tracking-tight">A faster web is a learned skill.</h2></div><Link className="nav-link" href="/blog">Read more</Link></div><div className="grid gap-8 md:grid-cols-3">{posts.map((post) => <article key={post.slug} className="border-t border-border pt-5"><span className="font-mono text-xs text-text-muted">{post.readingTime} min read</span><h3 className="mt-4 text-xl font-medium leading-snug tracking-tight"><Link className="hover:text-accent" href={"/blog/" + post.slug}>{post.title}</Link></h3><p className="mt-3 line-clamp-3 text-sm leading-relaxed text-text-secondary">{post.description}</p></article>)}</div></section>}
+    <section className="mx-5 mb-16 flex flex-col justify-between gap-6 rounded-[20px] border border-border bg-accent-glow p-8 sm:mx-8 sm:flex-row sm:items-center sm:p-10"><div><p className="page-eyebrow mb-3">Made something fast?</p><h2 className="text-3xl font-medium tracking-tight">Give your work a place here.</h2></div><Link href="/submit" className="button-primary shrink-0">Submit your website <ArrowUpRightIcon size={18} aria-hidden /></Link></section>
+    <span className="sr-only">{siteConfig.name}</span>
+  </div>;
 }

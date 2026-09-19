@@ -1,16 +1,19 @@
 import type { Metadata } from "next";
-import { Outfit, JetBrains_Mono, Inter } from "next/font/google";
+import { Outfit, JetBrains_Mono } from "next/font/google";
 import { Suspense } from "react";
 import { Nav } from "@/components/layout/Nav";
 import { NavigationProgress } from "@/components/layout/NavigationProgress";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Footer } from "@/components/layout/Footer";
 import { getCurrentUser } from "@/lib/auth";
+import { hasAccountProAccess } from "@/modules/payments/entitlements";
 import { getDb } from "@/db/index";
-import { adSlots, users, sites } from "@/db/schema";
-import { eq, and, or, isNull, gt, lt, sql } from "drizzle-orm";
+import { adSlots } from "@/db/schema";
+import { eq, and, or, isNull, gt, sql } from "drizzle-orm";
 import { safeJsonLd } from "@/lib/seo/json-ld";
 import { siteConfig } from "@/config/site";
+import ConsentAnalytics from "@/infrastructure/analytics/consent-analytics";
+import { getPublicAnalyticsConfig } from "@/infrastructure/analytics/config";
 import "./globals.css";
 
 const outfit = Outfit({
@@ -21,12 +24,6 @@ const outfit = Outfit({
 
 const jetbrainsMono = JetBrains_Mono({
   variable: "--font-jetbrains-mono",
-  subsets: ["latin"],
-  display: "swap",
-});
-
-const inter = Inter({
-  variable: "--font-inter",
   subsets: ["latin"],
   display: "swap",
 });
@@ -48,6 +45,10 @@ export const metadata: Metadata = {
     apple: "/favicon/apple-touch-icon.png",
   },
   manifest: "/favicon/site.webmanifest",
+  verification: {
+    google: process.env.SEARCH_CONSOLE_VERIFICATION || undefined,
+    ...(process.env.BING_VERIFICATION ? { other: { "msvalidate.01": process.env.BING_VERIFICATION } } : {}),
+  },
   openGraph: {
     title: "TheFastestWeb: Speed Rankings for the Web",
     description:
@@ -84,25 +85,9 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const user = await getCurrentUser();
+  const navigationUser = user ? { ...user, isPro: await hasAccountProAccess(user.id, user.isPro) } : null;
 
   const db = getDb();
-
-  // Update lastActiveAt for free users at most once per 12 hours (server-side, ad-blocker-proof)
-  // Also un-pause any sites that were paused due to inactivity — user is back.
-  if (db && user && !user.isPro) {
-    await db.transaction(async (transaction) => {
-      const updated = await transaction
-        .update(users)
-        .set({ lastActiveAt: sql`now()` })
-        .where(and(eq(users.id, user.id), or(isNull(users.lastActiveAt), lt(users.lastActiveAt, sql`now() - interval '12 hours'`))))
-        .returning({ id: users.id });
-      if (updated.length === 0) return;
-      await transaction
-        .update(sites)
-        .set({ monitoringPaused: false })
-        .where(and(eq(sites.ownerId, user.id), eq(sites.monitoringPaused, true)));
-    });
-  }
 
   // Fetch active ad slots
   const activeAdSlots = db
@@ -112,16 +97,19 @@ export default async function RootLayout({
         .where(
           and(
             eq(adSlots.isActive, true),
+            eq(adSlots.status, "active"),
             or(isNull(adSlots.expiresAt), gt(adSlots.expiresAt, sql`now()`))
           )
-        )
+        ).catch(() => [])
     : [];
 
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head><script dangerouslySetInnerHTML={{ __html: "try{var t=localStorage.getItem('tfw-theme');document.documentElement.dataset.theme=t==='light'||t==='dark'?t:matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'}catch{}" }} /></head>
       <body
-        className={`${outfit.variable} ${jetbrainsMono.variable} ${inter.variable} antialiased`}
+        className={`${outfit.variable} ${jetbrainsMono.variable} antialiased`}
       >
+        <a href="#main-content" className="skip-link">Skip to content</a>
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
@@ -136,7 +124,7 @@ export default async function RootLayout({
                   description: "Speed rankings for the web. Discover, benchmark, and showcase the world's fastest websites.",
                   potentialAction: {
                     "@type": "SearchAction",
-                    target: `${siteConfig.url}/?q={search_term_string}`,
+                    target: `${siteConfig.url}/explore?q={search_term_string}`,
                     "query-input": "required name=search_term_string",
                   },
                 },
@@ -154,15 +142,15 @@ export default async function RootLayout({
         <Suspense fallback={null}>
           <NavigationProgress />
         </Suspense>
-        <Nav user={user} />
-        <div className="grid grid-cols-[190px_1fr_190px] min-h-screen max-[1100px]:grid-cols-[1fr]">
-          <Sidebar position="left" count={5} adSlots={activeAdSlots} />
-          <div className="col-start-2 min-w-0 pt-[60px] max-[1100px]:col-start-1">
-            {children}
-            <Footer />
-          </div>
-          <Sidebar position="right" count={5} adSlots={activeAdSlots} />
+        <Nav user={navigationUser} />
+        {siteConfig.isDemo && <div className="border-b border-border bg-accent-glow px-5 py-2 text-center text-xs text-text-secondary">Demo preview · Payments, email delivery and scheduled monitoring are disabled.</div>}
+        <div className="mx-auto grid min-h-[70vh] max-w-[1600px] grid-cols-1 2xl:grid-cols-[180px_minmax(0,1fr)_180px]">
+          <Sidebar position="left" adSlots={activeAdSlots} />
+          <main id="main-content" tabIndex={-1} className="min-w-0">{children}</main>
+          <Sidebar position="right" adSlots={activeAdSlots} />
         </div>
+        <Footer />
+        <Suspense fallback={null}><ConsentAnalytics config={getPublicAnalyticsConfig()} /></Suspense>
       </body>
     </html>
   );

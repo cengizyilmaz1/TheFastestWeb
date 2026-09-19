@@ -25,6 +25,7 @@ const positiveInteger = (fallback: number, maximum: number) => z.preprocess(
 
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  DEPLOYMENT_MODE: z.enum(["production", "demo"]).default("production"),
   SITE_URL: z.preprocess((value) => value === "" || value === undefined ? DEFAULT_SITE_URL : value, origin),
   DATABASE_URL: optionalString.refine((value) => {
     if (!value) return true;
@@ -75,6 +76,7 @@ const envSchema = z.object({
   LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal", "silent"]).default("info"),
   SITE_NAME: z.string().min(1).max(80).default("TheFastestWeb"),
   SITE_EMAIL: optionalString.refine((value) => !value || z.email().safeParse(value).success, "Must be an email address"),
+  INDIETOOLS_URL: optionalString.refine((value) => { if (!value) return true; try { const url = new URL(value); return url.protocol === "https:" && !url.username && !url.password; } catch { return false; } }, "Must be an HTTPS URL without credentials"),
   PAYMENTS_ENABLED: flag,
   DODO_API_KEY: optionalString,
   DODO_WEBHOOK_SECRET: optionalString,
@@ -134,8 +136,8 @@ export function parseEnv(
     }
     if (config.REDIS_URL && decodeURIComponent(new URL(config.REDIS_URL).password).length < 32) missing.push("REDIS_URL");
     if (!options.role || options.role === "web") {
-      for (const key of ["AUTH_SECRET", "AUTH_GOOGLE_ID", "AUTH_GOOGLE_SECRET"] as const) {
-        if (!config[key]) missing.push(key);
+      for (const key of ["AUTH_SECRET", ...(config.DEPLOYMENT_MODE === "demo" ? [] : ["AUTH_GOOGLE_ID", "AUTH_GOOGLE_SECRET"])] as const) {
+        if (!config[key as keyof Env]) missing.push(key);
       }
       if (!config.SITE_URL.startsWith("https://")) missing.push("SITE_URL");
       if (config.AUTH_URL && !config.AUTH_URL.startsWith("https://")) missing.push("AUTH_URL");
@@ -153,6 +155,11 @@ export function parseEnv(
   requireFields(config.SCREENSHOTS_ENABLED, ["SCREENSHOT_SERVICE_URL", "SCREENSHOT_SERVICE_TOKEN"]);
   if (config.ANALYTICS_ENABLED && !config.GA_MEASUREMENT_ID && !config.DATAFAST_WEBSITE_ID) missing.push("GA_MEASUREMENT_ID", "DATAFAST_WEBSITE_ID");
   if (config.DATAFAST_WEBSITE_ID && !config.DATAFAST_DOMAIN) missing.push("DATAFAST_DOMAIN");
+  if (config.DEPLOYMENT_MODE === "demo") {
+    for (const key of ["PAYMENTS_ENABLED", "EMAIL_ENABLED", "ANALYTICS_ENABLED", "SCHEDULER_ENABLED"] as const) {
+      if (config[key]) missing.push(key);
+    }
+  }
   if (missing.length) throw new EnvironmentError([...new Set(missing)]);
   return Object.freeze(config);
 }

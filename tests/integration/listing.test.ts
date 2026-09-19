@@ -51,6 +51,19 @@ async function rowCounts() {
   return { ...row };
 }
 
+async function accountGrant(owner: string) {
+  const product = randomUUID(), order = randomUUID(), payment = `synthetic_${randomUUID()}`;
+  await fixtureSql()`INSERT INTO products(id,key,title,kind,amount_cents,currency,requires_site,billing_interval)
+    VALUES(${product},${product},'Synthetic account Pro','pro_listing',1900,'USD',false,'one_time')`;
+  await fixtureSql()`INSERT INTO checkout_orders(id,user_id,product_id,idempotency_key,status,product_snapshot)
+    VALUES(${order},${owner},${product},${order},'paid',${fixtureSql().json({ kind: "pro_listing", scope: "account", requiresSite: false })})`;
+  await fixtureSql()`INSERT INTO payment_ledger(provider_payment_id,order_id,user_id,product_id,amount_cents,currency,status,occurred_at)
+    VALUES(${payment},${order},${owner},${product},1900,'USD','succeeded',now())`;
+  const [grant] = await fixtureSql()`INSERT INTO entitlements(user_id,kind,source,source_id,ends_at)
+    VALUES(${owner},'PRO','dodo',${`payment:${payment}`},now()+interval '30 days') RETURNING id`;
+  return grant.id as string;
+}
+
 beforeAll(prepareIntegrationDatabase, 60_000);
 afterAll(cleanupIntegrationDatabase, 30_000);
 beforeEach(async () => {
@@ -59,6 +72,39 @@ beforeEach(async () => {
 });
 
 describe("listing transactions with the least-privilege application role", () => {
+  it("honors an active account payment for private and additional listings without immortalizing its tier", async () => {
+    const owner = await user(false);
+    await accountGrant(owner);
+    const firstUrl = "https://example.com/", secondUrl = "https://example.org/";
+    const first = await createListing(owner, { ...input(firstUrl, await proof(owner, firstUrl)), isListed: false });
+    const second = await createListing(owner, input(secondUrl, await proof(owner, secondUrl)));
+    expect(first).toMatchObject({ isListed: false, tier: "free", requiresBadge: false });
+    expect(second).toMatchObject({ isListed: true, tier: "free", requiresBadge: true });
+    expect(badge).not.toHaveBeenCalled();
+    expect((await fixtureSql()`SELECT is_pro FROM users WHERE id=${owner}`)[0].is_pro).toBe(false);
+  });
+
+  it.each(["expired", "revoked", "future"])("refuses private publication with a %s account grant", async (state) => {
+    const owner = await user(false), grant = await accountGrant(owner), url = "https://example.com/";
+    if (state === "expired") await fixtureSql()`UPDATE entitlements SET ends_at=now()-interval '1 second' WHERE id=${grant}`;
+    if (state === "revoked") await fixtureSql()`UPDATE entitlements SET status='revoked' WHERE id=${grant}`;
+    if (state === "future") await fixtureSql()`UPDATE entitlements SET starts_at=now()+interval '1 day' WHERE id=${grant}`;
+    await expect(createListing(owner, { ...input(url, await proof(owner, url)), isListed: false })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(await rowCounts()).toEqual({ sites: 0, tests: 0 });
+    expect((await fixtureSql()`SELECT consumed_at FROM verified_speed_tests`)[0].consumed_at).toBeNull();
+  });
+
+  it("does not turn a site-scoped purchase into additional-listing rights", async () => {
+    const owner = await user(false), url = "https://example.com/";
+    const first = await createListing(owner, input(url, await proof(owner, url)));
+    await fixtureSql()`INSERT INTO entitlements(user_id,site_id,kind,source,source_id)
+      VALUES(${owner},${first.id},'PRO','dodo','payment:synthetic_scoped')`;
+    const second = "https://example.org/";
+    await expect(createListing(owner, input(second, await proof(owner, second)))).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(createListing(owner, { ...input(second, await proof(owner, second)), isListed: false })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(await rowCounts()).toEqual({ sites: 1, tests: 1 });
+  });
+
   it("uses an unprivileged application connection", async () => {
     const rows = await getDb()!.execute(drizzleSql`SELECT rolsuper, rolcreatedb, rolcreaterole, rolbypassrls FROM pg_roles WHERE rolname=current_user`);
     expect({ ...rows[0] }).toEqual({ rolsuper: false, rolcreatedb: false, rolcreaterole: false, rolbypassrls: false });

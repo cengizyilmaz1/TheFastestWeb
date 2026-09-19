@@ -20,7 +20,9 @@ export class ScreenshotRepository {
   async ready() {
     await this.sql`SELECT id,client_id,request,status,lease_token,result FROM screenshot_captures WHERE false`;
     const [row] = await this.sql`SELECT rolsuper OR rolcreatedb OR rolcreaterole OR rolbypassrls AS unsafe FROM pg_roles WHERE rolname=current_user`;
-    const [owner] = await this.sql`SELECT EXISTS(SELECT 1 FROM pg_class WHERE relname IN ('screenshot_captures','screenshot_objects','screenshot_idempotency','screenshot_quotas') AND pg_has_role(current_user,relowner,'MEMBER')) AS unsafe`;
+    const [owner] = await this.sql`SELECT has_schema_privilege(current_user,'public','CREATE') OR
+      EXISTS(SELECT 1 FROM pg_database WHERE datname=current_database() AND pg_has_role(current_user,datdba,'MEMBER')) OR
+      EXISTS(SELECT 1 FROM pg_class WHERE relname IN ('screenshot_captures','screenshot_objects','screenshot_idempotency','screenshot_quotas') AND pg_has_role(current_user,relowner,'MEMBER')) AS unsafe`;
     if (row.unsafe || owner.unsafe) throw new ServiceError("DATABASE_ROLE_UNSAFE", 503);
   }
   async create(client: ScreenshotClient, request: PreparedCapture, key: string): Promise<CaptureResponse> {
@@ -77,7 +79,7 @@ export class ScreenshotRepository {
   async complete(row: CaptureRow, result: CaptureResult): Promise<boolean> {
     return this.sql.begin(async (tx) => {
       const saved = await tx`UPDATE screenshot_captures SET status='ready',result=${tx.json(result)},error_code=NULL,
-        lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=${row.id} AND lease_token=${row.lease_token} AND lease_until>now() RETURNING id`;
+        lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=${row.id} AND lease_token=${row.lease_token} AND lease_until>now() AND expires_at>now() RETURNING id`;
       if (!saved.length) return false;
       await tx`UPDATE screenshot_objects SET committed=true WHERE capture_id=${row.id} AND lease_token=${row.lease_token}`;
       return true;
@@ -85,7 +87,7 @@ export class ScreenshotRepository {
   }
   async stageObjects(row: CaptureRow, keys: string[]) {
     await this.sql.begin(async (tx) => {
-      const owned = await tx`SELECT id FROM screenshot_captures WHERE id=${row.id} AND lease_token=${row.lease_token} AND lease_until>now() FOR UPDATE`;
+      const owned = await tx`SELECT id FROM screenshot_captures WHERE id=${row.id} AND lease_token=${row.lease_token} AND lease_until>now() AND expires_at>now() FOR UPDATE`;
       if (!owned.length) throw new ServiceError("LEASE_EXPIRED", 409);
       for (const key of keys) await tx`INSERT INTO screenshot_objects(object_key,capture_id,lease_token,visibility)
         VALUES(${key},${row.id},${row.lease_token},${row.request.visibility}) ON CONFLICT DO NOTHING`;

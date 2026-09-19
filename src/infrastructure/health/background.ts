@@ -4,7 +4,7 @@ import { getEnv } from "@/config/env";
 import { checkReadiness } from "./readiness";
 
 type BackgroundRole = "worker" | "scheduler";
-type HealthState = { isReady: () => boolean; isLive?: () => boolean };
+type HealthState = { isReady: () => boolean; isLive?: () => boolean; mode?:"dispatch-only"|"generation-and-dispatch" };
 
 export function createBackgroundHealthHandler(role: BackgroundRole, state: HealthState): RequestListener {
   return (request, response) => {
@@ -14,7 +14,7 @@ export function createBackgroundHealthHandler(role: BackgroundRole, state: Healt
         "Cache-Control": "no-store",
         "X-Correlation-Id": randomUUID(),
       });
-      response.end(JSON.stringify({ status: value, role }));
+      response.end(JSON.stringify({ status: value, role,...(state.mode ? {mode:state.mode} : {}) }));
     };
     if (request.method !== "GET") { send(405, "method_not_allowed"); return; }
     if (request.url === "/health/live") {

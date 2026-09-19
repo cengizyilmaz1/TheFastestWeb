@@ -12,7 +12,7 @@ export default function UnsubscribeForm({ token }: { token: string }) {
     } catch { setState("error"); }
   }
   return <div className="mt-8">{state === "done" ? <p role="status">You have been unsubscribed from this email category.</p> : <>
-    <button type="button" className="rounded-md bg-foreground px-5 py-3 text-background disabled:opacity-50" disabled={!token || state === "loading"} onClick={submit}>
+    <button type="button" className="button-primary disabled:opacity-50" disabled={!token || state === "loading"} onClick={submit}>
       {state === "loading" ? "Saving…" : "Unsubscribe"}</button>
     {(state === "error" || !token) && <p role="alert" className="mt-4">This link could not be used. You can also update email preferences in your account.</p>}
   </>}</div>;

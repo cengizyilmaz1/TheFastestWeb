@@ -1,5 +1,6 @@
 x-job-environment: &job-environment
   NODE_ENV: production
+  DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-production}
   SITE_URL: ${SITE_URL:-https://thefastestweb.site}
   SITE_NAME: ${SITE_NAME:-TheFastestWeb}
   SITE_EMAIL: ${SITE_EMAIL:-}
@@ -87,8 +88,8 @@ services:
     environment:
       <<: [*job-environment, *provider-environment]
       AUTH_SECRET: ${AUTH_SECRET:?Generate a new auth secret}
-      AUTH_GOOGLE_ID: ${AUTH_GOOGLE_ID:?Set your Google OAuth client ID}
-      AUTH_GOOGLE_SECRET: ${AUTH_GOOGLE_SECRET:?Set your Google OAuth client secret}
+      AUTH_GOOGLE_ID: ${AUTH_GOOGLE_ID:-}
+      AUTH_GOOGLE_SECRET: ${AUTH_GOOGLE_SECRET:-}
       AUTH_URL: ${AUTH_URL:-}
       AUTH_TRUST_HOST: "true"
       GOOGLE_PSI_API_KEY: ${GOOGLE_PSI_API_KEY:-}
@@ -103,6 +104,7 @@ services:
       SEARCH_CONSOLE_VERIFICATION: ${SEARCH_CONSOLE_VERIFICATION:-}
       BING_VERIFICATION: ${BING_VERIFICATION:-}
       INDEXNOW_KEY: ${INDEXNOW_KEY:-}
+      INDIETOOLS_URL: ${INDIETOOLS_URL:-}
     expose: ["3000"]
     networks: [default, backend]
     depends_on:
@@ -133,10 +135,10 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+    shm_size: 256mb
     stop_grace_period: 160s
 
   scheduler:
-    profiles: [scheduler]
     build:
       context: .
       dockerfile: Dockerfile

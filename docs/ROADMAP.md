@@ -153,24 +153,23 @@ Bu dosya kullanıcı master planındaki **0–141 maddelerinin tamamını** baş
 | 140 | Final positioning | Already exists | 0 / tümü | Kaynak, veri kopyası ve çalışma ilkeleri belirlendi; ürün hedefi sonraki milestone kabul ölçütüdür. |
 | 141 | İlk uygulanacak milestone | Already exists | 0 / tümü | Kaynak, veri kopyası ve çalışma ilkeleri belirlendi; ürün hedefi sonraki milestone kabul ölçütüdür. |
 
-## Roadmap ve bağımlılıklar
+## Güncel uygulama durumu
 
-| Aşama | Somut teslim | Geçiş koşulu |
+Başlangıç tablosu tarihsel fark analizidir. Güncel teslimler:
+
+| Aşama | Uygulanan kapsam | Kanıt / kalan dış bağımlılık |
 |---|---|---|
-| 0 | Kaynağın kontrollü içe alınması, özel dump ve secret envanteri, gerçek restore analizi | Kaynak/UUID/history korunur, özel dosyalar Git dışında |
-| 1 — doğrulandı | Node24, Docker/Coolify, typed ENV, auth, SSRF, güvenli JSON-LD, doğrulanmış test kaydı, baseline, log/health, lint/test/CI | Otomatik kontroller, yerel gerçek restore, data integrity; harici testler açıkça ayrılır |
-| 2 — uygulandı | Redis/BullMQ, worker/scheduler, idempotency, retry/backoff, outbox | Aynı iş iki kez etkide bulunmaz; eski scheduler kapatılır |
-| 3 | Dodo, Graph, R2, yeni analytics adapter'ları | Sandbox webhook replay, mail delivery ve entitlement koruma testleri |
-| 4 | Paylaşılan Screenshot Service ve ölçüm standardı | IndieTools erişimi, izolasyon ve render regression |
-| 5 | Founder/taxonomy/competition/claim/entitlement modelleri | Additive migration + mevcut kullanıcı/site/ad sahipliği doğrulanır |
-| 6 | Yeni submit akışı, otomatik metadata/technology/country | Kimlik/sahiplik, duplicate, server result ve queue uçtan uca |
-| 7 | Haftalık sıralama ve arşiv | Deterministik sonuç, immutable snapshot, UTC/version kuralları |
-| 8 | Badge/achievement/share | Hata veya ağ kesintisi veri silmez; tekrar işler güvenli |
-| 9 | Founder profilleri | Privacy, slug ve sahiplik kontrolleri |
-| 10 | Modern tasarım sistemi ve tüm ekranlar | Accessibility, responsive, gerçek içerik, görsel regression |
-| 11 | SEO/GEO, sitemap, robots, llms | Indexlenebilir gerçek public içerik; özel listing sızıntısı yok |
-| 12 | Analytics/growth/admin operasyon | Gerçek olaylar, consent/retention, RBAC/audit |
-| 13 | Production yayın | Master plan madde136'nın bütün kontrolleri; backup restore, monitoring, rollback |
+| 0–2 | Güvenli temel, restore, Docker, kalıcı kuyruk ve provider bütçeleri | MILESTONE-1.md, MILESTONE-2.md |
+| 3 | Dodo, Graph, R2, consent analytics ve entitlement modeli | PROVIDERS.md, PAYMENTS.md, EMAIL.md; gerçek hesap yapılandırması son alan adında |
+| 4 | Ayrı screenshot servisi, mobil/desktop/full-page, özel/public medya | services/screenshot/README.md; sandbox/SSRF Docker testleri geçti |
+| 5 | Taxonomy, ISO ülkeler, founder, claim, lifecycle, immutable yarışmalar | DATABASE.md, MIGRATION.md; eski kolon/değer/kimlik/sahiplik hashleri korundu |
+| 6 | URL → otomatik hazırlık → inceleme → yayın; iki cihaz ölçümleri | Kimlik, duplicate, tek kullanımlık kanıt ve transaction entegrasyon testleri |
+| 7 | Haftalık/aylık/all-time, ülke/kategori/teknoloji, Hall of Fame | METHODOLOGY.md; deterministik sıralama, UTC ve immutable snapshot testleri |
+| 8 | Evidence tabanlı awards, SVG/PNG paylaşım, güvenli badge grace | AWARDS-AND-BADGES.md; tekrar işleme, privacy ve ağ hata testleri |
+| 9 | Opt-in public kurucu profilleri, sahiplik, sosyal bağlantılar | Public privacy ve founder/claim entegrasyon testleri |
+| 10 | Yeni tasarım sistemi, public ekranlar, dashboard/admin/submit/pricing | DESIGN.md; masaüstü/mobil/light/dark 40 public tarayıcı kontrolü geçti |
+| 11 | Metadata, canonical, runtime sitemap, robots, llms ve IndexNow değerlendirmesi | SEO.md; demo noindex, final domain doğrulamaları yayın öncesi |
+| 12 | Bildirim tercihleri, audited RBAC admin, consent/revenue, reklam rezervasyonları | ADMIN.md, PROVIDERS.md; domain analytics ve olay tetikleyici son kontrolleri sürüyor |
+| 13 | Demo Coolify kaynağı, restore/release/backup/rollback hazırlığı | RUNBOOK.md, DEPLOYMENT.md; dağıtım ve final provider hesapları ayrı doğrulanır |
 
-M2, M1 doğrulandıktan sonra uygulandı. Maddeler33–36,103–104 için kuyruk, worker, scheduler, kalıcı iş kaydı ve kurtarma altyapısı hazırdır. Madde58 için email kuyruğu adı ayrıldı; Graph tüketicisi M3'te uygulanacak. Madde77 için özel operatör CLI hazırdır; yetkili admin arayüzü sonraki domain/RBAC aşamasındadır. Dodo/Graph/R2 ve paylaşılan screenshot servisi henüz uygulanmadı. Sonraki çalışma M3 sağlayıcı entegrasyonları; modern görsel tasarım M10 kapsamındadır.
-
+Demo için kullanıcı kararı: geçici alan adı, ödeme/e-posta/analytics/zamanlanmış ölçüm kapalı. Gerçek provider gönderimleri, son alan adı OAuth ayarları, bağımsız monitoring ve off-host backup doğrulanmadan ücretli production yayını tamamlandı sayılmaz. Mevcut Pro ve reklam hakları korunur; süresi dolan yeni haklar eski kalıcı alanlara dönüştürülmez.

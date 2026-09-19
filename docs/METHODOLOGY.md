@@ -1,0 +1,33 @@
+# Performance and ranking methodology
+
+## Lab measurements: psi-v2-two-sample
+
+HTTP measurements and background retests call the same `runPerformanceTest` service. Each strategy (`mobile` or `desktop`) makes two independent PageSpeed requests. Both settle before the service returns. Both must succeed with complete validated results: one successful observation never becomes a completed batch. Every actual provider call, including credential fallback, reserves the shared minute and durable UTC daily budget. Failed or interrupted requests are not refunded.
+
+For each numeric metric, the batch uses the arithmetic mean of the two observations. For two samples this is also the conventional median (the mean of the two middle values). Millisecond timings and the 0–100 score are rounded to the nearest integer for the existing database columns. CLS and normalized audit scores retain their arithmetic means. Load time means LCP, consistently across HTTP, jobs and displays. If either observation omits deprecated TTI, aggregate TTI and its score are NULL; the display says “Unavailable”. Lighthouse version identifiers are retained as provenance. These are synthetic **lab** observations; no field-data or real-user Core Web Vitals claim is made.
+
+Each completed batch writes one speed-test history row with `methodology_version='psi-v2-two-sample'`, `sample_count=2`, `metrics_source='lab'` and its strategy. A background job has one unique history reference; retries and stale workers cannot commit another row for that job. Mobile updates the legacy `sites.current_*` columns. Desktop remains in separate history and never replaces mobile display metrics. The daily scheduler creates one job per site/UTC-day/strategy. A current mobile measurement does not suppress a missing desktop measurement.
+
+Original measurements remain unchanged with `legacy-unspecified` or their original single-sample version and sample count 1. Existing proof tokens from the previous version can still create their corresponding single-sample historical entry. They do not qualify for the new competition. No old measurement is relabeled or supplemented with invented samples.
+
+## Competition rules: ranking-v1
+
+Weekly periods use ISO weeks: Monday 00:00:00 UTC inclusive to the following Monday exclusive. Monthly periods use the first day at 00:00:00 UTC to the next month's first day exclusive. Keys are `YYYY-Www` and `YYYY-MM`; the ISO week-year can differ from the calendar year around New Year. Mobile and desktop rankings are independent.
+
+A candidate must have a complete `psi-v2-two-sample` lab batch with at least two samples, an in-range score, and LCP/CLS/TBT. Its site must currently be public, active and unarchived when the live ranking or final snapshot is calculated. For a weekly/monthly period, use the latest qualifying batch inside that period; equal timestamps resolve by measurement UUID. More frequent manual testing does not average multiple batches into a higher weighted result. All-time rankings instead use the best qualifying batch per site, ordered by the same metric rules below; this live view has no fixed competition period.
+
+Order candidates by score descending, LCP ascending, CLS ascending, TBT ascending, then site UUID ascending. UUID is a stable final tie-breaker, not a performance claim. Country, category and technology partitions use explicit saved taxonomy; unknown countries or undetected technologies never receive invented classifications. All taxonomy membership is evaluated at finalization because no historical taxonomy evidence exists in the original export.
+
+“Most improved” requires a comparable last qualifying batch strictly before the period starts. Rank positive score-point gains first, then use the normal metric tie-breakers. Missing prior evidence and negative/no improvement are excluded. “Newcomer” requires the site's actual creation timestamp inside the period, then follows the normal metric ordering. These two views require a weekly/monthly period and are not defined for all-time.
+
+## Immutable archives
+
+Finalization is explicit and only allowed after a period ends according to the database clock. Concurrent finalizers serialize on the same period lock. One transaction creates all snapshots and closes the period; a failed transaction leaves no partial archive. Each strategy/scope saves its top 100, the measurement ID and timestamp, methodology versions, comparison evidence and the public site name/URL as they stood at finalization. Empty periods close with zero rows; there is no placeholder winner.
+
+Database triggers reject snapshot edits/deletes and insertions into a closed period, and prevent closed period changes. Later measurements, site renames and archival do not rewrite past winners. Public archive reads additionally hide sites that are now private, removed, suspended, pending or archived; remaining ranks are not renumbered and no replacement winner is invented. Explicitly listed unreachable/redirected/parked sites retain public historical reports. The migration fingerprint covers trigger/function definitions, and readiness requires enabled immutable-history triggers. Exceptional evidence correction requires a separately reviewed maintenance procedure; ordinary application operations cannot rewrite historical evidence.
+
+Live results can change as new measurements arrive. Their rank cursor is suitable for the current ordered view, but only a closed snapshot guarantees stable pagination across requests. Hall of Fame reads actual overall #1 snapshots, newest period first. The scheduler helper finalizes only the immediately preceding week and month; larger historical reconstruction must be an explicit reviewed operation and must never mix incompatible historical methodologies.
+
+## Validation
+
+Pure tests cover aggregation, missing TTI, complete-batch failures, UTC/ISO week rollover and tie-breaks. PostgreSQL integration tests use a nonowner application role and synthetic data to verify method isolation, device and taxonomy partitions, boundary exclusion, latest/best selection, improvement evidence, pagination, concurrent finalization and immutable historical winners. Providers are mocked; no live quota or customer data is used by these tests.

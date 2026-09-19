@@ -1,81 +1,32 @@
 import Link from "next/link";
 import Image from "next/image";
-import { SubmitButton } from "@/components/submit/SubmitButton";
-import { UserMenu } from "@/components/layout/UserMenu";
-import { MobileMenu } from "@/components/layout/MobileMenu";
+import { UserMenu } from "./UserMenu";
+import { MobileMenu } from "./MobileMenu";
+import { ThemeToggle } from "./ThemeToggle";
+import { siteConfig } from "@/config/site";
 import type { User } from "@/db/schema";
 
-interface NavProps {
-  user: User | null;
-}
-
-export function Nav({ user }: NavProps) {
-  return (
-    <nav className="fixed top-0 left-[190px] right-[190px] z-[100] bg-[rgba(17,15,13,0.88)] backdrop-blur-[20px] border-b border-border px-6 h-[60px] flex items-center justify-between max-[1100px]:left-0 max-[1100px]:right-0 max-[768px]:px-4">
-      <Link href="/" className="flex items-center gap-2 no-underline shrink-0">
-        <Image src="/logo.png" alt="TheFastestWeb" width={32} height={32} className="w-8 h-8 object-contain" />
-        <span className="font-display font-[800] text-[1.15rem] text-text-primary tracking-[-0.02em]">
-          TheFastestWeb
-        </span>
+export function Nav({ user }: { user: User | null }) {
+  return <header className="sticky top-0 z-50 border-b border-border bg-bg-main/95 backdrop-blur-md">
+    <nav aria-label="Main navigation" className="mx-auto flex h-[72px] max-w-[1600px] items-center justify-between gap-4 px-5 sm:px-8">
+      <Link href="/" className="flex shrink-0 items-center gap-2.5 text-text-primary no-underline" aria-label={siteConfig.name + " home"}>
+        <Image src="/logo.png" alt="" width={36} height={36} className="h-9 w-9 object-contain" priority />
+        <span className="text-lg font-semibold tracking-[-0.04em] sm:text-xl">{siteConfig.name}</span>
       </Link>
-      {/* Desktop nav */}
-      <div className="flex items-center gap-2 max-[768px]:hidden">
-        <Link
-          href="/"
-          className="px-3.5 py-[7px] rounded-lg text-[0.875rem] font-medium text-text-secondary no-underline transition-all duration-200 hover:text-text-primary hover:bg-bg-card"
-        >
-          Leaderboard
-        </Link>
-        <Link
-          href="/test"
-          className="px-3.5 py-[7px] rounded-lg text-[0.875rem] font-medium text-text-secondary no-underline transition-all duration-200 hover:text-text-primary hover:bg-bg-card"
-        >
-          Test Speed
-        </Link>
-        <Link
-          href="/pricing"
-          className="px-3.5 py-[7px] rounded-lg text-[0.875rem] font-medium text-text-secondary no-underline transition-all duration-200 hover:text-text-primary hover:bg-bg-card"
-        >
-          Pricing
-        </Link>
-        <SubmitButton />
-        {user ? (
-          <UserMenu
-            userId={user.id}
-            name={user.name}
-            avatarUrl={user.avatarUrl}
-            twitterHandle={user.twitterHandle}
-            isPro={user.isPro}
-          />
-        ) : (
-          <Link
-            href="/submit"
-            className="ml-1 px-3.5 py-[7px] rounded-lg text-[0.875rem] font-medium text-text-secondary no-underline transition-all duration-200 hover:text-text-primary hover:bg-bg-card"
-          >
-            Sign In
-          </Link>
-        )}
+      <div className="hidden items-center gap-1 xl:flex">
+        <Link className="nav-link" href="/leaderboard">Rankings</Link>
+        <Link className="nav-link" href="/explore">Explore</Link>
+        <Link className="nav-link" href="/founders">Founders</Link>
+        <Link className="nav-link" href="/blog">Journal</Link>
       </div>
-      {/* Mobile nav */}
-      <div className="flex items-center gap-2 min-[769px]:hidden">
-        {user ? (
-          <UserMenu
-            userId={user.id}
-            name={user.name}
-            avatarUrl={user.avatarUrl}
-            twitterHandle={user.twitterHandle}
-            isPro={user.isPro}
-          />
-        ) : (
-          <Link
-            href="/submit"
-            className="px-3 py-[6px] rounded-lg text-[0.82rem] font-medium text-text-secondary no-underline transition-all duration-200 hover:text-text-primary hover:bg-bg-card"
-          >
-            Sign In
-          </Link>
-        )}
+      <div className="flex items-center gap-1 sm:gap-2">
+        <ThemeToggle />
+        <Link className="nav-link hidden sm:inline-flex" href="/test">Test a site</Link>
+        <Link className="button-primary hidden md:inline-flex" href="/submit">Submit website</Link>
+        {user ? <UserMenu userId={user.id} name={user.name} avatarUrl={user.avatarUrl} twitterHandle={user.twitterHandle} isPro={user.isPro} />
+          : <Link className="nav-link hidden xl:inline-flex" href="/auth/login">Sign in</Link>}
         <MobileMenu />
       </div>
     </nav>
-  );
+  </header>;
 }

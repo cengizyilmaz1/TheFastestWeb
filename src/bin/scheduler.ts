@@ -6,19 +6,15 @@ import { checkReadiness } from "@/infrastructure/health/readiness";
 import { closeQueues } from "@/infrastructure/queue/queues";
 import { startSchedulerLoop } from "@/infrastructure/queue/scheduler-loop";
 import { installBackgroundShutdown } from "@/infrastructure/queue/lifecycle";
-import { scheduleDailyRetests, scheduleMaintenance, dispatchDueJobs } from "@/modules/jobs/service";
+import { scheduleDailyRetests, scheduleMaintenance, scheduleDailyProductJobs, dispatchDueJobs } from "@/modules/jobs/service";
 
 async function main() {
   const config = validateRuntimeEnv("scheduler");
-  if (!config.SCHEDULER_ENABLED) {
-    logger.error({ event: "scheduler.disabled", code: "CONFIGURATION_INVALID" });
-    process.exitCode = 1;
-    return;
-  }
   await checkReadiness();
-  const scheduler = startSchedulerLoop({ scheduleDailyRetests, scheduleMaintenance, dispatchDueJobs }, config.SCHEDULER_INTERVAL_SECONDS * 1000);
+  const scheduler = startSchedulerLoop({ scheduleDailyRetests, scheduleMaintenance, scheduleDailyProductJobs, dispatchDueJobs }, config.SCHEDULER_INTERVAL_SECONDS * 1000,{generate:config.SCHEDULER_ENABLED});
   let stopping = false;
-  const health = await startBackgroundHealth("scheduler", { isReady: () => !stopping && scheduler.isReady(), isLive: () => !stopping });
+  const health = await startBackgroundHealth("scheduler", { isReady: () => !stopping && scheduler.isReady(), isLive: () => !stopping,
+    mode:config.SCHEDULER_ENABLED ? "generation-and-dispatch" : "dispatch-only" });
   installBackgroundShutdown("scheduler", async () => {
     stopping = true;
     try { await scheduler.close(); }
@@ -28,7 +24,7 @@ async function main() {
       await closeDb();
     }
   });
-  logger.info({ event: "scheduler.started" });
+  logger.info({ event: "scheduler.started",mode:config.SCHEDULER_ENABLED ? "generation-and-dispatch" : "dispatch-only" });
 }
 
 void main().catch(async () => {

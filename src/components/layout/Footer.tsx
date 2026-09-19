@@ -1,45 +1,24 @@
 import Link from "next/link";
 import Image from "next/image";
+import { siteConfig } from "@/config/site";
 
 export function Footer() {
-  return (
-    <footer className="border-t border-border py-6 px-8 text-[0.78rem]">
-      <div className="flex items-center justify-between gap-4 max-[600px]:flex-col max-[600px]:items-center max-[600px]:text-center">
-        <Link
-          href="/"
-          className="flex items-center gap-2 no-underline group shrink-0"
-        >
-          <Image
-            src="/logo.png"
-            alt=""
-            width={24}
-            height={24}
-            className="w-6 h-6 rounded-full object-cover"
-          />
-          <span className="text-text-secondary group-hover:text-accent transition-colors">TheFastestWeb</span>
+  return <footer className="border-t border-border px-5 py-10 sm:px-8">
+    <div className="mx-auto flex max-w-[1120px] flex-col justify-between gap-8 sm:flex-row">
+      <div>
+        <Link href="/" className="inline-flex items-center gap-2 text-base font-semibold text-text-primary no-underline">
+          <Image src="/logo.png" alt="" width={28} height={28} />{siteConfig.name}
         </Link>
-
-        {/* Links */}
-        <div className="text-center text-text-muted">
-          <p className="mb-1">TheFastestWeb: Speed Rankings for the Web</p>
-          <p>
-            <Link href="/about" className="text-text-secondary no-underline hover:text-accent">About</Link>
-            {" · "}
-            <Link href="/blog" className="text-text-secondary no-underline hover:text-accent">Blog</Link>
-            {" · "}
-            <Link href="/pricing" className="text-text-secondary no-underline hover:text-accent">Advertise</Link>
-            {" · "}
-            <a href="mailto:thefastestwebsite@gmail.com" className="text-text-secondary no-underline hover:text-accent">Contact</a>
-            {" · "}
-            <Link href="/privacy" className="text-text-secondary no-underline hover:text-accent">Privacy</Link>
-            {" · "}
-            <Link href="/terms" className="text-text-secondary no-underline hover:text-accent">Terms</Link>
-          </p>
-        </div>
-
-        {/* Spacer to balance the left side */}
-        <div className="w-[120px] shrink-0 max-[600px]:hidden" />
+        <p className="mt-3 max-w-[28ch] text-sm text-text-secondary">A place for people who make the web faster.</p>
       </div>
-    </footer>
-  );
+      <nav aria-label="Footer" className="grid grid-cols-2 gap-x-10 gap-y-3 text-sm text-text-secondary sm:grid-cols-3">
+        {[["/about", "About"], ["/methodology", "How we measure"], ["/blog", "Journal"], ["/pricing", "Plans & sponsorship"], ["/privacy", "Privacy"], ["/terms", "Terms"]].map(([href, label]) => <Link key={href} href={href} className="hover:text-text-primary">{label}</Link>)}
+        {siteConfig.email && <a className="hover:text-text-primary" href={"mailto:" + siteConfig.email}>Contact</a>}
+        {siteConfig.indieToolsUrl && <a className="hover:text-text-primary" href={siteConfig.indieToolsUrl} rel="noopener noreferrer">Discover IndieTools ↗</a>}
+      </nav>
+    </div>
+    <div className="mx-auto mt-10 flex max-w-[1120px] flex-wrap justify-between gap-3 border-t border-border pt-5 text-xs text-text-muted">
+      <span>© {new Date().getUTCFullYear()} {siteConfig.name}</span><span>Lab measurements. Transparent methodology. Real websites.</span>
+    </div>
+  </footer>;
 }

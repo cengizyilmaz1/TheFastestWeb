@@ -8,7 +8,7 @@
 - Submission bodies reject client score, ownership, tier and badge-verification fields. Only an authenticated server-generated result can be consumed, once, for the same normalized URL and mobile strategy.
 - Google callback requires verified email. Existing UUIDs/ownership remain authoritative.
 - Cron credentials are required and constant-time compared. A missing secret never opens the endpoint. Retests are serialized, bounded and store real measurements only.
-- Unsafe payment webhook handling is suspended until an idempotent verified ledger exists.
+- Polar routes are retired. Dodo webhooks verify the raw-body signature, persist a sanitized event and transactional outbox, and grant access idempotently. Exact provider price/currency/interval checks precede checkout. Ambiguous checkout creation retains its order and ad hold for reconciliation.
 - Private listings require ownership for profile/history; badge and directory discovery require public listings.
 - HTTP JSON error messages never contain raw database/provider exceptions. Correlation IDs and redaction are tested.
 - Dangerous maintenance/deletion scripts and synthetic production seed/history generators were removed.
@@ -23,7 +23,11 @@ Atomic Redis request windows are shared across replicas; actors are hashed. Publ
 
 Background job payloads in Redis contain only job/correlation UUIDs. PostgreSQL lease tokens and a unique measurement/job reference prevent stale workers from committing duplicate history. Manual retest/status routes enforce current ownership; the operator CLI is private to host/container access. Failed provider text is reduced to safe error codes. Cancellation fences results but cannot undo an already transmitted upstream request.
 
-The PSI service is external: a successful HTTP response without valid Lighthouse metrics is a failure, never an invented 0. M1 records one sample; it does not claim statistical stability.
+The PSI service is external: a successful HTTP response without valid Lighthouse metrics is a failure, never an invented 0. Current measurements require two complete samples per device. Legacy samples remain explicitly versioned and cannot enter current competitions. Device strategies and methodologies never mix in history or rankings.
+
+Founder profiles are opt-in. Public directory/profile/sitemap/award responses exclude account identifiers, emails and raw provider payloads. Private, removed or archived sites disappear from public competition reads without rewriting immutable historical snapshots. Ownership proofs are hashed, expire and never silently transfer an already-owned site. Admin mutations bind a short-lived signed preview to the actor, action and current record and commit with a single-use audit entry.
+
+Graph delivery uses scoped application credentials and distinguishes accepted from delivered. Uncertain outcomes are not blindly resent. R2 uses separate private/public buckets and authenticated private reads. Screenshots render in a separate sandboxed service, validate redirects/subresources and retain private captures until explicit public approval. Analytics scripts require consent and remain excluded from private routes; GPC/DNT deny collection.
 
 ## Secrets and accounts
 

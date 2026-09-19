@@ -21,7 +21,11 @@ import { sql } from "drizzle-orm";
 import type { PSIResult } from "@/lib/pagespeed";
 
 /** Only the validated server result is persisted; raw upstream payloads are excluded. */
-export type VerifiedPerformanceResult = Omit<PSIResult, "rawResponse">;
+export type VerifiedPerformanceResult = Omit<PSIResult, "rawResponse"> & {
+  sampleCount?: number;
+  metricsSource?: "lab";
+  methodologyVersion?: string;
+};
 
 export const categoryEnum = pgEnum("category", [
   "saas",
@@ -636,6 +640,52 @@ export const achievements = pgTable("achievements", {
   description: text("description").notNull(),
   active: boolean("active").default(true).notNull(),
 });
+
+export const analyticsEvents = pgTable("analytics_events", {
+  id:uuid("id").primaryKey().defaultRandom(),
+  eventKey:text("event_key").unique().notNull(),
+  name:text("name").notNull(),
+  siteId:uuid("site_id").references(()=>sites.id,{onDelete:"set null"}),
+  occurredAt:timestamp("occurred_at",{withTimezone:true}).defaultNow().notNull(),
+  properties:jsonb("properties").$type<Record<string,unknown>>().default({}).notNull(),
+},(t)=>[
+  index("analytics_events_name_occurred_idx").on(t.name,t.occurredAt.desc()),
+  check("analytics_events_name_valid",sql`${t.name} IN ('site_submitted','site_claimed','speed_test_started','speed_test_completed','speed_test_failed','badge_verified','badge_awarded','weekly_entered','weekly_won','share_card_generated','ad_clicked','checkout_started','payment_completed','subscription_changed','ad_approved','ranking_finalized')`),
+  check("analytics_events_properties_object",sql`jsonb_typeof(${t.properties})='object'`),
+]);
+
+export const adInventory = pgTable("ad_inventory", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  position: adPositionEnum("position").notNull(),
+  orderIndex: integer("order_index").notNull(),
+  active: boolean("active").default(false).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [
+  uniqueIndex("ad_inventory_position_order_unique").on(t.position,t.orderIndex),
+  check("ad_inventory_order_nonnegative",sql`${t.orderIndex} >= 0`),
+]);
+
+export const adReservations = pgTable("ad_reservations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  inventoryId: uuid("inventory_id").notNull().references(()=>adInventory.id,{onDelete:"restrict"}),
+  orderId: uuid("order_id").notNull().unique().references(()=>checkoutOrders.id,{onDelete:"restrict"}),
+  userId: uuid("user_id").notNull().references(()=>users.id,{onDelete:"restrict"}),
+  siteId: uuid("site_id").references(()=>sites.id,{onDelete:"set null"}),
+  adSlotId: integer("ad_slot_id").references(()=>adSlots.id,{onDelete:"set null"}),
+  status: text("status").$type<"held"|"paid"|"active"|"expired"|"cancelled"|"refunded"|"rejected">().default("held").notNull(),
+  startsAt: timestamp("starts_at",{withTimezone:true}),
+  endsAt: timestamp("ends_at",{withTimezone:true}),
+  releaseEvidence: text("release_evidence"),
+  createdAt: timestamp("created_at",{withTimezone:true}).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at",{withTimezone:true}).defaultNow().notNull(),
+}, (t)=>[
+  uniqueIndex("ad_reservations_live_inventory_unique").on(t.inventoryId).where(sql`${t.status} IN ('held','paid','active')`),
+  index("ad_reservations_user_created_idx").on(t.userId,t.createdAt),
+  check("ad_reservations_status_valid",sql`${t.status} IN ('held','paid','active','expired','cancelled','refunded','rejected')`),
+  check("ad_reservations_window_valid",sql`(${t.startsAt} IS NULL AND ${t.endsAt} IS NULL) OR (${t.startsAt} IS NOT NULL AND ${t.endsAt} IS NOT NULL AND ${t.endsAt} > ${t.startsAt})`),
+  check("ad_reservations_active_window",sql`${t.status} <> 'active' OR (${t.startsAt} IS NOT NULL AND ${t.endsAt} IS NOT NULL)`),
+]);
 
 export const siteAwards = pgTable("site_awards", {
   id: uuid("id").primaryKey().defaultRandom(),

@@ -82,6 +82,7 @@ export function getRelatedPosts(currentSlug: string, count = 3): PostMeta[] {
 }
 
 export function getPost(slug: string): Post | null {
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) return null;
   const filePath = path.join(BLOG_DIR, `${slug}.mdx`);
   if (!fs.existsSync(filePath)) return null;
   const raw = fs.readFileSync(filePath, "utf-8");

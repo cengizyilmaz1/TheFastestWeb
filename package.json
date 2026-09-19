@@ -17,7 +17,9 @@
     "build:jobs": "node scripts/build-jobs.mjs",
     "worker": "node dist/jobs/worker.cjs",
     "scheduler": "node dist/jobs/scheduler.cjs",
-    "queue:admin": "node dist/jobs/queue-admin.cjs"
+    "queue:admin": "node dist/jobs/queue-admin.cjs",
+    "test:public": "node scripts/verify-public.mjs",
+    "admin:bootstrap": "node dist/jobs/admin-bootstrap.cjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1136.0",
@@ -41,12 +43,12 @@
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "recharts": "3.10.1",
-    "resend": "6.28.1",
     "sharp": "0.35.4",
     "standardwebhooks": "1.1.1",
     "zod": "4.6.5"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
     "@playwright/test": "1.63.0",
     "@tailwindcss/postcss": "4.3.3",
     "@types/node": "24.13.6",
@@ -56,6 +58,7 @@
     "esbuild": "0.28.2",
     "eslint": "9.39.5",
     "eslint-config-next": "16.3.5",
+    "lighthouse": "13.5.0",
     "tailwindcss": "4.3.3",
     "tsx": "4.23.13",
     "typescript": "6.0.3",

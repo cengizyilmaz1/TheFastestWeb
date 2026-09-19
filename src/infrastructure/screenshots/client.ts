@@ -38,3 +38,25 @@ export async function getScreenshot(id: string) {
   if (!z.uuid().safeParse(id).success) throw new AppError("INVALID_REQUEST", "Invalid screenshot ID.", 400);
   return request(`/v1/captures/${id}`);
 }
+
+/** Server-only private preview. Credentials never become an image URL. */
+export async function getScreenshotOriginal(id: string): Promise<Buffer> {
+  const env = getEnv();
+  if (!z.uuid().safeParse(id).success) throw new AppError("INVALID_REQUEST", "Invalid screenshot ID.", 400);
+  if (!env.SCREENSHOTS_ENABLED || !env.SCREENSHOT_SERVICE_URL || !env.SCREENSHOT_SERVICE_TOKEN) throw new AppError("FEATURE_DISABLED", "Screenshot preview is unavailable.", 503);
+  try {
+    const response = await fetch(new URL(`/v1/captures/${id}/image`, env.SCREENSHOT_SERVICE_URL), { redirect: "error", cache: "no-store",
+      signal: AbortSignal.timeout(20_000), headers: { authorization: `Bearer ${env.SCREENSHOT_CLIENT_ID}.${env.SCREENSHOT_SERVICE_TOKEN}` } });
+    if (!response.ok || response.headers.get("content-type") !== "image/jpeg") throw new Error("Invalid preview response");
+    const reader = response.body?.getReader(); if (!reader) throw new Error("Empty preview");
+    const chunks: Uint8Array[] = []; let size = 0;
+    try {
+      for (;;) { const { value, done } = await reader.read(); if (done) break; size += value.length;
+        if (size > 6 * 1024 * 1024) throw new Error("Preview size limit"); chunks.push(value); }
+      const bytes = Buffer.concat(chunks);
+      if (bytes.length < 3 || bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff) throw new Error("Invalid JPEG");
+      return bytes;
+    } catch (error) { await reader.cancel().catch(() => undefined); throw error; }
+    finally { reader.releaseLock(); }
+  } catch { throw new AppError("UPSTREAM_UNAVAILABLE", "The screenshot preview is not ready yet.", 503); }
+}

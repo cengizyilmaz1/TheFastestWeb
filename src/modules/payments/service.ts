@@ -2,20 +2,23 @@ import { randomUUID } from "node:crypto";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, type Database } from "@/db";
-import { backgroundJobs, checkoutOrders, entitlements, jobEvents, paymentEvents, products,
+import { adReservations, backgroundJobs, checkoutOrders, entitlements, jobEvents, paymentEvents, products,
   providerPayments, sites, subscriptions, users } from "@/db/schema";
 import { getEnv } from "@/config/env";
 import { dodo, isPaymentsEnabled, PaymentProviderError } from "@/infrastructure/payments/dodo";
 import type { VerifiedPaymentEvent } from "@/infrastructure/payments/webhook";
 import { getCorrelationId } from "@/lib/http/correlation";
 import { AppError } from "@/lib/http/errors";
+import { enqueueNotification } from "@/modules/notifications/service";
+import { listAvailableAdInventory, reconcileAdPayment, releaseFailedAdCreation, reserveAdInventory } from "./ads";
+import { recordAnalyticsEvent } from "@/modules/analytics/events";
 
 type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 const snapshotSchema = z.object({ providerProductId: z.string().min(1).max(200), title: z.string().max(200),
   kind: z.enum(["pro_listing", "featured_listing", "sidebar_ad", "sponsorship"]),
   amountCents: z.number().int().nonnegative(), currency: z.string().regex(/^[A-Z]{3}$/),
   billingInterval: z.enum(["one_time", "month", "year"]), entitlementDays: z.number().int().positive().nullable(),
-  requiresSite: z.boolean() });
+  requiresSite: z.boolean(), scope: z.enum(["account", "site"]).optional(), analyticsConsent: z.boolean().optional(), analyticsVisitorId: z.uuid().optional() });
 type Snapshot = z.infer<typeof snapshotSchema>;
 const kinds = { pro_listing: "PRO", featured_listing: "FEATURED", sidebar_ad: "AD_SLOT", sponsorship: "SPONSORSHIP" } as const;
 
@@ -34,14 +37,18 @@ export class PaymentBindingError extends AppError {
 
 export async function listProducts() {
   if (!isPaymentsEnabled()) return [];
-  return database().select({ key: products.key, title: products.title, kind: products.kind,
+  const catalog = await database().select({ key: products.key, title: products.title, kind: products.kind,
     amountCents: products.amountCents, currency: products.currency, billingInterval: products.billingInterval,
     entitlementDays: products.entitlementDays, requiresSite: products.requiresSite })
     .from(products).where(and(eq(products.active, true), sql`${products.providerProductId} IS NOT NULL`));
+  const available = catalog.some((product) => product.kind === "sidebar_ad") ? await listAvailableAdInventory() : [];
+  return catalog.filter((product) => (product.kind !== "sidebar_ad" || available.length > 0)
+    && (!["featured_listing", "sponsorship"].includes(product.kind) || product.requiresSite));
 }
 
 /** The caller supplies only a catalog key and owned site, never a price or provider ID. */
-export async function createCheckout(input: { userId: string; productKey: string; siteId?: string; idempotencyKey: string }) {
+export async function createCheckout(input: { userId: string; productKey: string; siteId?: string; idempotencyKey: string;
+  analytics?: { consent: boolean; visitorId?: string }; adInventoryId?: string }) {
   enabled();
   const db = database();
   const prepared = await db.transaction(async (tx) => {
@@ -50,7 +57,13 @@ export async function createCheckout(input: { userId: string; productKey: string
     if (!user) throw new AppError("UNAUTHORIZED", "Sign in to purchase a product.", 401);
     const [product] = await tx.select().from(products).where(and(eq(products.key, input.productKey), eq(products.active, true)));
     if (!product?.providerProductId) throw new AppError("NOT_FOUND", "This product is not available.", 404);
+    if (["featured_listing", "sponsorship"].includes(product.kind) && !product.requiresSite) throw new AppError("CONFLICT", "This placement product requires a website-bound catalog configuration.", 409);
+    if (product.kind === "sidebar_ad" && (!input.adInventoryId || !input.siteId || product.billingInterval !== "one_time" || !product.entitlementDays || !product.requiresSite)) {
+      throw new AppError("INVALID_REQUEST", "Choose an available placement for this fixed-duration ad product.", 400);
+    }
+    if (product.kind !== "sidebar_ad" && input.adInventoryId) throw new AppError("INVALID_REQUEST", "This product does not use ad inventory.", 400);
     if (product.requiresSite && !input.siteId) throw new AppError("INVALID_REQUEST", "Choose an owned website for this product.", 400);
+    if (!product.requiresSite && input.siteId) throw new AppError("INVALID_REQUEST", "This product applies to your account; do not select a website.", 400);
     if (input.siteId) {
       const [site] = await tx.select({ id: sites.id }).from(sites).where(and(eq(sites.id, input.siteId), eq(sites.ownerId, input.userId))).for("share");
       if (!site) throw new AppError("NOT_FOUND", "Owned website not found.", 404);
@@ -63,10 +76,20 @@ export async function createCheckout(input: { userId: string; productKey: string
       input.siteId ? eq(checkoutOrders.siteId, input.siteId) : sql`${checkoutOrders.siteId} IS NULL`,
       inArray(checkoutOrders.status, ["creating", "pending", "ready", "uncertain"]),
     )).orderBy(desc(checkoutOrders.createdAt)).limit(1);
-    if (open) return { order: open, create: false, user };
-    const snapshot = snapshotSchema.parse(product);
+    if (open) {
+      if (product.kind === "sidebar_ad") {
+        const [reservation] = await tx.select().from(adReservations).where(eq(adReservations.orderId, open.id));
+        if (!reservation || reservation.inventoryId !== input.adInventoryId) throw new AppError("CONFLICT", "An existing checkout reserves a different placement. Reconcile it before starting another.", 409);
+      }
+      return { order: open, create: false, user };
+    }
+    const snapshot = snapshotSchema.parse({ ...product, scope: input.siteId ? "site" : "account", analyticsConsent: getEnv().ANALYTICS_ENABLED && input.analytics?.consent === true,
+      ...(input.analytics?.consent && input.analytics.visitorId ? { analyticsVisitorId: input.analytics.visitorId } : {}) });
     const [order] = await tx.insert(checkoutOrders).values({ userId: input.userId, siteId: input.siteId,
       productId: product.id, idempotencyKey: key, status: "creating", productSnapshot: snapshot }).returning();
+    if (product.kind === "sidebar_ad") await reserveAdInventory(tx, { inventoryId: input.adInventoryId!, orderId: order.id, userId: input.userId, siteId: input.siteId! });
+    await recordAnalyticsEvent({ name: "checkout_started", eventKey: `checkout:${order.id}:started`, siteId: order.siteId,
+      properties: { kind: snapshot.kind, currency: snapshot.currency, billingInterval: snapshot.billingInterval } }, tx);
     return { order, create: true, user };
   });
   if (!prepared.create) {
@@ -76,15 +99,20 @@ export async function createCheckout(input: { userId: string; productKey: string
   const snapshot = snapshotSchema.parse(prepared.order.productSnapshot);
   try {
     const checkout = await dodo.createCheckout({ orderId: prepared.order.id, productId: snapshot.providerProductId,
-      email: prepared.user.email, name: prepared.user.name });
+      email: prepared.user.email, name: prepared.user.name, amountCents: snapshot.amountCents,
+      currency: snapshot.currency, billingInterval: snapshot.billingInterval });
     // A fast webhook may mark the order paid before this update. Preserve that state.
     await db.update(checkoutOrders).set({ providerCheckoutId: checkout.id, checkoutUrl: checkout.url,
       status: sql`CASE WHEN ${checkoutOrders.status} = 'paid' THEN 'paid' ELSE 'ready' END`, updatedAt: sql`now()` })
       .where(eq(checkoutOrders.id, prepared.order.id));
     return { orderId: prepared.order.id, url: checkout.url };
   } catch (error) {
-    await db.update(checkoutOrders).set({ status: error instanceof PaymentProviderError && !error.uncertain ? "failed" : "uncertain", updatedAt: sql`now()` })
-      .where(and(eq(checkoutOrders.id, prepared.order.id), eq(checkoutOrders.status, "creating")));
+    const rejected = (error instanceof PaymentProviderError && !error.uncertain) || (error instanceof AppError && error.code === "CONFLICT");
+    await db.transaction(async (tx) => {
+      const [updated] = await tx.update(checkoutOrders).set({ status: rejected ? "failed" : "uncertain", updatedAt: sql`now()` })
+        .where(and(eq(checkoutOrders.id, prepared.order.id), eq(checkoutOrders.status, "creating"))).returning();
+      if (updated && rejected) await releaseFailedAdCreation(tx, updated.id);
+    });
     throw error;
   }
 }
@@ -121,7 +149,7 @@ async function grant(tx: Transaction, order: Order, snapshot: Snapshot, sourceId
   await tx.insert(entitlements).values({ userId: order.userId, siteId: order.siteId, kind: kinds[snapshot.kind],
     source: "dodo", sourceId, status, startsAt: start, endsAt: end })
     .onConflictDoUpdate({ target: [entitlements.source, entitlements.sourceId, entitlements.kind], set: {
-      status, endsAt: end, updatedAt: sql`now()`,
+      status, endsAt: snapshot.kind === "sidebar_ad" ? sql`CASE WHEN ${entitlements.adSlotId} IS NOT NULL THEN ${entitlements.endsAt} ELSE ${end}::timestamptz END` : end, updatedAt: sql`now()`,
     } });
 }
 function validDate(value: string): Date {
@@ -168,21 +196,34 @@ export async function processPaymentWebhook(eventId: string): Promise<{ status: 
       const [old] = await tx.select().from(providerPayments).where(eq(providerPayments.providerPaymentId, payment.payment_id));
       if (!old || old.occurredAt <= event.occurredAt) {
         const reversed = payment.refund_status === "full";
-        const disputed = payment.disputes.some((item) => !["won", "cancelled", "prevented", "resolved"].includes(item.dispute_status));
+        const disputed = payment.disputes.some((item) => !["dispute_won", "dispute_cancelled"].includes(item.dispute_status));
         const status = reversed ? "refunded" : disputed ? "disputed" : payment.status === "succeeded" ? "succeeded"
           : ["failed", "cancelled"].includes(payment.status ?? "") ? "failed" : "pending";
         // A later-delivered stale success cannot erase a recorded full reversal.
         const safeStatus = old?.status === "refunded" && status === "succeeded" ? "refunded" : status;
-        await tx.insert(providerPayments).values({ providerPaymentId: payment.payment_id, orderId: order.id,
+        const [savedPayment] = await tx.insert(providerPayments).values({ providerPaymentId: payment.payment_id, orderId: order.id,
           userId: order.userId, siteId: order.siteId, productId: order.productId, amountCents: payment.total_amount,
           currency: payment.currency, status: safeStatus, providerSubscriptionId: payment.subscription_id, occurredAt: event.occurredAt })
           .onConflictDoUpdate({ target: providerPayments.providerPaymentId, set: { status: safeStatus,
-            amountCents: payment.total_amount, currency: payment.currency, occurredAt: event.occurredAt, updatedAt: sql`now()` } });
+            amountCents: payment.total_amount, currency: payment.currency, occurredAt: event.occurredAt, updatedAt: sql`now()` } }).returning();
         if (safeStatus === "succeeded") await tx.update(checkoutOrders).set({ status: "paid", updatedAt: sql`now()` }).where(eq(checkoutOrders.id, order.id));
+        if (safeStatus === "succeeded") await recordAnalyticsEvent({ name: "payment_completed", eventKey: `payment:${savedPayment.id}:completed`, siteId: order.siteId,
+          properties: { kind: snapshot.kind, currency: savedPayment.currency, billingInterval: snapshot.billingInterval } }, tx);
+        if (safeStatus === "succeeded" || safeStatus === "failed") await enqueueNotification({ userId: order.userId,
+          eventKey: `payment:${savedPayment.id}:${safeStatus}`, type: safeStatus === "succeeded" ? "payment_success" : "payment_failed", variables: {} }, tx);
+        if (safeStatus === "succeeded" && snapshot.analyticsConsent && snapshot.analyticsVisitorId && getEnv().ANALYTICS_ENABLED && getEnv().DATAFAST_API_KEY
+          && (!subscription || payment.checkout_session_id === order.providerCheckoutId)
+          && Date.now() - order.createdAt.getTime() < 86_400_000) {
+          const [analyticsJob] = await tx.insert(backgroundJobs).values({ queue: "analytics", kind: "analytics.payment", jobKey: `analytics:payment:${savedPayment.id}`,
+            payload: { paymentId: savedPayment.id }, maxAttempts: getEnv().JOB_MAX_ATTEMPTS, correlationId: getCorrelationId() ?? randomUUID() })
+            .onConflictDoNothing({ target: backgroundJobs.jobKey }).returning();
+          if (analyticsJob) await tx.insert(jobEvents).values({ jobId: analyticsJob.id, event: "scheduled", actor: "payments", attempt: 0 });
+        }
         if (!subscription) {
           const start = validDate(payment.created_at);
+          if (snapshot.kind === "sidebar_ad") await reconcileAdPayment(tx, order.id, safeStatus);
           await grant(tx, order, snapshot, `payment:${payment.payment_id}`, start,
-            snapshot.entitlementDays ? new Date(start.getTime() + snapshot.entitlementDays * 86_400_000) : null, safeStatus === "succeeded");
+            snapshot.kind !== "sidebar_ad" && snapshot.entitlementDays ? new Date(start.getTime() + snapshot.entitlementDays * 86_400_000) : null, safeStatus === "succeeded");
         }
       }
     }
@@ -200,6 +241,10 @@ export async function processPaymentWebhook(eventId: string): Promise<{ status: 
         const blocked = latestPayment && ["refunded", "disputed", "failed"].includes(latestPayment.status);
         await grant(tx, order, snapshot, `subscription:${subscription.subscription_id}`, validDate(subscription.created_at), end,
           subscription.status === "active" && !blocked);
+        if (!old || old.status !== subscription.status) await enqueueNotification({ userId: order.userId,
+          eventKey: `subscription:${subscription.subscription_id}:${event.id}`, type: "subscription_event", variables: {} }, tx);
+        if (!old || old.status !== subscription.status) await recordAnalyticsEvent({ name: "subscription_changed", eventKey: `subscription:${event.id}:changed`, siteId: order.siteId,
+          properties: { status: subscription.status } }, tx);
       }
     }
     await tx.update(paymentEvents).set({ orderId: order.id, processedAt: sql`now()` }).where(eq(paymentEvents.id, event.id));

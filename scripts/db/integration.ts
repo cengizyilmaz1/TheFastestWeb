@@ -48,12 +48,21 @@ async function main(): Promise<void> {
       (SELECT count(*) FROM app_meta.schema_migrations)::integer AS migrations,
       (SELECT count(*) FROM pg_class WHERE relnamespace='public'::regnamespace AND relkind='r' AND relrowsecurity)::integer AS rls,
       (SELECT count(*) FROM public.verified_speed_tests)::integer AS verified`;
-    assert.deepEqual({ ...state }, { migrations: 5, rls: 0, verified: 0 });
+    assert.deepEqual({ ...state }, { migrations: 7, rls: 0, verified: 0 });
     console.log("PASS fresh database, concurrent runners, idempotence, and final RLS state");
 
     const restored = await isolated("restored");
     await fixture(restored.sql);
+    await restored.sql`INSERT INTO public.ad_slots(position,order_index,name,url,tagline)
+      VALUES('left',0,'Synthetic legacy A','https://example.com/a','Fixture'),
+        ('left',0,'Synthetic legacy B','https://example.com/b','Fixture'),
+        ('right',1,'Synthetic legacy C','https://example.com/c','Fixture')`;
+    const priorAds=await restored.sql`SELECT to_jsonb(a) AS data FROM public.ad_slots a ORDER BY id`;
     await migrateDatabase({ databaseUrl: restored.url, log: () => undefined });
+    assert.deepEqual(await restored.sql`SELECT to_jsonb(a)-'status' AS data FROM public.ad_slots a ORDER BY id`,priorAds);
+    const [inventoryState]=await restored.sql`SELECT (SELECT count(*)::int FROM public.ad_inventory) AS capacity,
+      (SELECT count(*)::int FROM public.ad_reservations) AS reservations`;
+    assert.deepEqual({...inventoryState},{capacity:2,reservations:0});
     const [kept] = await restored.sql`SELECT s.id,s.url,s.owner_id,s.normalized_url,t.id AS test_id,t.score,t.lcp_ms,t.methodology_version
       FROM public.sites s JOIN public.speed_tests t ON t.site_id=s.id`;
     assert.deepEqual({ ...kept }, { id: siteId, url: "https://example.com", owner_id: userId,
@@ -76,7 +85,7 @@ async function main(): Promise<void> {
     const [m1History] = await m1.sql`SELECT to_jsonb(t) AS data FROM public.speed_tests t WHERE id=${speedId}`;
     const upgradeLog: string[] = [];
     await migrateDatabase({ databaseUrl: m1.url, log: (message) => upgradeLog.push(message) });
-    assert.deepEqual(upgradeLog, ["Applied 0002_m2_job_ledger.", "Applied 0003_m3_providers.", "Applied 0004_m5_product_model."]);
+    assert.deepEqual(upgradeLog, ["Applied 0002_m2_job_ledger.", "Applied 0003_m3_providers.", "Applied 0004_m5_product_model.","Applied 0005_ad_inventory.","Applied 0006_domain_analytics."]);
     const keptLedger = await m1.sql`SELECT version,checksum,applied_at FROM app_meta.schema_migrations WHERE version < '0002' ORDER BY version`;
     const [m2History] = await m1.sql`SELECT to_jsonb(t)-'background_job_id'-'sample_count'-'metrics_source' AS data, background_job_id FROM public.speed_tests t WHERE id=${speedId}`;
     assert.deepEqual([...keptLedger], [...oldLedger]);

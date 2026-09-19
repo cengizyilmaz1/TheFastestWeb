@@ -6,7 +6,7 @@ export type MailMessage = { to: string; subject: string; html: string };
 export interface MailProvider { send(message: MailMessage): Promise<{ status: "accepted" }> }
 export class MailDeliveryError extends AppError {
   constructor(readonly deliveryCode: "TOKEN_UNAVAILABLE" | "RATE_LIMITED" | "REJECTED" | "UNCERTAIN",
-    readonly retryable: boolean) {
+    readonly retryable: boolean, readonly retryAfterMs?: number) {
     super("UPSTREAM_UNAVAILABLE", "The email provider could not confirm this request.", 503);
   }
 }
@@ -64,7 +64,11 @@ export const graphMail: MailProvider = {
     await response.body?.cancel();
     if (response.status === 202) return { status: "accepted" };
     if (response.status === 401) { cachedToken = undefined; throw new MailDeliveryError("REJECTED", true); }
-    if (response.status === 429) throw new MailDeliveryError("RATE_LIMITED", true);
+    if (response.status === 429) {
+      const header = response.headers.get("retry-after") ?? "";
+      const duration = /^\d+$/.test(header) ? Number(header) * 1000 : Date.parse(header) - Date.now();
+      throw new MailDeliveryError("RATE_LIMITED", true, Number.isFinite(duration) ? Math.min(86_400_000, Math.max(0, duration)) : undefined);
+    }
     if (response.status >= 400 && response.status < 500 && response.status !== 408) throw new MailDeliveryError("REJECTED", false);
     // A timeout or server error after submission cannot prove the mail was unsent.
     throw new MailDeliveryError("UNCERTAIN", false);

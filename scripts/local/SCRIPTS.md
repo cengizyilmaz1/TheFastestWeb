@@ -4,10 +4,10 @@ The standalone scripts in this directory were removed. They duplicated applicati
 
 | Retired script | Replacement |
 | --- | --- |
-| `retest.mjs`, `retest-one.mjs` | The centralized performance service; scheduled execution moves to deduplicated BullMQ jobs in M2. |
-| `check-badges.mjs` | Authenticated `/api/verify-badge` and `getVerifiedBadge()` in `src/infrastructure/browser/badge-verification.ts` provide individual checks in M1. Scheduled checks arrive in M2; grace periods and non-destructive enforcement are M8 work. |
-| `inactivity.mjs` | No automatic listing removal in M1. A future lifecycle job must preserve permanent listings and historical measurements. |
-| `trend-alert.mjs`, `weekly-recap.mjs` | Queue-backed notification jobs in M2 and Microsoft Graph delivery in M3; user preferences and deduplication must be enforced before scheduling. |
+| `retest.mjs`, `retest-one.mjs` | Central two-sample performance service and deduplicated BullMQ jobs per site/day/device. |
+| `check-badges.mjs` | Badge queue with dry-run prerequisite, evidence and seven-day missing-badge grace. Temporary failures do not remove listings or history. |
+| `inactivity.mjs` | No automatic listing removal. Owner pause and audited lifecycle operations preserve historical data. |
+| `trend-alert.mjs`, `weekly-recap.mjs` | Transactional notification outbox, compatible-method performance changes and closed weekly results. Graph delivery enforces preferences and idempotency. |
 | `migrate-activity-tracking.mjs` | The verified migration baseline and `npm run db:migrate`; never apply old ad-hoc ALTER statements to production. |
 | `env.mjs` | Typed `src/config/env.ts`; runtime configuration comes from `process.env`, with local dotenv loading limited to development tooling. |
 

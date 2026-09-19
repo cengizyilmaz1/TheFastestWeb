@@ -45,7 +45,7 @@ export function fixtureSql(): ReturnType<typeof postgres> {
 }
 
 export async function resetIntegrationData(): Promise<void> {
-  await fixtureSql()`TRUNCATE public.payment_events, public.payment_ledger, public.subscriptions,
+  await fixtureSql()`TRUNCATE public.analytics_events,public.ad_reservations,public.ad_inventory,public.payment_events, public.payment_ledger, public.subscriptions,
     public.checkout_orders, public.products, public.entitlements, public.email_deliveries,
     public.notifications, public.notification_preferences, public.founder_social_links, public.founder_sites,
     public.founders, public.site_social_links, public.site_categories, public.site_technologies,

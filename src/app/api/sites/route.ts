@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/db";
 import { sites } from "@/db/schema";
-import { desc, asc, eq, sql } from "drizzle-orm";
+import { desc, asc, sql } from "drizzle-orm";
+import { publicSiteProjection, publiclyActive } from "@/modules/sites/directory";
 import { withApi } from "@/lib/http/api";
 import { AppError } from "@/lib/http/errors";
 const pagination = z.object({
@@ -24,7 +25,7 @@ export const GET = withApi(async (request) => {
   const orderBy = sort === "loadtime"
     ? [asc(loadMs), desc(sites.currentScore), asc(sites.createdAt), asc(sites.id)]
     : [desc(sites.currentScore), asc(loadMs), asc(sites.createdAt), asc(sites.id)];
-  const rows = await db.select().from(sites).where(eq(sites.isListed, true)).orderBy(...orderBy).offset(offset).limit(limit);
-  const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(sites).where(eq(sites.isListed, true));
+  const rows = await db.select(publicSiteProjection).from(sites).where(publiclyActive()).orderBy(...orderBy).offset(offset).limit(limit);
+  const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(sites).where(publiclyActive());
   return NextResponse.json({ sites: rows, total: count, hasMore: offset + rows.length < count });
 });

@@ -1,8 +1,22 @@
-# Coolify deployment foundation (Milestones 1–2)
+# Coolify deployment
 
 The stack contains web, PostgreSQL, Redis, a worker and an explicitly enabled
-scheduler. Dodo, Microsoft Graph and screenshot storage belong to later
-milestones. Passing health checks does not certify those future release requirements.
+scheduler. Dodo, Microsoft Graph, R2, consent analytics and the isolated screenshot
+service are implemented behind explicit configuration gates. Passing health checks
+does not certify provider credentials or delivery. See [PROVIDERS.md](PROVIDERS.md).
+
+## Demo deployment
+
+Use `DEPLOYMENT_MODE=demo` with an HTTPS demo `SITE_URL` and matching `AUTH_URL`.
+Google credentials may be absent; sign-in then explains that it is not configured.
+An authentication secret, private PostgreSQL and authenticated Redis remain required.
+The demo validator refuses payments, email, analytics or scheduled monitoring to be
+enabled. Responses carry `X-Robots-Tag: noindex, nofollow, noarchive`, robots disallows
+crawling, and the sitemap is empty. The preview notice identifies these limits.
+
+For the final domain, change both origins together, configure Google's callback,
+set `DEPLOYMENT_MODE=production`, then complete the provider and operational gates
+in [RUNBOOK.md](RUNBOOK.md). Use new owner credentials; never copy the old secret dump.
 
 ## Image and runtime
 
@@ -54,10 +68,11 @@ credentials must be replaced with credentials belonging to the new owner.
 
 Legacy Polar checkout/webhooks are retired and accept no `POLAR_*` credentials.
 Existing payment records and entitlements remain intact. The secure payment
-replacement belongs to Milestone 3. Resend is off unless
-`ENABLE_LEGACY_RESEND=true` is explicitly selected, which also requires
-`RESEND_API_KEY`. Merely having an old key does not enable it. Compose keeps legacy
-email disabled; do not enable it for a public release before provider review.
+replacement uses Dodo's verified event ledger and durable entitlements. Resend and
+the old Polar client have been removed. `PAYMENTS_ENABLED`, `EMAIL_ENABLED`,
+`STORAGE_ENABLED`, `SCREENSHOTS_ENABLED` and `ANALYTICS_ENABLED` default false.
+Provider configuration is required when enabled. Graph acceptance means accepted,
+not confirmed delivery; uncertain checkout/email outcomes await reconciliation.
 
 The non-secret `.env.example` lists all supported values. For development copy it
 to `.env.local`. Docker Compose normally reads `.env` for interpolation; keep that
@@ -79,7 +94,7 @@ to bootstrap PostgreSQL, never to authenticate the web service.
 4. Configure the web resource to build `Dockerfile`, expose port 3000 and bind the
    domain above. Supply secrets only in the runtime environment, never build args.
 5. Route only healthy instances. `/health/live` checks process liveness;
-   `/health/ready` checks the M1/M2 schema with a zero-row query and verifies that the
+   `/health/ready` checks the schema through migration 0005 with a zero-row query and verifies that the
    application role has no administrator flags, database/table ownership or
    `CREATE` privilege on the public schema. It checks queue-table write grants,
    Redis connectivity, bounded memory, `noeviction` and healthy AOF persistence.
@@ -100,9 +115,19 @@ It exposes the web port to the private Docker network; Coolify provides ingress.
 
 Redis **8.10.1** is pinned from the [official Redis release notes](https://redis.io/docs/latest/operate/oss_and_stack/stack-with-enterprise/release-notes/redisce/redisos-8.10-release-notes/)
 and [Docker image manifest](https://github.com/docker-library/official-images/blob/master/library/redis).
-Build targets are `runner` (web), `jobs-runner` (worker/scheduler) and `redis`.
+Build targets are `runner` (web), `jobs-runner` (worker/scheduler), `migration-runner`
+(explicit maintenance only) and `redis`.
 The jobs image contains compiled Node 24 entrypoints and production dependencies;
-it has no Chromium binary or runtime TypeScript compiler.
+it includes sandboxed Chromium for badge verification. The migration image contains
+the reviewed SQL, fingerprints and TypeScript runner; it runs as the unprivileged
+Node user. Supply `MIGRATION_DATABASE_URL` only to that one-off container, on the
+private database network. It is not a Compose startup dependency.
+
+```sh
+docker build --target migration-runner -t thefastestweb:migrate .
+# Securely export MIGRATION_DATABASE_URL in the maintenance environment first.
+docker run --rm --network YOUR_PRIVATE_BACKEND --env MIGRATION_DATABASE_URL thefastestweb:migrate
+```
 
 Redis has no host port, uses the internal `backend` network, retains `/data`,
 and starts with protected mode, password authentication, AOF `everysec`,
@@ -114,7 +139,7 @@ The entrypoint writes a mode-600 temporary configuration and drops to the Redis
 user; the password is not passed in the server's command line. Supply it at
 runtime, never in a build argument or committed file.
 
-Build and deploy with `docker compose up -d --build postgres redis web worker`.
+Build and deploy with `docker compose up -d --build postgres redis web worker scheduler`.
 Use separate Coolify worker/scheduler resources with Docker target `jobs-runner`
 and commands `node dist/jobs/worker.cjs` and `node dist/jobs/scheduler.cjs`.
 They expose health ports 3001 and 3002 only on the private network. Their
@@ -131,18 +156,20 @@ worker and scheduler, because producers restore queue policy after Redis loss.
 Each process has its own database pool; multiply `DB_MAX_CONNECTIONS` by the number of web, worker
 and scheduler instances when sizing PostgreSQL.
 
-The scheduler is excluded from the normal Compose profile and defaults to
-`SCHEDULER_ENABLED=false`. A scheduler process launched with that flag false
-exits unsuccessfully. Cut over in this order:
+The scheduler process starts with the normal Compose stack. With the default
+`SCHEDULER_ENABLED=false` it dispatches existing outbox jobs and retries only;
+it does not generate scheduled monitoring or maintenance work. Its health response
+identifies `dispatch-only` mode. To stop dispatch, stop the process explicitly.
+Enable scheduled generation in this order:
 
-1. Apply and validate the M2 migration on a restored staging copy, including
-   `background_jobs`, `job_events`, `provider_usage` and `speed_tests.background_job_id`.
+1. Apply and validate all migrations through 0006 on a restored staging copy,
+   including provider, product, ranking, audit and ad inventory tables.
    Grant the runtime role the documented table permissions and verify readiness.
-2. Deploy Redis and the worker, then verify worker readiness. Keep the new
-   scheduler disabled while the old scheduling mechanism still runs.
+2. Deploy Redis, worker and dispatcher, then verify readiness. Keep new scheduled
+   generation disabled while the old scheduling mechanism still runs.
 3. Stop the old HTTP/CLI scheduling mechanism and confirm no old run is active.
 4. Set `SCHEDULER_ENABLED=true` and run
-   `docker compose --profile scheduler up -d scheduler`, or start the equivalent
+   `docker compose up -d scheduler`, or restart the equivalent
    Coolify resource. Check scheduler readiness after its first successful tick.
 5. Confirm one dispatch path, increasing job events and eventual completion in
    the database ledger before allowing production traffic to depend on queues.
@@ -202,7 +229,7 @@ protection, including redirects and subresources.
 
 Chrome updates require a coordinated Puppeteer/browser version change, rebuild,
 and the security regression suite. There is no runtime browser download.
-Run `docker exec <web-container> node runtime/browser-smoke.mjs` to verify the
+Run `docker exec <web-or-worker-container> node runtime/browser-smoke.mjs` to verify the
 installed browser and sandbox using static local content, with no remote site.
 
 ## Logging, shutdown and rollback

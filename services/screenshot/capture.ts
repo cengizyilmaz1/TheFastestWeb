@@ -44,7 +44,10 @@ async function capture(request: PreparedCapture, executablePath: string): Promis
   let deadline: ReturnType<typeof setTimeout> | undefined;
   let timedOut = false;
   try {
-    browser = await puppeteer.launch({ executablePath, headless: true, pipe: true, args: secureChromiumArgs(proxy.url), timeout: 8000, protocolTimeout: 15_000,
+    browser = await puppeteer.launch({ executablePath, headless: true, pipe: true,
+      // Preserve the submitted transport; an HTTP-only public site must not be
+      // silently replaced with a different HTTPS capture by Chrome's upgrade UI.
+      args: [...secureChromiumArgs(proxy.url), "--disable-features=HttpsUpgrades,HttpsFirstBalancedModeAutoEnable,HttpsFirstModeV2ForEngagedSites,HttpsFirstModeV2ForTypicallySecureUsers"], timeout: 8000, protocolTimeout: 15_000,
       env: { PATH: "/usr/local/bin:/usr/bin:/bin", HOME: "/tmp", LANG: "C.UTF-8", TZ: "UTC",
         ...(process.env.CHROME_DEVEL_SANDBOX ? { CHROME_DEVEL_SANDBOX: process.env.CHROME_DEVEL_SANDBOX } : {}) } });
     const running = browser;

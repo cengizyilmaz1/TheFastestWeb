@@ -9,17 +9,30 @@ import { validateQueueJob } from "@/infrastructure/queue/contracts";
 import { logger } from "@/infrastructure/logging/logger";
 import { getCorrelationId, withCorrelationId } from "@/lib/http/correlation";
 import { AppError } from "@/lib/http/errors";
-import { runPageSpeedTest, METHODOLOGY_VERSION, type PSIResult } from "@/lib/pagespeed";
+import { runPerformanceTest, PERFORMANCE_METHOD_VERSION, type PerformanceResult, type PerformanceStrategy } from "@/modules/performance/service";
 import { ProviderQuotaError } from "./provider-budget";
 import { processPaymentWebhook } from "@/modules/payments/service";
 import { deliverNotificationEmail } from "@/modules/notifications/service";
+import { processPaymentAnalytics } from "@/infrastructure/analytics/datafast";
+import { processSiteScreenshotJob } from "@/modules/screenshots/service";
+import { processSubmissionPreparation } from "@/modules/submissions/service";
+import { finalizePreviousPeriods } from "@/modules/rankings/service";
+import { evaluateSiteAwards } from "@/modules/awards/service";
+import { verifySiteBadge } from "@/modules/badges/service";
+import { expireAdReservations } from "@/modules/payments/ads";
+import { notifyPerformanceChange } from "@/modules/notifications/triggers";
+import { siteProPredicate } from "@/modules/payments/entitlements";
+import { recordAnalyticsEvent } from "@/modules/analytics/events";
 
 const terminal = ["succeeded", "failed", "cancelled"] as const;
 const leaseMs = 180_000;
-const performancePayload = z.object({ siteId: z.uuid(), strategy: z.literal("mobile"), day: z.iso.date() }).strict();
+const performancePayload = z.object({ siteId: z.uuid(), strategy: z.enum(["mobile", "desktop"]), day: z.iso.date() }).strict();
 const maintenancePayload = z.object({ day: z.iso.date() }).strict();
 const webhookPayload = z.object({ eventId: z.uuid() }).strict();
 const emailPayload = z.object({ deliveryId: z.uuid() }).strict();
+const analyticsPayload = z.object({ paymentId: z.uuid() }).strict();
+const badgePayload = z.object({ siteId:z.uuid(),dryRun:z.boolean() }).strict();
+const awardPayload = z.object({ siteId:z.uuid() }).strict();
 type Outcome = { status: "succeeded" | "retry" | "failed" | "cancelled" | "deferred" | "skipped" };
 
 function database() {
@@ -32,7 +45,7 @@ async function utcDay(tx: Transaction) {
   const [row] = await tx.execute<{ day: string }>(sql`SELECT to_char(now() AT TIME ZONE 'UTC','YYYY-MM-DD') AS day`);
   return row.day;
 }
-const keyFor = (siteId: string, day: string) => `site:${siteId}:${day}:mobile`;
+const keyFor = (siteId: string, day: string, strategy: PerformanceStrategy) => `site:${siteId}:${day}:${strategy}`;
 const event = (job: BackgroundJob, name: string, actor = "service", errorCode?: string) => ({
   jobId: job.id, event: name, actor, attempt: job.attempts, errorCode,
 });
@@ -41,15 +54,21 @@ const event = (job: BackgroundJob, name: string, actor = "service", errorCode?: 
 export async function scheduleDailyRetests(): Promise<{ scheduled: number }> {
   return database().transaction(async (tx) => {
     const day = await utcDay(tx);
-    const eligible = await tx.select({ id: sites.id }).from(sites).where(and(
-      eq(sites.isListed, true), eq(sites.monitoringPaused, false),
-      or(sql`${sites.lastTestedAt} IS NULL`, lt(sites.lastTestedAt, new Date(`${day}T00:00:00Z`))),
-      sql`NOT EXISTS (SELECT 1 FROM background_jobs j WHERE j.job_key = 'site:' || ${sites.id}::text || ':' || ${day} || ':mobile')`,
-    )).orderBy(asc(sites.id)).limit(500);
+    const eligible = await tx.execute<{ id: string; strategy: PerformanceStrategy }>(sql`
+      SELECT s.id, device.strategy FROM public.sites s
+      CROSS JOIN (VALUES ('mobile'),('desktop')) AS device(strategy)
+      WHERE s.is_listed AND NOT s.monitoring_paused AND s.lifecycle='active' AND s.archived_at IS NULL
+        AND NOT EXISTS (SELECT 1 FROM public.speed_tests t WHERE t.site_id=s.id
+          AND t.strategy::text=device.strategy AND t.methodology_version=${PERFORMANCE_METHOD_VERSION}
+          AND t.sample_count>=2 AND t.metrics_source='lab'
+          AND t.tested_at>=(${day}::date::timestamp AT TIME ZONE 'UTC'))
+        AND NOT EXISTS (SELECT 1 FROM public.background_jobs j
+          WHERE j.job_key='site:'||s.id::text||':'||${day}||':'||device.strategy)
+      ORDER BY s.id,device.strategy LIMIT 500`);
     if (!eligible.length) return { scheduled: 0 };
-    const inserted = await tx.insert(backgroundJobs).values(eligible.map(({ id }) => ({
-      queue: "performance", kind: "site.performance.daily", jobKey: keyFor(id, day), siteId: id,
-      payload: { siteId: id, strategy: "mobile", day }, maxAttempts: getEnv().JOB_MAX_ATTEMPTS,
+    const inserted = await tx.insert(backgroundJobs).values(eligible.map(({ id, strategy }) => ({
+      queue: "performance", kind: "site.performance.daily", jobKey: keyFor(id, day, strategy), siteId: id,
+      payload: { siteId: id, strategy, day }, maxAttempts: getEnv().JOB_MAX_ATTEMPTS,
       correlationId: getCorrelationId() ?? randomUUID(),
     }))).onConflictDoNothing({ target: backgroundJobs.jobKey }).returning();
     if (inserted.length) await tx.insert(jobEvents).values(inserted.map((job) => event(job, "scheduled")));
@@ -58,21 +77,22 @@ export async function scheduleDailyRetests(): Promise<{ scheduled: number }> {
 }
 
 /** Manual and daily retests share one site/day/strategy key and provider budget. */
-export async function scheduleManualRetest(siteId: string, userId: string): Promise<BackgroundJob> {
+export async function scheduleManualRetest(siteId: string, userId: string, strategy: PerformanceStrategy = "mobile"): Promise<BackgroundJob> {
+  z.enum(["mobile", "desktop"]).parse(strategy);
   return database().transaction(async (tx) => {
     const [site] = await tx.select().from(sites).where(and(eq(sites.id, siteId), eq(sites.ownerId, userId))).for("share");
     if (!site) throw new AppError("NOT_FOUND", "Website not found.", 404);
     const day = await utcDay(tx);
     const [inserted] = await tx.insert(backgroundJobs).values({
-      queue: "performance", kind: "site.performance.manual", jobKey: keyFor(siteId, day), siteId,
-      payload: { siteId, strategy: "mobile", day }, maxAttempts: getEnv().JOB_MAX_ATTEMPTS,
+      queue: "performance", kind: "site.performance.manual", jobKey: keyFor(siteId, day, strategy), siteId,
+      payload: { siteId, strategy, day }, maxAttempts: getEnv().JOB_MAX_ATTEMPTS,
       correlationId: getCorrelationId() ?? randomUUID(),
     }).onConflictDoNothing({ target: backgroundJobs.jobKey }).returning();
     if (inserted) {
       await tx.insert(jobEvents).values(event(inserted, "scheduled", "owner"));
       return inserted;
     }
-    const [existing] = await tx.select().from(backgroundJobs).where(eq(backgroundJobs.jobKey, keyFor(siteId, day)));
+    const [existing] = await tx.select().from(backgroundJobs).where(eq(backgroundJobs.jobKey, keyFor(siteId, day, strategy)));
     return existing;
   });
 }
@@ -86,6 +106,35 @@ export async function scheduleMaintenance(): Promise<{ scheduled: number }> {
     }).onConflictDoNothing({ target: backgroundJobs.jobKey }).returning();
     if (job) await tx.insert(jobEvents).values(event(job, "scheduled"));
     return { scheduled: job ? 1 : 0 };
+  });
+}
+
+/** Bounded public-site maintenance. Badge previews complete before a live status-only check is queued. */
+export async function scheduleDailyProductJobs():Promise<{scheduled:number}> {
+  return database().transaction(async(tx)=>{
+    const day=await utcDay(tx);
+    const jobs:{queue:string;kind:string;jobKey:string;siteId?:string;payload:Record<string,unknown>}[]=[
+      {queue:"rankings",kind:"ranking.finalize",jobKey:`ranking:${day}`,payload:{day}},
+    ];
+    const needsBadge=sql`(s.requires_badge AND NOT ${siteProPredicate(sql`s.id`,sql`s.owner_id`,sql`s.tier`)})`;
+    const eligible=await tx.execute<{id:string;requires_badge:boolean;preview_ready:boolean}>(sql`
+      SELECT s.id,${needsBadge} AS requires_badge,EXISTS(SELECT 1 FROM background_jobs p
+        WHERE p.job_key='badge-preview:'||s.id::text||':'||${day} AND p.status='succeeded') AS preview_ready
+      FROM sites s WHERE s.is_listed AND s.lifecycle='active' AND s.archived_at IS NULL
+        AND (NOT EXISTS(SELECT 1 FROM background_jobs a WHERE a.job_key='awards-daily:'||s.id::text||':'||${day})
+          OR (${needsBadge} AND NOT EXISTS(SELECT 1 FROM background_jobs b WHERE b.job_key='badge-preview:'||s.id::text||':'||${day}))
+          OR (${needsBadge} AND EXISTS(SELECT 1 FROM background_jobs p WHERE p.job_key='badge-preview:'||s.id::text||':'||${day} AND p.status='succeeded')
+            AND NOT EXISTS(SELECT 1 FROM background_jobs b WHERE b.job_key='badge-apply:'||s.id::text||':'||${day})))
+      ORDER BY s.id LIMIT 100`);
+    for(const site of eligible) {
+      jobs.push({queue:"badges",kind:"site.awards.evaluate",jobKey:`awards-daily:${site.id}:${day}`,siteId:site.id,payload:{siteId:site.id}});
+      if(site.requires_badge) jobs.push({queue:"badges",kind:"site.badge.verify",jobKey:`badge-${site.preview_ready ? "apply":"preview"}:${site.id}:${day}`,
+        siteId:site.id,payload:{siteId:site.id,dryRun:!site.preview_ready}});
+    }
+    const inserted=await tx.insert(backgroundJobs).values(jobs.map(job=>({...job,maxAttempts:getEnv().JOB_MAX_ATTEMPTS,
+      correlationId:getCorrelationId() ?? randomUUID()}))).onConflictDoNothing({target:backgroundJobs.jobKey}).returning();
+    if(inserted.length) await tx.insert(jobEvents).values(inserted.map(job=>event(job,"scheduled")));
+    return {scheduled:inserted.length};
   });
 }
 
@@ -160,36 +209,95 @@ async function finish(tx: Transaction, job: BackgroundJob, result: Record<string
   await tx.insert(jobEvents).values(event(job, "succeeded"));
 }
 
-async function saveMeasurement(job: BackgroundJob, url: string, result: PSIResult): Promise<Outcome> {
+async function saveMeasurement(job: BackgroundJob, url: string, strategy: PerformanceStrategy, result: PerformanceResult): Promise<Outcome> {
   return database().transaction(async (tx) => {
     const [owned] = await tx.select().from(backgroundJobs).where(ownsLease(job)).for("update");
     if (!owned) return { status: "deferred" };
     const [site] = await tx.select().from(sites).where(eq(sites.id, job.siteId!)).for("update");
-    if (!site || site.url !== url || (job.kind === "site.performance.daily" && (!site.isListed || site.monitoringPaused))) {
+    if (!site || site.url !== url || site.archivedAt || ["archived","removed","suspended"].includes(site.lifecycle)
+      || (job.kind === "site.performance.daily" && (!site.isListed || site.monitoringPaused || site.lifecycle !== "active"))) {
       await finish(tx, job, { skipped: "SITE_CHANGED" });
       return { status: "skipped" };
     }
-    await tx.insert(speedTests).values({
+    const [measurement] = await tx.insert(speedTests).values({
       siteId: site.id, backgroundJobId: job.id, score: result.score, loadTimeMs: result.loadTimeMs,
       fcpMs: result.fcpMs, lcpMs: result.lcpMs, cls: result.cls, tbtMs: result.tbtMs,
-      ttiMs: result.ttiMs, siMs: result.siMs, strategy: "mobile", methodologyVersion: METHODOLOGY_VERSION,
-    });
-    await tx.update(sites).set({
+      ttiMs: result.ttiMs, siMs: result.siMs, strategy, methodologyVersion: PERFORMANCE_METHOD_VERSION,
+      sampleCount: result.sampleCount, metricsSource: result.metricsSource,
+    }).returning({id:speedTests.id});
+    // Legacy current_* columns represent mobile only; desktop has separate history.
+    if (strategy === "mobile") await tx.update(sites).set({
       currentScore: result.score, currentLoadTime: result.loadTime, currentFcp: result.fcp,
       currentLcp: result.lcp, currentCls: result.clsDisplay, currentTbt: result.tbt,
       currentTti: result.tti, currentSi: result.si, lastTestedAt: sql`now()`,
       trend: site.currentScore > 0 ? Math.round((result.score - site.currentScore) / site.currentScore * 100) : 0,
     }).where(eq(sites.id, site.id));
-    await finish(tx, job, { score: result.score, methodologyVersion: METHODOLOGY_VERSION });
+    await notifyPerformanceChange(tx,{measurementId:measurement.id,siteId:site.id,ownerId:site.ownerId,
+      name:site.name,slug:site.slug,score:result.score,strategy});
+    await recordAnalyticsEvent({name:"speed_test_completed",eventKey:`speed-test-completed:${job.id}`,siteId:site.id,
+      properties:{strategy,score:result.score,methodologyVersion:PERFORMANCE_METHOD_VERSION}},tx);
+    await finish(tx, job, { score: result.score, strategy, sampleCount: result.sampleCount, methodologyVersion: PERFORMANCE_METHOD_VERSION });
+    const [awardJob]=await tx.insert(backgroundJobs).values({queue:"badges",kind:"site.awards.evaluate",
+      jobKey:`awards-measurement:${job.id}`,siteId:site.id,payload:{siteId:site.id},correlationId:job.correlationId,
+      maxAttempts:getEnv().JOB_MAX_ATTEMPTS}).onConflictDoNothing({target:backgroundJobs.jobKey}).returning();
+    if(awardJob) await tx.insert(jobEvents).values(event(awardJob,"scheduled"));
     return { status: "succeeded" };
   });
 }
 
 async function perform(job: BackgroundJob): Promise<Outcome> {
   validateQueueJob({ id: job.id, queue: job.queue, kind: job.kind });
-  if (job.kind === "payment.webhook" || job.kind === "email.deliver") {
+  if(job.kind==="ranking.finalize") {
+    maintenancePayload.parse(job.payload);
+    const finalized=await finalizePreviousPeriods();
+    return database().transaction(async(tx)=>{
+      const [owned]=await tx.select().from(backgroundJobs).where(ownsLease(job)).for("update");
+      if(!owned) return {status:"deferred"};
+      for(const {period} of finalized) {
+        const targets=await tx.execute<{site_id:string}>(sql`SELECT DISTINCT site_id FROM ranking_snapshots WHERE period_id=${period.id}`);
+        if(!targets.length) continue;
+        const inserted=await tx.insert(backgroundJobs).values(targets.map(({site_id})=>({queue:"badges",kind:"site.awards.evaluate",
+          jobKey:`awards-period:${period.id}:${site_id}`,siteId:site_id,payload:{siteId:site_id},correlationId:job.correlationId,
+          maxAttempts:getEnv().JOB_MAX_ATTEMPTS}))).onConflictDoNothing({target:backgroundJobs.jobKey}).returning();
+        if(inserted.length) await tx.insert(jobEvents).values(inserted.map(row=>event(row,"scheduled")));
+      }
+      await finish(tx,job,{periods:finalized.map(({period})=>period.periodKey)});
+      return {status:"succeeded"};
+    });
+  }
+  if(job.kind==="site.awards.evaluate" || job.kind==="site.badge.verify") {
+    const payload=job.kind==="site.awards.evaluate" ? awardPayload.parse(job.payload) : badgePayload.parse(job.payload);
+    if(payload.siteId!==job.siteId) throw new AppError("INVALID_REQUEST","The job target is no longer available.",400);
+    const result=job.kind==="site.awards.evaluate" ? await evaluateSiteAwards(payload.siteId,{notify:true,job})
+      : await verifySiteBadge(payload.siteId,{dryRun:(payload as z.infer<typeof badgePayload>).dryRun,notify:true,job});
+    return database().transaction(async(tx)=>{
+      const [owned]=await tx.select().from(backgroundJobs).where(ownsLease(job)).for("update");
+      if(!owned) return {status:"deferred"};
+      await finish(tx,job,result);
+      return {status:"succeeded"};
+    });
+  }
+  if (job.kind === "site.screenshot.capture" || job.kind === "submission.prepare") {
+    const result = job.kind === "submission.prepare" ? await processSubmissionPreparation(job) : await processSiteScreenshotJob(job);
+    return database().transaction(async (tx) => {
+      const [owned] = await tx.select().from(backgroundJobs).where(ownsLease(job)).for("update");
+      if (!owned) return { status: "deferred" };
+      if (result.status === "pending") {
+        const delayMs = Math.min(Math.max(result.delayMs, 1000), 300_000);
+        await tx.update(backgroundJobs).set({ status: "pending", attempts: job.attempts - 1,
+          availableAt: sql`now() + (${delayMs} * interval '1 millisecond')`,
+          leaseToken: null, leasedUntil: null, updatedAt: sql`now()` }).where(ownsLease(job));
+        await tx.insert(jobEvents).values(event(job, "poll_deferred"));
+        return { status: "deferred" };
+      }
+      await finish(tx, job, { ...owned.result, completed: true });
+      return { status: "succeeded" };
+    });
+  }
+  if (job.kind === "payment.webhook" || job.kind === "email.deliver" || job.kind === "analytics.payment") {
     const result = job.kind === "payment.webhook"
       ? await processPaymentWebhook(webhookPayload.parse(job.payload).eventId)
+      : job.kind === "analytics.payment" ? await processPaymentAnalytics(analyticsPayload.parse(job.payload).paymentId)
       : await deliverNotificationEmail(emailPayload.parse(job.payload).deliveryId);
     return database().transaction(async (tx) => {
       const [owned] = await tx.select().from(backgroundJobs).where(ownsLease(job)).for("update");
@@ -203,7 +311,8 @@ async function perform(job: BackgroundJob): Promise<Outcome> {
     return database().transaction(async (tx) => {
       const [owned] = await tx.select().from(backgroundJobs).where(ownsLease(job)).for("update");
       if (!owned) return { status: "deferred" };
-      await tx.delete(requestRateLimits).where(lt(requestRateLimits.windowStartedAt, sql`now() - interval '1 day'`));
+        await expireAdReservations(tx);
+        await tx.delete(requestRateLimits).where(lt(requestRateLimits.windowStartedAt, sql`now() - interval '1 day'`));
       await tx.delete(verifiedSpeedTests).where(lt(verifiedSpeedTests.expiresAt, sql`now() - interval '30 days'`));
       await finish(tx, job, { completed: true });
       return { status: "succeeded" };
@@ -213,24 +322,35 @@ async function perform(job: BackgroundJob): Promise<Outcome> {
   if (payload.siteId !== job.siteId) throw new AppError("INVALID_REQUEST", "The job target is no longer available.", 400);
   const [clock] = await database().execute<{ day: string }>(sql`SELECT to_char(now() AT TIME ZONE 'UTC','YYYY-MM-DD') AS day`);
   const [site] = await database().select().from(sites).where(eq(sites.id, payload.siteId));
-  if (payload.day !== clock.day || !site || (job.kind === "site.performance.daily" && (!site.isListed || site.monitoringPaused))) {
+  if (payload.day !== clock.day || !site || site.archivedAt || ["archived","removed","suspended"].includes(site.lifecycle)
+    || (job.kind === "site.performance.daily" && (!site.isListed || site.monitoringPaused || site.lifecycle !== "active"))) {
     return database().transaction(async (tx) => {
       const [owned] = await tx.select().from(backgroundJobs).where(ownsLease(job)).for("update");
       if (owned) await finish(tx, job, { skipped: payload.day !== clock.day ? "SUPERSEDED" : "SITE_UNAVAILABLE" });
       return { status: "skipped" };
     });
   }
-  return saveMeasurement(job, site.url, await runPageSpeedTest(site.url, "mobile"));
+  const mayStart=await database().transaction(async(tx)=>{
+    const [owned]=await tx.select({id:backgroundJobs.id}).from(backgroundJobs).where(ownsLease(job)).for("update");
+    if(!owned) return false;
+    await recordAnalyticsEvent({name:"speed_test_started",eventKey:`speed-test-started:${job.id}:${job.attempts}`,siteId:site.id,
+      properties:{strategy:payload.strategy,methodologyVersion:PERFORMANCE_METHOD_VERSION}},tx);
+    return true;
+  });
+  if(!mayStart) return {status:"deferred"};
+  return saveMeasurement(job, site.url, payload.strategy, await runPerformanceTest(site.url, payload.strategy));
 }
 
 async function recordFailure(job: BackgroundJob, error: unknown): Promise<Outcome> {
   const quota = error instanceof ProviderQuotaError;
   const code = error instanceof AppError ? error.code : error instanceof z.ZodError ? "INVALID_PAYLOAD" : "JOB_FAILED";
-  const permanent = ["URL_BLOCKED", "INVALID_REQUEST", "INVALID_PAYLOAD"].includes(code)
+  const permanent = ["URL_BLOCKED", "INVALID_REQUEST", "INVALID_PAYLOAD", "NOT_FOUND", "FORBIDDEN"].includes(code)
     || (error instanceof Error && "retryable" in error && error.retryable === false);
   const retry = quota || (!permanent && job.attempts < job.maxAttempts);
   const status = retry ? "pending" : "failed";
-  const delay = quota ? error.retryAfterMs + 1000 : Math.min(60_000 * 2 ** (job.attempts - 1), 3_600_000);
+  const retryAfter = error instanceof Error && "retryAfterMs" in error && typeof error.retryAfterMs==="number"
+    && Number.isFinite(error.retryAfterMs) ? Math.min(Math.max(error.retryAfterMs,0),86_400_000) : 0;
+  const delay = quota ? error.retryAfterMs + 1000 : Math.max(Math.min(60_000 * 2 ** (job.attempts - 1), 3_600_000),retryAfter);
   return database().transaction(async (tx) => {
     const [updated] = await tx.update(backgroundJobs).set({
       status, attempts: quota ? job.attempts - 1 : job.attempts, availableAt: sql`now() + (${delay} * interval '1 millisecond')`,
@@ -239,6 +359,11 @@ async function recordFailure(job: BackgroundJob, error: unknown): Promise<Outcom
     }).where(ownsLease(job)).returning();
     if (!updated) return { status: "deferred" };
     await tx.insert(jobEvents).values(event(job, quota ? "quota_deferred" : retry ? "retry_scheduled" : "failed", "service", code));
+    if(!quota && ["site.performance.daily","site.performance.manual"].includes(job.kind)) {
+      const payload=performancePayload.safeParse(job.payload);
+      if(payload.success) await recordAnalyticsEvent({name:"speed_test_failed",eventKey:`speed-test-failed:${job.id}:${job.attempts}`,
+        siteId:job.siteId,properties:{strategy:payload.data.strategy,methodologyVersion:PERFORMANCE_METHOD_VERSION,errorCode:code}},tx);
+    }
     return { status: retry ? "retry" : "failed" };
   });
 }

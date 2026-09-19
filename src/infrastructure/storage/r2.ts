@@ -97,21 +97,24 @@ export async function readObject(objectKey: string, options: { visibility?: Medi
   const limit = Math.min(options.maxBytes ?? maxObjectBytes, maxObjectBytes);
   if (!Number.isInteger(limit) || limit < 1) throw new AppError("INVALID_REQUEST", "The media limit is invalid.", 400);
   const { client, bucket } = storage(options.visibility ?? "private");
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const result = await client.send(new GetObjectCommand({ Bucket: bucket, Key: objectKey }), { abortSignal: AbortSignal.timeout(15_000) });
-    if (!result.Body || !contentTypes.has(result.ContentType ?? "") || (result.ContentLength ?? 0) > limit) throw new Error("Invalid image response");
-    const chunks: Buffer[] = [];
-    let size = 0;
-    for await (const chunk of result.Body as AsyncIterable<Uint8Array>) {
-      size += chunk.byteLength;
-      if (size > limit) throw new Error("Image response exceeded limit");
-      chunks.push(Buffer.from(chunk));
-    }
-    if (!size) throw new Error("Empty image response");
-    return { bytes: Buffer.concat(chunks), contentType: result.ContentType as ImageContentType };
+    return await Promise.race([(async () => {
+      const result = await client.send(new GetObjectCommand({ Bucket: bucket, Key: objectKey }), { abortSignal: AbortSignal.timeout(15_000) });
+      if (!result.Body || !contentTypes.has(result.ContentType ?? "") || (result.ContentLength ?? 0) > limit) throw new Error("Invalid image response");
+      const chunks: Buffer[] = [];
+      let size = 0;
+      for await (const chunk of result.Body as AsyncIterable<Uint8Array>) {
+        size += chunk.byteLength;
+        if (size > limit) throw new Error("Image response exceeded limit");
+        chunks.push(Buffer.from(chunk));
+      }
+      if (!size) throw new Error("Empty image response");
+      return { bytes: Buffer.concat(chunks), contentType: result.ContentType as ImageContentType };
+    })(), new Promise<never>((_, reject) => { timer = setTimeout(() => { client.destroy(); reject(new Error("Image response timed out")); }, 15_000); })]);
   } catch {
     throw new AppError("UPSTREAM_UNAVAILABLE", "The image could not be retrieved.", 503);
-  } finally { client.destroy(); }
+  } finally { clearTimeout(timer); client.destroy(); }
 }
 
 export async function deleteObject(objectKey: string, visibility: MediaVisibility = "private"): Promise<void> {

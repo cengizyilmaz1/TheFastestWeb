@@ -5,10 +5,11 @@ import type { PSIResult } from "@/lib/pagespeed";
 import { AppError } from "@/lib/http/errors";
 import { cleanupIntegrationDatabase, fixtureSql, prepareIntegrationDatabase, resetIntegrationData } from "./database";
 
-const mocks = vi.hoisted(() => ({ psi: vi.fn(), publish: vi.fn(), auth: vi.fn(), limit: vi.fn(), secret: "synthetic-cron-secret-for-local-integration-tests" }));
+const mocks = vi.hoisted(() => ({ psi: vi.fn(), screenshot: vi.fn(), publish: vi.fn(), auth: vi.fn(), limit: vi.fn(), secret: "synthetic-cron-secret-for-local-integration-tests" }));
 vi.mock("@/lib/pagespeed", () => ({ runPageSpeedTest: mocks.psi, METHODOLOGY_VERSION: "psi-v1-single-mobile" }));
 vi.mock("@/infrastructure/queue/queues", () => ({ publishJob: mocks.publish }));
 vi.mock("@/modules/security/rate-limit", () => ({ enforceRateLimit: mocks.limit }));
+vi.mock("@/modules/screenshots/service", () => ({ processSiteScreenshotJob: mocks.screenshot }));
 vi.mock("@/auth", () => ({ auth: mocks.auth }));
 vi.mock("@/config/env", () => ({ getEnv: () => ({ CRON_SECRET: mocks.secret, JOB_MAX_ATTEMPTS: 3, SITE_URL: "https://example.com", NODE_ENV: "test" }) }));
 import { GET } from "@/app/api/cron/retest/route";
@@ -16,6 +17,7 @@ import { POST } from "@/app/api/sites/[slug]/retest/route";
 import { GET as readJob } from "@/app/api/jobs/[id]/route";
 import { scheduleDailyRetests, scheduleMaintenance, scheduleManualRetest, processBackgroundJob, dispatchDueJobs, operateJob } from "@/modules/jobs/service";
 import { ProviderQuotaError } from "@/modules/jobs/provider-budget";
+import { startSchedulerLoop } from "@/infrastructure/queue/scheduler-loop";
 
 const measurement: PSIResult = {
   lighthouseVersion: "13.0.0", score: 94, loadTimeMs: 1210, fcpMs: 740, lcpMs: 1210, cls: 0.02,
@@ -28,14 +30,14 @@ const request = () => new NextRequest("https://example.com/api/cron/retest", { h
 async function fixture() {
   const owner = randomUUID(), first = randomUUID(), second = randomUUID();
   await fixtureSql()`INSERT INTO public.users (id,email,name) VALUES (${owner},'cron-fixture@example.invalid','Synthetic owner')`;
-  await fixtureSql()`INSERT INTO public.sites (id,slug,name,url,normalized_url,description,owner_id,owner_name,is_listed,current_score,last_tested_at)
-    VALUES (${first},'first','First fixture','https://example.com/','https://example.com/','Fixture',${owner},'Synthetic owner',true,88,now()-interval '3 days'),
-           (${second},'second','Second fixture','https://example.org/','https://example.org/','Fixture',${owner},'Synthetic owner',true,91,now()-interval '2 days')`;
+  await fixtureSql()`INSERT INTO public.sites (id,slug,name,url,normalized_url,description,owner_id,owner_name,is_listed,current_score,last_tested_at,lifecycle)
+    VALUES (${first},'first','First fixture','https://example.com/','https://example.com/','Fixture',${owner},'Synthetic owner',true,88,now()-interval '3 days','active'),
+           (${second},'second','Second fixture','https://example.org/','https://example.org/','Fixture',${owner},'Synthetic owner',true,91,now()-interval '2 days','active')`;
   await fixtureSql()`INSERT INTO public.speed_tests (site_id,score,lcp_ms) VALUES (${first},88,1400),(${second},91,1300)`;
   return { first, second, owner };
 }
 async function jobFor(siteId: string) {
-  const [row] = await fixtureSql()`SELECT * FROM background_jobs WHERE site_id=${siteId}`;
+  const [row] = await fixtureSql()`SELECT * FROM background_jobs WHERE site_id=${siteId} AND payload->>'strategy'='mobile'`;
   return row;
 }
 async function makeDue(id: string) { await fixtureSql()`UPDATE background_jobs SET available_at=now()-interval '1 second' WHERE id=${id}`; }
@@ -56,26 +58,36 @@ beforeEach(async () => {
   mocks.publish.mockReset().mockResolvedValue(undefined);
   mocks.auth.mockReset().mockResolvedValue(null);
   mocks.limit.mockReset().mockResolvedValue(undefined);
+  mocks.screenshot.mockReset().mockResolvedValue({ status: "pending",delayMs: 15_000 });
 });
 
 describe("durable retesting with real PostgreSQL transactions", () => {
+  it("dispatches a persisted manual job with recurring generation disabled",async()=>{
+    const {first,owner}=await fixture();const job=await scheduleManualRetest(first,owner);
+    const loop=startSchedulerLoop({scheduleDailyRetests,scheduleMaintenance,dispatchDueJobs},1000,{generate:false});
+    try {await vi.waitFor(()=>expect(mocks.publish).toHaveBeenCalledTimes(1));}
+    finally {await loop.close();}
+    expect((await fixtureSql()`SELECT kind FROM background_jobs`).map(row=>row.kind)).toEqual(["site.performance.manual"]);
+    expect(mocks.psi).not.toHaveBeenCalled();
+    expect((await processBackgroundJob(job.id)).status).toBe("succeeded");expect(mocks.psi).toHaveBeenCalledTimes(2);
+  });
   it("rejects unauthorized cron and returns202 without measuring inside HTTP", async () => {
     await fixture();
     expect((await GET(new NextRequest("https://example.com/api/cron/retest"), undefined)).status).toBe(401);
     const response = await GET(request(), undefined);
     expect(response.status).toBe(202);
-    expect(await response.json()).toEqual({ status: "accepted", scheduled: 2, maintenance: 1 });
+    expect(await response.json()).toEqual({ status: "accepted", scheduled: 4, maintenance: 1 });
     expect(mocks.psi).not.toHaveBeenCalled();
     expect(mocks.publish).not.toHaveBeenCalled();
   });
   it("deduplicates concurrent scheduler replicas and manual triggers by UTCday", async () => {
     const { first, owner } = await fixture();
     const outcomes = await Promise.all(Array.from({ length: 8 }, () => scheduleDailyRetests()));
-    expect(outcomes.reduce((sum, result) => sum + result.scheduled, 0)).toBe(2);
+    expect(outcomes.reduce((sum, result) => sum + result.scheduled, 0)).toBe(4);
     expect((await scheduleManualRetest(first, owner)).id).toBe((await jobFor(first)).id);
     await Promise.all(Array.from({ length: 5 }, () => scheduleMaintenance()));
     const [row] = await fixtureSql()`SELECT count(*)::integer AS total FROM background_jobs`;
-    expect(row.total).toBe(3);
+    expect(row.total).toBe(5);
   });
   it("does not schedule private, paused or already measured sites", async () => {
     const { first, second } = await fixture();
@@ -83,6 +95,9 @@ describe("durable retesting with real PostgreSQL transactions", () => {
     await fixtureSql()`UPDATE sites SET monitoring_paused=true WHERE id=${second}`;
     expect(await scheduleDailyRetests()).toEqual({ scheduled: 0 });
     await fixtureSql()`UPDATE sites SET is_listed=true,monitoring_paused=false,last_tested_at=now()`;
+    await fixtureSql()`INSERT INTO speed_tests(site_id,score,lcp_ms,cls,tbt_ms,strategy,methodology_version,sample_count)
+      SELECT s.id,90,1000,0.1,20,d.strategy::public.strategy,'psi-v2-two-sample',2
+      FROM sites s CROSS JOIN (VALUES ('mobile'),('desktop')) d(strategy)`;
     expect(await scheduleDailyRetests()).toEqual({ scheduled: 0 });
   });
   it("leases concurrent deliveries and commits a single history row atomically", async () => {
@@ -93,7 +108,7 @@ describe("durable retesting with real PostgreSQL transactions", () => {
     await hold.entered;
     try {
       expect(await processBackgroundJob(job.id)).toEqual({ status: "skipped" });
-      expect(mocks.psi).toHaveBeenCalledOnce();
+      expect(mocks.psi).toHaveBeenCalledTimes(2);
     } finally { hold.release(); }
     expect(await active).toEqual({ status: "succeeded" });
     expect(await processBackgroundJob(job.id)).toEqual({ status: "skipped" });
@@ -198,9 +213,9 @@ describe("durable retesting with real PostgreSQL transactions", () => {
     mocks.publish.mockRejectedValueOnce(new Error("Synthetic Redis outage"));
     await expect(dispatchDueJobs()).rejects.toThrow();
     expect((await jobFor(first)).status).toBe("pending");
-    expect(await dispatchDueJobs()).toEqual({ dispatched: 2 });
+    expect(await dispatchDueJobs()).toEqual({ dispatched: 4 });
     expect((await jobFor(first)).status).toBe("queued");
-    expect(await dispatchDueJobs()).toEqual({ dispatched: 2 });
+    expect(await dispatchDueJobs()).toEqual({ dispatched: 4 });
   });
   it("maintenance retains accounts, sites, measurements and job idempotency records", async () => {
     const { first } = await fixture();
@@ -217,7 +232,7 @@ describe("durable retesting with real PostgreSQL transactions", () => {
     await scheduleDailyRetests();
     await fixtureSql()`INSERT INTO background_jobs(queue,kind,job_key,payload,updated_at)
       VALUES('webhooks','unimplemented','invalid-fixture','{}',now()-interval '1 day')`;
-    expect(await dispatchDueJobs()).toEqual({ dispatched: 2 });
+    expect(await dispatchDueJobs()).toEqual({ dispatched: 4 });
     const [invalid] = await fixtureSql()`SELECT status,last_error_code FROM background_jobs WHERE job_key='invalid-fixture'`;
     expect({ ...invalid }).toEqual({ status: "failed", last_error_code: "INVALID_PAYLOAD" });
   });
@@ -253,5 +268,38 @@ describe("durable retesting with real PostgreSQL transactions", () => {
     expect((await POST(good, { params: Promise.resolve({ slug: "first" }) })).status).toBe(202);
     mocks.auth.mockResolvedValue({ user: { id: randomUUID() } });
     expect((await POST(good, { params: Promise.resolve({ slug: "first" }) })).status).toBe(404);
+  });
+  it("keeps desktop aggregates separate from the mobile current score", async () => {
+    const { first,owner } = await fixture();
+    const desktop = await scheduleManualRetest(first,owner,"desktop");
+    expect(await processBackgroundJob(desktop.id)).toEqual({ status: "succeeded" });
+    expect(mocks.psi.mock.calls).toEqual([["https://example.com/","desktop"],["https://example.com/","desktop"]]);
+    const [row] = await fixtureSql()`SELECT strategy,sample_count,methodology_version,metrics_source FROM speed_tests WHERE background_job_id=${desktop.id}`;
+    expect({ ...row }).toEqual({ strategy: "desktop",sample_count: 2,methodology_version: "psi-v2-two-sample",metrics_source: "lab" });
+    const [site] = await fixtureSql()`SELECT current_score FROM sites WHERE id=${first}`;
+    expect(site.current_score).toBe(88);
+  });
+  it("defers screenshot polling without consuming failure attempts, then completes once", async () => {
+    const { first } = await fixture();
+    const id = randomUUID();
+    await fixtureSql()`INSERT INTO background_jobs(id,queue,kind,job_key,payload,site_id)
+      VALUES(${id},'screenshots','site.screenshot.capture',${`screen:${id}`},'{}',${first})`;
+    expect(await processBackgroundJob(id)).toEqual({ status: "deferred" });
+    const [pending] = await fixtureSql()`SELECT attempts,status,lease_token,available_at>now() AS delayed FROM background_jobs WHERE id=${id}`;
+    expect({ ...pending }).toEqual({ attempts: 0,status: "pending",lease_token: null,delayed: true });
+    await makeDue(id);
+    mocks.screenshot.mockResolvedValue({ status: "succeeded" });
+    expect(await processBackgroundJob(id)).toEqual({ status: "succeeded" });
+    expect(await processBackgroundJob(id)).toEqual({ status: "skipped" });
+    expect(mocks.screenshot).toHaveBeenCalledTimes(2);
+  });
+  it("honors bounded provider retry-after delays in addition to exponential backoff",async()=>{
+    const {first,owner}=await fixture();
+    const job=await scheduleManualRetest(first,owner);
+    mocks.psi.mockRejectedValueOnce(Object.assign(new Error("Synthetic throttle"),{retryAfterMs:120_000}));
+    expect(await processBackgroundJob(job.id)).toEqual({status:"retry"});
+    const pending=await jobFor(first);
+    expect(pending.attempts).toBe(1);
+    expect(pending.available_at.getTime()).toBeGreaterThan(Date.now()+110_000);
   });
 });

@@ -40,29 +40,17 @@ RUN npm run build && node runtime/prepare-standalone.mjs
 FROM test-runner AS jobs-builder
 RUN npm run build:jobs
 
-FROM base AS jobs-runner
-ENV NODE_ENV=production TZ=UTC WORKER_HEALTH_PORT=3001 SCHEDULER_HEALTH_PORT=3002
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates tini \
-    && rm -rf /var/lib/apt/lists/* \
-    && groupadd --system --gid 1001 nextjs \
-    && useradd --system --uid 1001 --gid nextjs --home-dir /app nextjs
-COPY --from=production-dependencies --chown=nextjs:nextjs /app/node_modules ./node_modules
-COPY --from=jobs-builder --chown=nextjs:nextjs /app/dist/jobs ./dist/jobs
-USER nextjs
-EXPOSE 3001 3002
-STOPSIGNAL SIGTERM
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:'+process.env.WORKER_HEALTH_PORT+'/health/ready',{signal:AbortSignal.timeout(4000)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
-ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["node", "dist/jobs/worker.cjs"]
+FROM dependencies AS migration-runner
+# Explicit one-off maintenance image. Never started by web or worker startup.
+COPY scripts/db ./scripts/db
+COPY src/db/migrations ./src/db/migrations
+COPY src/lib/security/public-url.ts src/lib/security/public-url.ts
+COPY tsconfig.json ./
+USER node
+CMD ["node", "--import", "tsx", "scripts/db/migrate.ts"]
 
-FROM base AS runner
-ENV NODE_ENV=production \
-    PORT=3000 \
-    HOSTNAME=0.0.0.0 \
-    TZ=UTC \
-    CHROMIUM_EXECUTABLE_PATH=/opt/chrome/chrome-linux64/chrome \
+FROM base AS browser-runtime
+ENV CHROMIUM_EXECUTABLE_PATH=/opt/chrome/chrome-linux64/chrome \
     CHROME_DEVEL_SANDBOX=/opt/chrome/chrome-linux64/chrome_sandbox
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -74,6 +62,25 @@ RUN apt-get update \
     && groupadd --system --gid 1001 nextjs \
     && useradd --system --uid 1001 --gid nextjs --home-dir /app nextjs
 COPY --from=browser /opt/chrome /opt/chrome
+
+FROM browser-runtime AS jobs-runner
+ENV NODE_ENV=production TZ=UTC WORKER_HEALTH_PORT=3001 SCHEDULER_HEALTH_PORT=3002
+COPY --from=production-dependencies --chown=nextjs:nextjs /app/node_modules ./node_modules
+COPY --from=jobs-builder --chown=nextjs:nextjs /app/dist/jobs ./dist/jobs
+COPY --chown=nextjs:nextjs runtime/browser-smoke.mjs ./runtime/browser-smoke.mjs
+USER nextjs
+EXPOSE 3001 3002
+STOPSIGNAL SIGTERM
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:'+process.env.WORKER_HEALTH_PORT+'/health/ready',{signal:AbortSignal.timeout(4000)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["node", "dist/jobs/worker.cjs"]
+
+FROM browser-runtime AS runner
+ENV NODE_ENV=production \
+    PORT=3000 \
+    HOSTNAME=0.0.0.0 \
+    TZ=UTC
 COPY --from=builder --chown=nextjs:nextjs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nextjs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nextjs /app/public ./public

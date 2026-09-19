@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/db/index";
 import { sites } from "@/db/schema";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull, inArray } from "drizzle-orm";
 import { escapeXml } from "@/lib/seo/xml";
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
@@ -244,7 +244,7 @@ export async function GET(
     const [site] = await db
       .select({ currentScore: sites.currentScore, url: sites.url, name: sites.name })
       .from(sites)
-      .where(and(eq(sites.slug, slug), eq(sites.isListed, true)))
+      .where(and(eq(sites.slug, slug), eq(sites.isListed, true), isNull(sites.archivedAt), inArray(sites.lifecycle, ["active", "verified"])))
       .limit(1);
 
     if (site) {
@@ -276,9 +276,7 @@ export async function GET(
       "Content-Type": "image/svg+xml",
       "X-Content-Type-Options": "nosniff",
       "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
-      "Cache-Control": previewScore || score === 0
-        ? "no-store"
-        : "public, max-age=3600, stale-while-revalidate=86400",
+      "Cache-Control": "no-store",
     },
   });
 }

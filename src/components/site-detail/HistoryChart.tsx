@@ -34,10 +34,10 @@ function filterByRange(data: DataPoint[], range: TimeRange): DataPoint[] {
 
 function formatXTick(iso: string, range: TimeRange, spanMonths: boolean): string {
   const d = new Date(iso);
-  if (range === "7d") return d.toLocaleDateString("en-US", { weekday: "short" });
+  if (range === "7d") return d.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" });
   if (range === "all" && spanMonths)
-    return d.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    return d.toLocaleDateString("en-US", { month: "short", year: "2-digit", timeZone: "UTC" });
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 }
 
 function formatTooltipDate(iso: string): string {
@@ -47,6 +47,7 @@ function formatTooltipDate(iso: string): string {
     year: "numeric",
     hour: "numeric",
     minute: "2-digit",
+    timeZone: "UTC", timeZoneName: "short",
   });
 }
 
@@ -66,14 +67,14 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: readon
 }
 
 export function HistoryChart({ data, currentScore, trend }: HistoryChartProps) {
-  const [range, setRange] = useState<TimeRange>("30d");
+  const [range, setRange] = useState<TimeRange>("all");
 
   const scoreClass =
-    currentScore >= 97
+    currentScore >= 90
       ? "text-green"
-      : currentScore >= 94
+      : currentScore >= 50
         ? "text-accent-bright"
-        : "text-orange";
+        : "text-red";
 
   const trendClass = trend >= 0 ? "text-green" : "text-red";
   const trendArrow = trend >= 0 ? "\u2191" : "\u2193";
@@ -84,7 +85,7 @@ export function HistoryChart({ data, currentScore, trend }: HistoryChartProps) {
     if (filtered.length < 2) return false;
     const first = new Date(filtered[0].testedAt);
     const last = new Date(filtered[filtered.length - 1].testedAt);
-    return first.getFullYear() !== last.getFullYear() || first.getMonth() !== last.getMonth();
+    return first.getUTCFullYear() !== last.getUTCFullYear() || first.getUTCMonth() !== last.getUTCMonth();
   }, [filtered]);
 
   const yDomain = useMemo(() => {
@@ -113,7 +114,7 @@ export function HistoryChart({ data, currentScore, trend }: HistoryChartProps) {
           </div>
           {trend !== 0 && (
             <div className={`font-mono text-[0.82rem] font-semibold ${trendClass} whitespace-nowrap`}>
-              {trendArrow} {Math.abs(trend)}% vs. prev
+              {trendArrow} {Math.abs(trend)}% since first recorded result
             </div>
           )}
         </div>
@@ -122,8 +123,9 @@ export function HistoryChart({ data, currentScore, trend }: HistoryChartProps) {
             {ranges.map((r) => (
               <button
                 key={r.key}
+                aria-pressed={range === r.key}
                 onClick={() => setRange(r.key)}
-                className={`px-2.5 py-1 rounded-md text-[0.72rem] font-semibold transition-all duration-150 border-none ${
+                className={`min-h-11 min-w-11 px-2.5 py-1 rounded-md text-[0.72rem] font-semibold transition-all duration-150 border-none ${
                   range === r.key
                     ? "bg-bg-card text-text-primary shadow-sm cursor-pointer"
                     : "text-text-muted hover:text-text-secondary bg-transparent cursor-pointer"
@@ -139,7 +141,7 @@ export function HistoryChart({ data, currentScore, trend }: HistoryChartProps) {
       <div style={{ width: "100%", height: filtered.length < 2 ? 120 : 200 }}>
         {filtered.length < 2 ? (
           <div className="flex items-center justify-center h-full text-text-muted text-[0.82rem] font-mono">
-            {currentScore}/100 — daily retests will build the chart
+            {filtered.length === 0 ? "No recorded results in this time range." : "One recorded result. More measurements will build the chart."}
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%" minWidth={0}>
@@ -180,7 +182,7 @@ export function HistoryChart({ data, currentScore, trend }: HistoryChartProps) {
               <Area
                 type="monotone"
                 dataKey="score"
-                stroke="#F59E0B"
+                stroke="var(--amber)"
                 strokeWidth={2.5}
                 fill="url(#scoreGradient)"
                 dot={{ r: 3, fill: "#F59E0B", stroke: "var(--color-bg-card)", strokeWidth: 1 }}

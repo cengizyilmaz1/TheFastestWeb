@@ -4,6 +4,7 @@ import { serverConfig } from "./runtime/next-options.mjs";
 
 const nextConfig = (phase: string): NextConfig => ({
   ...serverConfig,
+  turbopack: { root: process.cwd() },
   output: phase === PHASE_PRODUCTION_BUILD ? "standalone" : undefined,
 });
 

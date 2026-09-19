@@ -71,5 +71,6 @@ export function createScreenshotServer(config: ScreenshotConfig, repository: Scr
     });
   });
   server.headersTimeout = 5000; server.requestTimeout = 10_000; server.timeout = 20_000;
+  server.maxConnections = 128;
   return server;
 }

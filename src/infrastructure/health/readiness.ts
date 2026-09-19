@@ -20,7 +20,7 @@ export async function checkDatabaseReadiness(): Promise<void> {
             c.code, cat.slug, sc.is_primary, tech.slug, st.source, f.visibility, fs.founder_id,
             fl.platform, sl.platform, claim.token_hash, period.ranking_algorithm_version,
             ranking.strategy, award.event_key, achievement.key, shot.service_job_id,
-            admin.role, audit.reason
+            admin.role, audit.reason, inventory.order_index, reservation.inventory_id,reservation.release_evidence,analytics.event_key,analytics.properties
           from public.sites s
           cross join public.verified_speed_tests v
           cross join public.request_rate_limits r
@@ -54,6 +54,9 @@ export async function checkDatabaseReadiness(): Promise<void> {
           cross join public.site_screenshots shot
           cross join public.admin_roles admin
           cross join public.audit_logs audit
+          cross join public.ad_inventory inventory
+          cross join public.ad_reservations reservation
+          cross join public.analytics_events analytics
           where false
         `);
         const [role] = await db.execute(sql`
@@ -80,7 +83,7 @@ export async function checkDatabaseReadiness(): Promise<void> {
                 'entitlements','notification_preferences','notifications','email_deliveries',
                 'categories','site_categories','technologies','site_technologies','founders','founder_sites',
                 'founder_social_links','site_social_links','site_claims','competition_periods','achievements',
-                'site_awards','site_screenshots','admin_roles'
+                'site_awards','site_screenshots','admin_roles','ad_inventory','ad_reservations','analytics_events'
               ]) as required(table_name)
               where not has_table_privilege(current_user, 'public.' || table_name, 'INSERT')
                 or not has_table_privilege(current_user, 'public.' || table_name, 'UPDATE')

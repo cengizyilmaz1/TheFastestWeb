@@ -1,6 +1,6 @@
-# Queue infrastructure — M2
+# Durable queue operation
 
-PostgreSQL owns durable work; Redis transports it. Run web, worker and scheduler independently. The scheduler must run for outbox dispatch and retries even when work originates from the authenticated cron or manual endpoint.
+PostgreSQL owns durable work; Redis transports it. Run web, worker and scheduler independently. The scheduler process must run for outbox dispatch and retries even when work originates from authenticated HTTP or a provider webhook. Compose starts it by default. `SCHEDULER_ENABLED=false` means **dispatch only**: it delivers existing manual/submission/provider jobs and retries but generates no recurring work. `true` additionally generates daily measurements, maintenance, period closure and badge/award checks. Demo requires false. Health/logs identify `dispatch-only` or `generation-and-dispatch`; stop the process to halt dispatch itself.
 
 ```mermaid
 flowchart LR
@@ -18,21 +18,28 @@ flowchart LR
 
 | Queue | Implemented jobs | Effect |
 |---|---|---|
-| performance | `site.performance.daily`, `site.performance.manual` | One real mobile PSI measurement and atomic history/site update |
-| maintenance | `maintenance.cleanup` | Expired request quota rows and proofs expired more than 30 days ago |
-| screenshots, emails, notifications, rankings, badges, analytics, webhooks | Reserved names | No consumer or fake success; corresponding providers/domain workflows belong to later milestones |
+| performance | `site.performance.daily`, `site.performance.manual` | Two real PSI samples for the selected mobile/desktop strategy; one complete aggregate/history row |
+| performance | `submission.prepare` | Owner-scoped metadata and mobile+desktop proofs; retry reuses still-valid completed strategy proofs |
+| screenshots | `site.screenshot.capture` | Idempotent isolated-service capture/poll; fenced public metadata storage |
+| webhooks | `payment.webhook` | Verified durable provider event processing and transactional entitlement updates |
+| emails | `email.deliver` | Preference-aware Graph mail ledger; ambiguous send outcomes require review |
+| analytics | `analytics.payment` | Sanitized provider payment analytics, independently feature gated |
+| rankings | `ranking.finalize` | Close immediately previous UTC week/month; immutable method/device-separated snapshots |
+| badges | `site.awards.evaluate`, `site.badge.verify` | Evidence-only achievements; preview before live badge status checks, no automatic removal |
+| maintenance | `maintenance.cleanup` | Old request counters/proofs; end-date expiry of active ad reservations, never uncertain held/paid ones |
+| notifications | Reserved queue name | In-app notifications already commit with domain changes; email delivery uses the emails queue |
 
-The `background_jobs` row is both job state and transactional outbox. Creation and its audit event share a transaction. Future domain changes must insert their event/job in the same domain transaction; M2 does not claim a payment or mail outbox implementation.
+The `background_jobs` row is both job state and transactional outbox. Creation and its audit event share a transaction. Payment events, email delivery, approved submission measurements, screenshot requests and award follow-up jobs use the same durable boundary. Feature-disabled external integrations never fake a provider success.
 
 Only job UUID and correlation UUID travel through Redis. URLs, emails, provider credentials and raw upstream errors do not. Workers load the authorized target from PostgreSQL and reapply the public URL policy. Per-site transaction advisory locks serialize claims; leases carry a random token and expire after 180 seconds. Every result commit checks the current token and status under a row lock. `speed_tests.background_job_id` is unique and references the retained job.
 
-Daily/manual keys are `site:{siteId}:{UTC day}:mobile`. Manual retesting is therefore limited to the same one queued measurement per site/day as scheduled work. The owner can use `POST /api/sites/{slug}/retest` with a same-origin authenticated session and inspect `GET /api/jobs/{id}`. Another owner receives 404. The site UI will expose this workflow in the later product redesign; the original interactive submission PSI request remains synchronous, bounded and quota protected.
+Daily/manual keys are `site:{siteId}:{UTC day}:{mobile|desktop}`. Manual retesting shares the same one queued batch per site/day/strategy as scheduled work. The owner can use `POST /api/sites/{slug}/retest` with a same-origin authenticated session and inspect `GET /api/jobs/{id}`. Another owner receives 404. Submission preparation has an owner-only receipt and stores server proofs before transactional consumption creates the listing; client scores never become measurements. The compatibility interactive PSI endpoint remains bounded and quota protected.
 
-The scheduler selects at most 500 overdue public/unpaused sites per tick and dispatches at most 100 records, rotating by last dispatch timestamp. Old-day queued measurements finish with `skipped: SUPERSEDED`; missing/changed/paused targets are skipped without writing invented metrics. A completed or failed daily key is not automatically recreated that day.
+When generation is enabled, each tick selects at most 500 missing site/strategy daily keys and up to 100 sites for award/badge jobs; outbox dispatch takes at most 100 records, rotating by last dispatch timestamp. Old-day queued measurements finish with `skipped: SUPERSEDED`; missing/changed/paused targets are skipped without invented metrics. A completed or failed daily key is not automatically recreated that day. A mobile sample does not suppress desktop work. Screenshot/submission polls preserve their receipts and return to pending without charging an attempt merely for waiting.
 
 ## Retries and recovery
 
-PostgreSQL owns attempts and retry timing. BullMQ delivery attempts are 1 to avoid independent retry policies. Provider failures back off 60 seconds, then 120 seconds, with configurable maximum attempts (default 3). Invalid payloads/blocked URLs fail permanently. Quota exhaustion schedules the actual next quota window without consuming the failure budget. Failed rows are the durable dead-letter set.
+PostgreSQL owns attempts and retry timing. BullMQ delivery attempts are 1 to avoid independent retry policies. Provider failures back off 60 seconds, then 120 seconds, with configurable maximum attempts (default 3); bounded provider `Retry-After` can extend the delay up to 24 hours. Invalid payloads, blocked URLs and missing/forbidden targets fail permanently. Quota exhaustion schedules the actual next quota window without consuming the failure budget. Failed rows are the durable dead-letter set. Graph `uncertain` deliveries never auto-resend because a 202 or lost response cannot prove delivery/idempotency.
 
 The dispatcher checks pending, queued and expired running records. It republishes a missing Redis delivery, or removes a terminal Bull delivery before reusing its stable UUID. Active/waiting deliveries are left intact. Malformed persisted contracts fail individually so they cannot starve valid work. Producer operations fail within a bounded deadline; the saved DB row remains retryable.
 
@@ -42,7 +49,7 @@ Redis complete/failed deliveries have bounded retention; PostgreSQL terminal job
 
 ## Budgets and configuration
 
-All processes sharing a queue prefix must use the same `WORKER_CONCURRENCY`, `PSI_REQUESTS_PER_MINUTE` and `PSI_REQUESTS_PER_DAY`. Compose supplies these through shared environment settings. Global Bull concurrency defaults to 2 for performance and 1 for maintenance. Queue policy is restored before publish after Redis metadata loss. Roll out policy changes consistently across roles.
+All processes sharing a queue prefix must use the same `WORKER_CONCURRENCY`, `PSI_REQUESTS_PER_MINUTE` and `PSI_REQUESTS_PER_DAY`. Compose supplies these through shared environment settings. Global Bull concurrency defaults to 2 for performance and 1 for each other implemented queue. Queue policy is restored before publish after Redis metadata loss. Roll out policy changes consistently across roles.
 
 Every actual primary or backup PSI HTTP call reserves a shared Redis minute slot and PostgreSQL daily slot. Defaults are10/minute and1000/day; the daily cap uses database UTC time and atomic conditional upsert. Reservations are not refunded after ambiguous failures. Redis/DB unavailability denies new provider work. Redis loss can reset minute counters, but cannot reset the PostgreSQL daily budget. Ordinary per-user/request windows also use Redis and hashed actors; no forwarded IP is trusted for provider cost control.
 
@@ -60,15 +67,21 @@ node dist/jobs/queue-admin.cjs retry JOB_UUID
 node dist/jobs/queue-admin.cjs requeue JOB_UUID
 ```
 
-Replace `JOB_UUID` with the actual ledger ID. `status` reports Redis waiting/active/completed/failed/delayed/paused plus DB states, delayed work, retrying and dead-letter totals. A Redis outage still permits the DB report. `inspect` returns safe identifiers/status and the latest 100 events, omitting payload, credentials and raw provider errors. `retry` and `requeue` are synonyms that grant another bounded attempt window to failed/cancelled jobs; they never reset history or completed work. Operator actions record category `operator` in the audit trail. Host/container access controls operator identity; per-person administrative RBAC/UI is a later milestone.
+Replace `JOB_UUID` with the actual ledger ID. `status` reports Redis waiting/active/completed/failed/delayed/paused plus DB states, delayed work, retrying and dead-letter totals. A Redis outage still permits the DB report. `inspect` returns safe identifiers/status and the latest 100 events, omitting payload, credentials and raw provider errors. `retry` and `requeue` are synonyms granting another bounded attempt window to failed/cancelled jobs; they never reset history or completed work. Host/container access controls CLI identity. Authenticated administrative actions additionally require explicitly bootstrapped database roles and safe audit records; signup never grants admin access.
+
+## Domain notifications
+
+The fenced measurement transaction compares the newest complete result with the previous compatible strategy/method lab batch. An absolute change of at least ten score points emits `performance_improved` or `performance_dropped`; no prior compatible evidence means no comparison. Current legacy/mobile display values are never a desktop baseline. User performance preferences suppress these events.
+
+Weekly closure emits `weekly_result` for each recorded overall entrant and `weekly_winner` for the actual #1, separately per device. Weekly/monthly `ranking_changed` requires a different actual rank in the immediately previous compatible closed period; absent prior ranks are not invented. Weekly preferences apply. Period closure and these notifications share a transaction; repeated/concurrent closure does not duplicate them. Award and badge-warning triggers are described in [AWARDS-AND-BADGES.md](AWARDS-AND-BADGES.md). Disabled email retains permitted in-app events but creates no future email backlog.
 
 Structured worker logs carry correlationId, jobId, siteId, attempt, durationMs and safe errorCode. Monitor oldest pending/delayed age, expired leases, failed totals, quota exhaustion and Redis memory/AOF health. These are operational signals; automated external alert delivery still needs deployment configuration.
 
 ## Cutover and rollback
 
-1. Back up and migrate staging through 0002 using the guarded owner-only CLI; grant the application role access to new tables.
+1. Back up and run all current guarded migrations using the owner-only maintenance CLI; grant the application role access to new tables.
 2. Deploy authenticated persistent Redis and web/worker using the same queue policy. Confirm live/ready probes.
-3. Stop the old cron/retest scheduler. Set `SCHEDULER_ENABLED=true`, enable the Compose scheduler profile, and deploy the separate scheduler. Repeated compatibility triggers are deduplicated but must not coexist with the retired implementation writing measurements independently.
+3. Keep the separate scheduler running with `SCHEDULER_ENABLED=false` to validate manual dispatch first. Stop the old cron/retest scheduler before setting true in production. Repeated compatibility triggers are deduplicated but must not coexist with the retired implementation writing measurements independently. Demo remains false.
 4. Inspect a synthetic maintenance job, then an explicitly controlled real site with production credentials during release validation.
 5. To pause generation/dispatch, stop the scheduler. Workers may drain existing deliveries; stop them as well to halt processing. Pending DB rows remain. Roll back the whole web/jobs release consistently and retain additive schema/data. Do not run old synchronous cron alongside new workers.
 
