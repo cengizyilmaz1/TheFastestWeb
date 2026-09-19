@@ -1,0 +1,97 @@
+---
+title: "How to Get a 100 PageSpeed Score"
+description: "A perfect 100 PageSpeed score is achievable for most sites. Here's exactly what it takes and what the fastest sites on the web have in common."
+date: "2026-03-21"
+---
+
+A 100 PageSpeed score means your site loads instantly, has no layout shifts, and blocks the main thread for almost zero time. It's achievable, but it requires discipline.
+
+On [TheFastestWeb leaderboard](/leaderboard/perfect), several sites consistently score 100. Here's what they have in common.
+
+## What Goes Into a 100 Score
+
+Google PageSpeed Insights uses these metrics (with their weights):
+
+- **Total Blocking Time (TBT):** 30%
+- **Largest Contentful Paint (LCP):** 25%
+- **Cumulative Layout Shift (CLS):** 25%
+- **First Contentful Paint (FCP):** 10%
+- **Speed Index (SI):** 10%
+
+To hit 100, you need near-perfect scores across all five. The good news: fixing TBT and LCP alone gets you most of the way there.
+
+## What Sites With a 100 Score Do Differently
+
+### 1. Almost No JavaScript
+
+The biggest common trait among perfect-scoring sites is minimal JavaScript. No heavy frameworks, no bloated libraries, no third-party scripts loaded on page load.
+
+If you need JavaScript, ship as little as possible. Defer everything that isn't critical. Use vanilla JS where you can.
+
+### 2. Optimized Images
+
+Every image is compressed, correctly sized, and served in WebP. The LCP image is preloaded. Nothing is lazy-loaded above the fold.
+
+### 3. No Third-Party Scripts on Page Load
+
+Analytics, chat widgets, A/B testing tools, tag managers. These are TBT killers. Perfect-scoring sites either don't use them or load them only after the page is interactive.
+
+If you need analytics, consider lightweight alternatives like [Umami](https://umami.is/) or [Plausible](https://plausible.io/) instead of Google Analytics with GTM.
+
+### 4. Inline Critical CSS
+
+Rather than loading a large CSS file that blocks rendering, they inline the CSS needed for above-the-fold content and defer the rest.
+
+### 5. Fast Hosting
+
+A slow server response time (TTFB) puts a ceiling on your score no matter how optimized your assets are. Top-scoring sites use edge hosting (Vercel, Cloudflare Pages, Netlify Edge) with servers close to their users.
+
+### 6. No Layout Shifts
+
+Every image has explicit width and height. Fonts use `font-display: swap`. No content is injected above existing content after load.
+
+## Step-by-Step: How to Improve Your Score
+
+**Start with the bottleneck.** Run your site through [PageSpeed Insights](https://pagespeed.web.dev/) and look at which metric is lowest. Fix that first.
+
+**For TBT:**
+- Remove or defer all non-critical JavaScript
+- Audit your npm packages for bloat
+- Move third-party scripts to load after interaction
+
+**For LCP:**
+- Compress your hero image to WebP
+- Add `<link rel="preload">` or `priority` attribute to the LCP image
+- Improve server response time
+
+**For CLS:**
+- Add `width` and `height` to all `<img>` tags
+- Use `font-display: swap`
+- Reserve space for ads and embeds
+
+**For FCP:**
+- Inline critical CSS
+- Reduce server response time
+- Eliminate render-blocking resources
+
+## Realistic Targets by Site Type
+
+Not every site can hit 100. A complex SaaS dashboard with heavy interactivity will never score like a static landing page. Here's what's realistic:
+
+| Site Type | Realistic Target |
+|---|---|
+| Static landing page | 95-100 |
+| Marketing site | 85-95 |
+| Blog | 85-95 |
+| SaaS tool | 70-85 |
+| E-commerce | 60-80 |
+
+If you're in the right range for your site type, you're doing well. The goal isn't a perfect score, it's being faster than your competitors.
+
+## Is a Perfect Score Worth It?
+
+For most sites, chasing 100 after you're already at 90+ has diminishing returns. The performance gains from 90 to 100 are real but small. What matters for rankings is being in the "Good" range (90+) consistently.
+
+That said, for marketing sites, landing pages, and content sites, getting to 95+ is absolutely worth the effort.
+
+Want to know your current score? [Test your site](/test) and see exactly where you stand.

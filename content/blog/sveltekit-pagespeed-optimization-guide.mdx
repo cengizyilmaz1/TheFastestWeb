@@ -1,0 +1,226 @@
+---
+title: "SvelteKit PageSpeed Optimization Guide"
+description: "SvelteKit ships less JavaScript than any other major framework. Here's how to configure it for top PageSpeed scores and avoid the common pitfalls."
+date: "2026-03-21"
+---
+
+SvelteKit has a significant performance advantage over React and Vue-based frameworks: it compiles components to minimal JavaScript at build time instead of shipping a runtime. The result is smaller bundles and faster pages by default.
+
+Here's how to configure SvelteKit for maximum performance and score in the 90s on PageSpeed.
+
+## Choose the Right Rendering Mode
+
+SvelteKit supports multiple rendering strategies through adapters and page options.
+
+**Static Pre-rendering** is the fastest option. Pages are generated at build time and served from a CDN with no server involved:
+
+```js
+// src/routes/+page.js
+export const prerender = true;
+```
+
+Or pre-render your entire site by default in `svelte.config.js`:
+
+```js
+const config = {
+  kit: {
+    prerender: {
+      default: true,
+    },
+  },
+};
+```
+
+**Server-Side Rendering (SSR)** is the default. Pages render on the server per request. Use this for dynamic, user-specific content.
+
+**CSR-only** should be avoided for public pages. If a route doesn't need to be indexed or seen before JavaScript loads, you can disable SSR:
+
+```js
+export const ssr = false;
+```
+
+For most sites, pre-render everything that can be pre-rendered, and use SSR only for truly dynamic routes.
+
+## Optimize Images
+
+SvelteKit doesn't have a built-in image optimization component, but `@sveltejs/enhanced-img` provides automatic WebP conversion and responsive images:
+
+```bash
+npm install --save-dev @sveltejs/enhanced-img
+```
+
+```js
+// vite.config.js
+import { sveltekit } from "@sveltejs/kit/vite";
+import { enhancedImages } from "@sveltejs/enhanced-img";
+
+export default {
+  plugins: [enhancedImages(), sveltekit()],
+};
+```
+
+```svelte
+<script>
+  import heroImage from "$lib/assets/hero.jpg?enhanced";
+</script>
+
+<enhanced:img src={heroImage} alt="Hero" />
+```
+
+This generates `srcset` with WebP versions automatically. For your LCP image, make sure it's not lazy-loaded:
+
+```svelte
+<enhanced:img src={heroImage} alt="Hero" loading="eager" fetchpriority="high" />
+```
+
+## Minimize JavaScript Bundle Size
+
+SvelteKit's output is already lean, but there are ways to keep it lean as your app grows.
+
+**Lazy load heavy components:**
+
+```svelte
+<script>
+  import { onMount } from "svelte";
+  let HeavyChart;
+
+  onMount(async () => {
+    const module = await import("./HeavyChart.svelte");
+    HeavyChart = module.default;
+  });
+</script>
+
+{#if HeavyChart}
+  <svelte:component this={HeavyChart} />
+{/if}
+```
+
+**Use SvelteKit's code splitting.** By default, each route gets its own bundle. Don't import everything at the top level of your layout.
+
+**Analyze your bundle:**
+
+```bash
+VITE_BUILD_ANALYZE=true vite build
+```
+
+Or use rollup-plugin-visualizer to see what's in your bundle.
+
+## Optimize Fonts
+
+Load fonts from your own domain to eliminate the external DNS lookup:
+
+```css
+@font-face {
+  font-family: "Inter";
+  src: url("/fonts/inter-400.woff2") format("woff2");
+  font-display: swap;
+  font-weight: 400;
+}
+```
+
+Preload your primary font in `app.html`:
+
+```html
+<link rel="preload" href="/fonts/inter-400.woff2" as="font" type="font/woff2" crossorigin>
+```
+
+The `crossorigin` attribute is required even for same-origin fonts when using preload.
+
+## Handle Third-Party Scripts
+
+Third-party scripts are the most common cause of high TBT on otherwise fast SvelteKit sites.
+
+Load analytics and non-critical scripts after the page is interactive:
+
+```svelte
+<script>
+  import { onMount } from "svelte";
+
+  onMount(() => {
+    // Load after hydration
+    const script = document.createElement("script");
+    script.src = "https://analytics.example.com/script.js";
+    script.defer = true;
+    document.head.appendChild(script);
+  });
+</script>
+```
+
+Or use a `window.requestIdleCallback` wrapper:
+
+```js
+window.requestIdleCallback(() => {
+  // Load low-priority scripts when browser is idle
+  loadAnalytics();
+});
+```
+
+## Configure Caching Headers
+
+SvelteKit's static adapter serves assets with correct cache headers by default. For custom SSR deployments, configure your server:
+
+For Node.js adapter:
+
+```js
+// server.js
+app.use("/_app/immutable", (req, res, next) => {
+  res.setHeader("cache-control", "public, max-age=31536000, immutable");
+  next();
+});
+```
+
+SvelteKit's versioned static assets (in `/_app/immutable/`) can be cached forever since filenames change with each build.
+
+## Deploy to a CDN or Edge
+
+Pre-rendered SvelteKit sites should be deployed to a CDN:
+
+```bash
+# Vercel
+npm install @sveltejs/adapter-vercel
+
+# Cloudflare Pages
+npm install @sveltejs/adapter-cloudflare
+```
+
+For SSR on Cloudflare Workers:
+
+```js
+// svelte.config.js
+import adapter from "@sveltejs/adapter-cloudflare";
+
+export default {
+  kit: { adapter: adapter() },
+};
+```
+
+Edge deployment reduces TTFB for global users and directly improves FCP and LCP.
+
+## Why SvelteKit Scores High
+
+The fundamental advantage of Svelte is that it shifts work from runtime to compile time. A React component ships React, ReactDOM, and the component code. A Svelte component ships only the compiled output -- no framework runtime at all.
+
+This means:
+
+- Smaller initial JS payload
+- Less parsing and execution time
+- Lower TBT (Total Blocking Time)
+- Faster TTI (Time to Interactive)
+
+On a simple marketing site, SvelteKit can produce JavaScript bundles 50-70% smaller than equivalent React apps.
+
+## Quick Checklist
+
+- [ ] Pre-rendering enabled for all static pages
+- [ ] `@sveltejs/enhanced-img` installed and used for all images
+- [ ] LCP image has `loading="eager"` and `fetchpriority="high"`
+- [ ] Fonts self-hosted with `font-display: swap`
+- [ ] Font preload link in `app.html`
+- [ ] Heavy components lazy-loaded
+- [ ] Third-party scripts deferred or loaded on idle
+- [ ] Deployed to CDN or edge platform
+- [ ] Bundle analyzed for unexpected large dependencies
+
+SvelteKit is one of the easiest frameworks to achieve 90+ PageSpeed scores. The default output is clean and the tooling handles most optimizations automatically.
+
+[Test your SvelteKit site](/test) to see your current score and find any remaining bottlenecks.

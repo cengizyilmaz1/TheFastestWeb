@@ -1,0 +1,137 @@
+---
+title: "Shopify PageSpeed Optimization Guide"
+description: "Shopify stores often struggle with PageSpeed scores because of heavy themes and app scripts. Here's how to fix it and get your store loading faster."
+date: "2026-03-15"
+---
+
+Shopify stores have a unique set of performance challenges. Between theme bloat, app scripts, and large product images, it's common to see scores in the 30-50 range. But with the right approach, most Shopify stores can reach 70-85, and lean stores can hit 90+.
+
+Here's how to do it.
+
+## Why Shopify Stores Are Often Slow
+
+Shopify's infrastructure is solid. The CDN is fast, SSL is included, and server response times are generally good. The slowness almost always comes from:
+
+- **Heavy themes** loaded with unused features
+- **App scripts** from every installed Shopify app loading on every page
+- **Large product images** without proper compression
+- **Third-party tracking scripts** from marketing tools
+- **Liquid rendering overhead** for complex templates
+
+## Step 1: Switch to a Fast Theme
+
+The Dawn theme (Shopify's free default theme) is one of the fastest available. It's built on performance-first principles and scores well out of the box.
+
+If you're on a third-party theme, check its PageSpeed score on a demo store before committing. Many premium themes score in the 30-50 range on mobile.
+
+Fast theme options:
+- **Dawn** (free, Shopify default) - best baseline performance
+- **Sense** (free) - clean, fast
+- **Craft** (free) - minimal, good for brand stores
+- **Streamline** (paid) - fast, feature-rich
+
+If you're locked into a heavy theme for design reasons, focus on the other optimizations below.
+
+## Step 2: Audit Your Shopify Apps
+
+Every Shopify app you install can inject scripts into every page of your store, even pages where the app isn't active. This is the single biggest cause of slow Shopify stores.
+
+**How to audit:**
+1. Open Chrome DevTools > Network tab
+2. Load your homepage
+3. Filter by JS and look for scripts from domains you don't recognize
+4. Match them back to your installed apps
+
+For each app, ask:
+- Do I actually use this?
+- Is the revenue/value worth the performance cost?
+- Is there a lighter alternative?
+
+Common heavy apps and their impact:
+- Review apps (Yotpo, Okendo) add 50-150KB of JavaScript
+- Live chat (Gorgias, Tidio) block the main thread for 100-300ms
+- Loyalty apps (Smile.io) add significant script overhead
+- A/B testing apps are TBT killers
+
+Uninstall apps you don't actively use. Deleted apps sometimes leave script tags behind, so check your theme's `theme.liquid` file for orphaned scripts after uninstalling.
+
+## Step 3: Optimize Product Images
+
+Product images are usually the biggest contributor to slow LCP on Shopify stores.
+
+**Best practices:**
+- Upload images at 2048x2048 maximum (Shopify's recommendation)
+- Compress before uploading with [TinyPNG](https://tinypng.com/) or Squoosh
+- Shopify automatically serves WebP to browsers that support it
+- Use square images for product listings (consistent aspect ratio prevents layout shifts)
+
+**For collection pages:** Shopify loads all product images on the page. If you have 50 products with large images, this adds up. Make sure lazy loading is enabled in your theme for collection grids.
+
+## Step 4: Defer App Scripts
+
+For apps you can't remove, you can often reduce their performance impact by loading them after the page is interactive.
+
+In your theme's `theme.liquid`, find app script tags that look like:
+
+```html
+<script src="https://cdn.someapp.com/widget.js"></script>
+```
+
+Add `defer` to defer their execution:
+
+```html
+<script defer src="https://cdn.someapp.com/widget.js"></script>
+```
+
+Note: This can break some apps that expect to run synchronously. Test carefully.
+
+## Step 5: Use Shopify's Built-In Performance Tools
+
+Shopify has added performance tooling directly in the admin:
+
+**Online Store > Themes > Performance** shows your theme's speed score and specific recommendations.
+
+**Shopify Speed Score** in the admin is based on a sample of real page loads, not just a single PageSpeed test. Use it as a baseline but also run tests with [our tool](/test) for more detail.
+
+## Step 6: Optimize Your Largest Contentful Paint
+
+On most Shopify stores, the LCP element is either the hero image on the homepage or the main product image on product pages.
+
+**For the hero image:**
+- Compress it aggressively (under 150KB)
+- Make sure it's not lazy-loaded (check your theme's `index.liquid`)
+- Add preload if possible in your theme's `<head>`
+
+**For product pages:**
+- The main product image is usually the LCP
+- Upload product images pre-compressed
+- Ensure your theme doesn't lazy-load the first product image
+
+## Step 7: Enable Lazy Loading for Below-Fold Images
+
+Most modern Shopify themes enable lazy loading by default. If yours doesn't, add `loading="lazy"` to images in collection grids, related products, and other below-fold content in your theme code.
+
+## Realistic Score Targets for Shopify
+
+| Setup | Realistic Score |
+|---|---|
+| Dawn theme, minimal apps, optimized images | 80-90 |
+| Fast theme, 5-8 apps | 65-80 |
+| Heavy theme, many apps | 30-55 |
+| Large collection pages | 50-70 |
+
+Mobile scores are typically 15-25 points lower than desktop on Shopify. Focus your optimization efforts on mobile.
+
+## Quick Checklist
+
+- [ ] Fast theme (Dawn or equivalent)
+- [ ] Apps audited, unused apps uninstalled
+- [ ] Product images compressed before upload (under 200KB)
+- [ ] Hero image not lazy-loaded
+- [ ] App scripts deferred where possible
+- [ ] No orphaned scripts from deleted apps in theme.liquid
+- [ ] Collection page images lazy-loaded
+
+Shopify performance is more constrained than other platforms because you're working within the platform's limits. But app management and image optimization alone can move the needle by 20-30 points for most stores.
+
+[Test your Shopify store](/test) to see your current PageSpeed score on both mobile and desktop.

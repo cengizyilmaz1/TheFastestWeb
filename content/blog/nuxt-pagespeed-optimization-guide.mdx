@@ -1,0 +1,194 @@
+---
+title: "Nuxt PageSpeed Optimization Guide"
+description: "Nuxt gives you SSR and static generation out of the box, but there are several things that can hurt your PageSpeed score. Here's how to optimize a Nuxt site for top performance."
+date: "2026-03-13"
+---
+
+Nuxt is a powerful full-stack Vue framework with server-side rendering and static generation built in. When configured correctly, it produces fast, SEO-friendly sites. When not, it can suffer from the same hydration overhead and bundle bloat as any other SPA framework.
+
+Here's how to get your Nuxt site scoring in the 90s.
+
+## Choose the Right Rendering Mode
+
+Nuxt supports multiple rendering strategies and choosing the right one has a huge impact on performance.
+
+**Static Site Generation (SSG)** with `nuxt generate` is the fastest option. Pages are pre-rendered at build time and served instantly from a CDN. If your content doesn't change on every request, use SSG.
+
+**Server-Side Rendering (SSR)** renders pages on the server per request. Slightly slower than SSG but necessary for dynamic, user-specific content. Use a fast server and edge deployment.
+
+**Client-Side Rendering (CSR)** should be avoided for public-facing pages. It ships all your JavaScript before showing content, which hurts FCP and LCP.
+
+Set your rendering mode in `nuxt.config.ts`:
+
+```ts
+export default defineNuxtConfig({
+  ssr: true, // or false for CSR
+});
+```
+
+For mixed needs, use Nuxt's route rules to set rendering per route:
+
+```ts
+export default defineNuxtConfig({
+  routeRules: {
+    "/": { prerender: true },
+    "/blog/**": { prerender: true },
+    "/dashboard/**": { ssr: true },
+  },
+});
+```
+
+## Optimize Images with Nuxt Image
+
+The `@nuxt/image` module handles responsive images, WebP conversion, and lazy loading automatically.
+
+```bash
+npm install @nuxt/image
+```
+
+```ts
+// nuxt.config.ts
+export default defineNuxtConfig({
+  modules: ["@nuxt/image"],
+});
+```
+
+Use `<NuxtImg>` instead of raw `<img>` tags:
+
+```vue
+<NuxtImg
+  src="/hero.jpg"
+  width="1200"
+  height="630"
+  alt="Hero"
+  preload
+/>
+```
+
+Add `preload` to your LCP image and never add `loading="lazy"` to it. For all other images, lazy loading is applied automatically.
+
+## Reduce JavaScript Bundle Size
+
+Nuxt auto-imports components and composables, which is convenient but can lead to importing more than you need. Check your bundle size:
+
+```bash
+nuxt analyze
+```
+
+Common bundle bloat causes:
+
+- Large UI component libraries (Vuetify, PrimeVue) importing all components
+- Using `import * from` instead of named imports
+- Including server-only code in client bundles
+
+Use component-level code splitting by marking heavy components as lazy:
+
+```vue
+<LazyHeavyComponent v-if="show" />
+```
+
+Nuxt won't include `LazyHeavyComponent` in the initial bundle.
+
+## Use `useAsyncData` and `useFetch` Correctly
+
+Data fetching that runs on both client and server can cause double fetching, adding unnecessary network requests and slowing hydration.
+
+```vue
+<script setup>
+// This runs on the server and result is passed to client
+// No double fetching
+const { data } = await useAsyncData("posts", () => $fetch("/api/posts"));
+</script>
+```
+
+Always `await` your data fetching in setup so it completes before the component renders. This prevents layout shifts from content appearing after hydration.
+
+## Optimize Fonts
+
+Self-host your fonts instead of loading from Google Fonts. Use the `@nuxtjs/google-fonts` module if you want to keep using Google Fonts but serve them from your domain:
+
+```bash
+npm install @nuxtjs/google-fonts
+```
+
+```ts
+export default defineNuxtConfig({
+  modules: ["@nuxtjs/google-fonts"],
+  googleFonts: {
+    download: true, // downloads and self-hosts fonts
+    families: {
+      Inter: [400, 600, 800],
+    },
+    display: "swap",
+    preload: true,
+  },
+});
+```
+
+## Handle Third-Party Scripts Properly
+
+Use Nuxt's `useHead` or `useScript` (Nuxt 3.9+) to load third-party scripts without blocking the main thread:
+
+```ts
+// For analytics and non-critical scripts
+useHead({
+  script: [
+    {
+      src: "https://analytics.example.com/script.js",
+      defer: true,
+    },
+  ],
+});
+```
+
+With `@nuxt/scripts` (experimental):
+
+```ts
+const { load } = useScript("https://analytics.example.com/script.js", {
+  trigger: "idle", // loads when browser is idle
+});
+```
+
+## Enable Compression and Caching
+
+In your Nitro server config, enable compression:
+
+```ts
+export default defineNuxtConfig({
+  nitro: {
+    compressPublicAssets: true,
+    routeRules: {
+      "/_nuxt/**": {
+        headers: { "cache-control": "max-age=31536000, immutable" },
+      },
+      "/**": {
+        headers: { "cache-control": "s-maxage=3600" },
+      },
+    },
+  },
+});
+```
+
+## Deploy to the Edge
+
+Nuxt's Nitro server supports edge deployment on Cloudflare Workers, Vercel Edge, and similar platforms. Edge deployment dramatically reduces TTFB for global audiences.
+
+```bash
+# Deploy to Cloudflare Pages
+NITRO_PRESET=cloudflare-pages nuxt build
+```
+
+## Quick Checklist
+
+- [ ] Using SSG or SSR (not CSR) for public pages
+- [ ] `@nuxt/image` installed, using `<NuxtImg>` for all images
+- [ ] LCP image has `preload` attribute
+- [ ] Bundle analyzed, large unused imports removed
+- [ ] Heavy components use `<LazyComponentName>`
+- [ ] Fonts self-hosted or via `@nuxtjs/google-fonts` with `download: true`
+- [ ] Third-party scripts use `defer` or load on idle
+- [ ] Deployed to edge (Cloudflare Pages, Vercel Edge)
+
+Nuxt sites can comfortably score 90+ with the right configuration. The biggest wins come from choosing the right rendering mode, optimizing images, and managing your JavaScript bundle.
+
+[Test your Nuxt site](/test) to see your current PageSpeed score and find out what's affecting each metric.

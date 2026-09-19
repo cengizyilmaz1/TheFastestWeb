@@ -1,0 +1,113 @@
+---
+title: "What Is FCP and How to Fix It"
+description: "First Contentful Paint measures how quickly your page shows its first piece of content. It's worth 10% of your PageSpeed score and affects how fast your site feels."
+date: "2026-03-12"
+---
+
+First Contentful Paint (FCP) measures how long it takes for the browser to render the first piece of content on the screen. That content can be text, an image, a background image, or an SVG.
+
+FCP is worth 10% of your PageSpeed score. A good FCP is under 1.8 seconds. Above 3 seconds is considered poor.
+
+## Why FCP Matters
+
+FCP is the first signal to the user that the page is actually loading. Before FCP, the screen is blank. A slow FCP makes users think the site is broken or down, leading to higher bounce rates even if the rest of the page loads quickly.
+
+It's different from LCP (Largest Contentful Paint), which measures when the main content loads. FCP just measures the very first thing the user sees.
+
+## What Causes Slow FCP
+
+### Slow Server Response (High TTFB)
+
+If your server takes a long time to respond, FCP can't start until the HTML arrives. TTFB (Time to First Byte) directly delays FCP.
+
+**Fix:** Use caching, move to faster hosting, or use edge/CDN delivery.
+
+### Render-Blocking Resources
+
+CSS and synchronous JavaScript in the `<head>` block the browser from rendering anything until they finish loading and parsing.
+
+**Fix:** Move non-critical CSS to load asynchronously. Add `defer` or `async` to JavaScript. Inline the critical CSS needed for above-the-fold content.
+
+### Large HTML Payload
+
+If your server sends a huge HTML document before the browser can start rendering, FCP is delayed.
+
+**Fix:** Use server-side rendering or static generation so the first HTML response includes ready-to-display content. Avoid loading all content on a single giant page.
+
+### Too Many Redirects
+
+Each redirect adds a round trip before the browser gets the actual page content.
+
+**Fix:** Eliminate redirect chains. Go directly from the URL to the final destination.
+
+## How to Fix FCP
+
+### 1. Eliminate Render-Blocking CSS
+
+Move non-critical CSS out of the `<head>` or load it asynchronously:
+
+```html
+<link rel="preload" href="styles.css" as="style" onload="this.rel='stylesheet'">
+```
+
+Inline only the CSS needed to render above-the-fold content. Everything else can load after FCP.
+
+### 2. Defer JavaScript
+
+Any JavaScript in the `<head>` without `defer` or `async` blocks rendering:
+
+```html
+<!-- Blocks FCP -->
+<script src="app.js"></script>
+
+<!-- Does not block FCP -->
+<script defer src="app.js"></script>
+```
+
+### 3. Use a CDN
+
+A CDN puts your content on servers close to your users, reducing TTFB and therefore FCP. This is one of the highest-impact changes for global audiences.
+
+### 4. Preconnect to Critical Origins
+
+If your page loads resources from external domains (fonts, analytics, CDN assets), add preconnect hints to start those connections early:
+
+```html
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://cdn.example.com">
+```
+
+### 5. Use Server-Side Rendering
+
+Client-side rendered apps (React, Vue, Angular SPAs without SSR) show a blank screen until JavaScript loads and runs. This devastates FCP.
+
+Switch to SSR or static generation so the browser receives rendered HTML immediately.
+
+## FCP vs LCP
+
+People often confuse FCP and LCP:
+
+- **FCP:** First piece of any content (text, image, SVG). Happens early.
+- **LCP:** The largest content element visible in the viewport. Happens later.
+
+FCP is always earlier than or equal to LCP. A fast FCP makes the page feel responsive. A fast LCP makes it feel loaded.
+
+## FCP Targets
+
+| Score | FCP |
+|---|---|
+| Good | Under 1.8s |
+| Needs improvement | 1.8s to 3s |
+| Poor | Over 3s |
+
+## Quick Checklist
+
+- [ ] TTFB under 800ms (use CDN or faster hosting)
+- [ ] No render-blocking CSS in `<head>`
+- [ ] All JavaScript has `defer` or `async`
+- [ ] Critical CSS inlined
+- [ ] No unnecessary redirects
+- [ ] Preconnect hints for external resources
+- [ ] SSR or static generation (not pure client-side rendering)
+
+[Test your site](/test) to see your current FCP and get a full breakdown of all your Core Web Vitals.

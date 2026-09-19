@@ -1,0 +1,93 @@
+---
+title: "What Is PageSpeed Insights and How to Use It"
+description: "Google PageSpeed Insights is the standard tool for measuring website performance. Here's what it measures, how to read the results, and what to do with them."
+date: "2026-03-30"
+---
+
+Google PageSpeed Insights (PSI) is a free tool from Google that measures how fast your website loads and how good the user experience is. It gives your site a score from 0 to 100 and tells you exactly what's slowing it down.
+
+It's the most widely used web performance tool and the standard reference for SEO and performance discussions.
+
+## What PageSpeed Insights Actually Tests
+
+PSI runs your URL through Google's Lighthouse engine, which simulates a page load on a mid-range mobile device on a typical mobile network. It captures performance data and calculates a score based on six metrics:
+
+| Metric | Weight | What It Measures |
+|---|---|---|
+| Total Blocking Time (TBT) | 30% | JavaScript blocking the main thread |
+| Largest Contentful Paint (LCP) | 25% | When the main content loads |
+| Cumulative Layout Shift (CLS) | 25% | Visual stability (content moving) |
+| First Contentful Paint (FCP) | 10% | When first content appears |
+| Speed Index (SI) | 10% | How quickly the page fills in |
+
+These are called Core Web Vitals (LCP, CLS, TBT/FID) and are used by Google as a ranking signal.
+
+## Lab Data vs Field Data
+
+PSI shows two types of data:
+
+**Field Data (Chrome User Experience Report):** Real performance data collected from actual Chrome users visiting your site over the past 28 days. This is what Google actually uses for search rankings. If you've just launched or have low traffic, this section may not appear.
+
+**Lab Data (Lighthouse):** A simulated test run in controlled conditions. This is what gives you the 0-100 score and the specific recommendations. It's useful for debugging and tracking improvements.
+
+Both matter. Field data tells you how your real users experience the site. Lab data tells you what to fix.
+
+## How to Read Your Score
+
+**90-100:** Good. Your site is well optimized.
+**50-89:** Needs improvement. There are meaningful gains available.
+**0-49:** Poor. Significant performance issues affecting user experience and rankings.
+
+The score is calculated on a logarithmic scale, which means going from 50 to 70 is easier than going from 85 to 95.
+
+**Desktop vs Mobile:** PSI tests both. Desktop scores are almost always higher because it simulates a faster device and connection. Google prioritizes mobile performance for rankings, so focus on your mobile score.
+
+## How to Read the Diagnostics
+
+Below the score, PSI shows three sections:
+
+**Opportunities:** Specific improvements with estimated time savings. These are ranked by potential impact. Fix the top ones first.
+
+**Diagnostics:** Additional information about performance patterns. Less actionable than Opportunities but useful for understanding what's happening.
+
+**Passed Audits:** Things your site is already doing right. Ignore these.
+
+Click on any item to get detailed explanations and specific resources causing the problem.
+
+## What the Metrics Mean in Plain English
+
+**LCP over 4s:** Your main content (hero image, headline) takes too long to appear. Usually an image or font loading issue.
+
+**TBT over 600ms:** Your JavaScript is blocking the browser for too long. Users can't interact with the page. Usually caused by large JS bundles or third-party scripts.
+
+**CLS over 0.25:** Content is jumping around as the page loads. Usually caused by images without dimensions or late-loading content.
+
+**FCP over 3s:** Nothing appears for over 3 seconds. Usually a server response or render-blocking resource issue.
+
+## How to Use PSI Effectively
+
+**Test the right page.** Your homepage may be fast but product pages might not be. Test the pages that matter most for conversions and SEO.
+
+**Test multiple times.** Single runs can vary by 10-15 points depending on server load and network conditions. Run it 3 times and take the average.
+
+**Fix one thing at a time.** Make a change, run the test again, see if it improved. Don't make 10 changes at once.
+
+**Track over time.** A one-time test is a snapshot. Performance can degrade as you add features. Use a tool like [TheFastestWeb](/submit) to monitor your score daily automatically.
+
+## Free Alternatives to PageSpeed Insights
+
+PSI is the standard, but other tools can give you additional insight:
+
+- **WebPageTest:** More detailed waterfall analysis, real browser testing
+- **GTmetrix:** Combines Lighthouse and WebPageTest, easy to read
+- **Lighthouse in Chrome DevTools:** Same engine as PSI, runs locally without network latency
+
+All of these use the same underlying metrics. PSI is the reference because it's what Google uses for rankings.
+
+## The Relationship Between PSI and Google Rankings
+
+Google uses Core Web Vitals (LCP, CLS, and FID/INP) as a ranking factor as part of the Page Experience signal. A poor PageSpeed score doesn't automatically drop you in rankings, but sites with consistently good scores have an advantage over competitors with similar content.
+
+Think of it as a tiebreaker: if two pages are equally relevant for a query, the faster one ranks higher.
+
+[Test your site now](/test) and see your PageSpeed score in seconds.

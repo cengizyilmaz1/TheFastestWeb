@@ -1,0 +1,100 @@
+---
+title: "What Is a Good PageSpeed Score?"
+description: "A score of 90+ is good, but context matters. Here's what PageSpeed scores actually mean, what's realistic for different site types, and what to aim for."
+date: "2026-03-26"
+---
+
+Google's PageSpeed Insights scores your site from 0 to 100. A score of 90 or above is "Good." But what score should you actually be targeting for your type of site?
+
+## The Official Thresholds
+
+Google defines three categories:
+
+- **90-100:** Good
+- **50-89:** Needs Improvement
+- **0-49:** Poor
+
+These apply to both mobile and desktop scores. But the thresholds are the same regardless of whether you're running a simple blog or a complex SaaS dashboard with real-time data.
+
+## Realistic Targets by Site Type
+
+Not all sites can hit 90+, and that's okay. Here's what to expect:
+
+### Static Landing Pages and Blogs
+
+**Target: 90-100 mobile, 95-100 desktop**
+
+These should be easy. If your landing page or blog is scoring under 85, something is wrong -- likely oversized images, a page builder loading unnecessary CSS, or third-party scripts.
+
+### Marketing Websites (SSR or SSG)
+
+**Target: 85-95 mobile, 90-100 desktop**
+
+Sites built on Next.js, Nuxt, Astro, or similar frameworks with server-side rendering should consistently hit the 90s. If you're below 80, check for unoptimized images, blocking JavaScript, or too many third-party tools (chat, video, analytics).
+
+### Shopify and E-commerce
+
+**Target: 65-85 mobile, 75-90 desktop**
+
+E-commerce sites are harder to optimize. Product pages load many images, often have review widgets and live inventory checks, and Shopify's platform adds some baseline overhead. A score in the 70s is respectable for a Shopify store. Above 80 is excellent.
+
+### WordPress Sites
+
+**Target: 70-90 mobile, 80-95 desktop**
+
+Highly variable. A well-built WordPress site with a fast theme and minimal plugins can hit 90+. A site with a page builder like Elementor and 20 plugins will often score in the 50s-60s. Improving a WordPress score is often more about removing things than adding them.
+
+### SaaS Applications and Dashboards
+
+**Target: 60-80 mobile, 70-90 desktop**
+
+Authenticated apps with real-time data, complex UI components, and many interactive elements are inherently heavier. A score in the 70s is good for a SaaS product. Focus on getting public pages (marketing, landing, pricing) into the 90s and accept that the app itself will be lower.
+
+### News and Content Sites
+
+**Target: 50-70 mobile, 65-85 desktop**
+
+High-traffic news sites often score in the 50s-60s due to aggressive ad loading, multiple analytics scripts, comment systems, and related content widgets. Improving scores here requires removing or deferring many third-party tools, which is often a business tradeoff.
+
+## Mobile vs Desktop
+
+Desktop scores are almost always higher because the test simulates a faster device and connection. The gap is typically 10-25 points.
+
+**Mobile scores are what matter for SEO.** Google uses mobile Core Web Vitals for rankings. If you have to choose where to focus, optimize for mobile.
+
+## The Score Is Not the Goal -- The Metrics Are
+
+A score of 95 doesn't mean your site is fast. It means the metrics Lighthouse measures are within good ranges. The score is a weighted composite:
+
+- **Total Blocking Time (TBT):** 30%
+- **Largest Contentful Paint (LCP):** 25%
+- **Cumulative Layout Shift (CLS):** 25%
+- **First Contentful Paint (FCP):** 10%
+- **Speed Index:** 10%
+
+A site can score 90 with a mediocre LCP if its TBT and CLS are perfect. What Google actually uses for rankings is Core Web Vitals field data (LCP, CLS, INP from real users), not the lab score.
+
+Focus on passing the Core Web Vitals thresholds:
+- LCP under 2.5s
+- CLS under 0.1
+- INP under 200ms
+
+If those pass, your score will usually follow.
+
+## When to Stop Optimizing
+
+Getting from 50 to 70 is relatively easy. Going from 80 to 90 takes focused effort. Going from 90 to 100 is often impractical for real-world sites with any dynamic content.
+
+A score of 90+ on mobile is the point of diminishing returns for most sites. Beyond that, you're spending significant engineering time for tiny user experience improvements.
+
+Exceptions: if you're in a competitive SEO niche where every signal matters, or if your real-world LCP is still above 2.5s even with a high score, keep optimizing.
+
+## What to Do If Your Score Is Low
+
+1. Run the test 3 times and take the average -- single scores vary
+2. Check the "Opportunities" section in PageSpeed Insights -- it ranks fixes by impact
+3. Fix your LCP first (biggest weight, biggest user impact)
+4. Fix TBT second (second biggest weight, reflects JavaScript overhead)
+5. Fix CLS third (layout shifts cause user frustration and accidental clicks)
+
+[Test your site now](/test) to see your current score and exactly what's affecting it.

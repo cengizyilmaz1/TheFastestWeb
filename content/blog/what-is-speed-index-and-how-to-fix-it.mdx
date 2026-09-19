@@ -1,0 +1,111 @@
+---
+title: "What Is Speed Index and How to Fix It"
+description: "Speed Index measures how quickly content is visually populated on your page. Here's what it means and how to improve it."
+date: "2026-03-10"
+---
+
+Speed Index (SI) measures how quickly the visible content of a page is populated. Unlike LCP which measures a single element, Speed Index tracks the overall visual progress of the entire page loading from top to bottom.
+
+Speed Index accounts for 10% of your PageSpeed score. A good Speed Index is under 3.4 seconds. Above 5.8 seconds is considered poor.
+
+## How Speed Index Is Calculated
+
+Speed Index captures screenshots of your page loading at multiple points in time and measures how complete the page looks at each point. A page that shows content gradually gets a better score than one that shows nothing for a long time and then everything at once.
+
+In technical terms, it's the area above the visual progress curve. A lower area means content appeared faster.
+
+## What Causes a High Speed Index
+
+### Render-Blocking Resources
+
+CSS and synchronous JavaScript that block rendering delay when the browser can start painting the page, which directly increases Speed Index.
+
+### Slow Server Response
+
+If the server takes a long time to respond, no rendering can happen until the HTML arrives. A high TTFB pushes Speed Index up.
+
+### JavaScript-Heavy Pages
+
+Pages that rely heavily on JavaScript to render content show nothing until the JS runs. This creates a gap in visual progress that Speed Index penalizes.
+
+### Large Images Above the Fold
+
+Images that take a long time to load leave visible blank spaces on the page. Speed Index tracks these gaps.
+
+### Fonts Causing Invisible Text
+
+If fonts take a long time to load and you're using `font-display: block`, your text is invisible until the font arrives. Speed Index captures this invisible period.
+
+## How to Fix Speed Index
+
+Speed Index improves when you improve FCP and LCP. Most of the same techniques apply.
+
+### 1. Eliminate Render-Blocking Resources
+
+Move non-critical CSS out of the `<head>`. Add `defer` to JavaScript. Inline the critical CSS needed for above-the-fold content so the browser can start rendering immediately.
+
+### 2. Use Font Display Swap
+
+Replace `font-display: block` with `font-display: swap` so text renders immediately in a fallback font while the custom font loads:
+
+```css
+@font-face {
+  font-family: "MyFont";
+  src: url("/fonts/myfont.woff2") format("woff2");
+  font-display: swap;
+}
+```
+
+### 3. Preload Critical Resources
+
+Tell the browser to start loading critical resources early:
+
+```html
+<link rel="preload" href="/fonts/main.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/hero.webp" as="image">
+```
+
+### 4. Optimize Above-the-Fold Images
+
+Images visible when the page first loads should be compressed, correctly sized, and not lazy-loaded. A blank image placeholder while the image loads directly hurts Speed Index.
+
+### 5. Use Server-Side Rendering
+
+Client-side rendered apps delay all visual content until JavaScript runs. Switching to SSR means the browser gets rendered HTML immediately and can start displaying content right away.
+
+### 6. Avoid Content Jumping In
+
+Avoid using JavaScript to populate content after the initial render for above-the-fold areas. If your hero text, navigation, or featured content loads in via `useEffect`, the page will look blank during that period.
+
+## Speed Index vs FCP vs LCP
+
+These three metrics all measure visual performance but from different angles:
+
+- **FCP:** When the first piece of any content appears (earliest)
+- **Speed Index:** How quickly the overall page fills in (average visual progress)
+- **LCP:** When the largest content element loads (often the most meaningful)
+
+A fast FCP that's followed by a slow trickle of content will still have a high Speed Index. You need both a fast FCP and consistent visual progress.
+
+## Speed Index Targets
+
+| Score | Speed Index |
+|---|---|
+| Good | Under 3.4s |
+| Needs improvement | 3.4s to 5.8s |
+| Poor | Over 5.8s |
+
+## Quick Checklist
+
+- [ ] No render-blocking CSS in `<head>`
+- [ ] JavaScript uses `defer` or `async`
+- [ ] Critical CSS inlined
+- [ ] Fonts use `font-display: swap`
+- [ ] Critical resources preloaded
+- [ ] Above-the-fold images loaded eagerly and compressed
+- [ ] SSR or static generation (not client-side only rendering)
+- [ ] No content injected by JavaScript above the fold after load
+
+Speed Index rarely needs to be addressed in isolation. If your FCP and LCP are good, Speed Index usually takes care of itself.
+
+[Test your site](/test) to see your Speed Index alongside all your other Core Web Vitals metrics.

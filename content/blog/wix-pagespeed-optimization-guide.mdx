@@ -1,0 +1,95 @@
+---
+title: "Wix PageSpeed Optimization Guide"
+description: "Wix handles hosting and infrastructure for you, but there are still several things you can do to improve your PageSpeed score. Here's what works and what doesn't."
+date: "2026-03-22"
+---
+
+Wix is a fully hosted website builder. Unlike WordPress or self-hosted frameworks, you don't control the server, CDN, or code output. This limits what you can optimize, but there's still meaningful room for improvement.
+
+Here's what actually helps on Wix and what to skip.
+
+## Understanding Wix's Performance Baseline
+
+Wix has invested significantly in performance in recent years. They moved to a server-side rendering architecture (Wix Editor X and newer sites), use global CDN distribution, and automatically compress images.
+
+The platform-level performance is decent. Most Wix sites should be able to achieve scores in the 65-80 range on mobile without any effort. Getting above 80 requires active optimization.
+
+## What You Can Control on Wix
+
+### 1. Optimize Images
+
+Images are the biggest variable on Wix. The platform auto-converts to WebP and serves from CDN, but it can only optimize what you give it.
+
+- **Compress before uploading.** Use Squoosh or TinyPNG on your images before adding them to Wix. Even though Wix compresses images, starting with a smaller source means better output.
+- **Use the right dimensions.** Don't upload a 4000px wide image for a 600px slot. Resize to roughly 2x the display size (for retina) before uploading.
+- **Don't overload pages with images.** Each additional image is another request. Use only the images that serve a purpose.
+
+### 2. Set Your LCP Image to Load Eagerly
+
+Your hero image (the large image at the top of your page) is likely your LCP element. Make sure it's the first image on the page and not hidden below other content.
+
+In Wix, you can't directly add `loading="eager"` or `fetchpriority="high"` attributes, but you can:
+- Place the hero image as the first visible element
+- Avoid having any JavaScript-loaded content above the hero
+- Keep the hero image file size small (under 150KB after compression)
+
+### 3. Remove Unused Apps and Widgets
+
+Every Wix app you install may add JavaScript to your page. Wix Chat, booking widgets, countdown timers, and social feeds all have a performance cost.
+
+Audit your installed apps in the Wix App Manager. Remove any app you're not actively using. This is the highest-impact change you can make.
+
+### 4. Minimize Animations
+
+Wix makes it easy to add entrance animations and hover effects. Each animation adds JavaScript that must execute before the page becomes fully interactive.
+
+Disable animations on elements that don't need them. For important landing pages, consider turning off all entrance animations to reduce TBT.
+
+### 5. Reduce Content Per Page
+
+Heavy pages with many sections, videos, embedded maps, and widgets will score lower than focused pages. If your homepage is a single long scroll with 15 sections, consider splitting content across pages.
+
+### 6. Connect a Custom Domain
+
+Wix sites on the free plan show on a `wixsite.com` subdomain. This doesn't directly affect performance, but using a custom domain with proper DNS settings (including Wix's CDN) gives slightly better TTFB.
+
+## What You Can't Control on Wix
+
+- **JavaScript output.** Wix generates and serves the JavaScript. You can't minify or tree-shake it yourself.
+- **Rendering architecture.** You can't switch to pure static generation.
+- **Font loading strategy.** You can choose fonts from Wix's library, but you can't add custom `font-display` settings.
+- **Server-side code execution.** Wix Velo (their code platform) lets you add backend logic but you can't optimize how Wix's own code runs.
+- **HTTP/3 or custom headers.** Infrastructure decisions are Wix's.
+
+## Realistic Score Expectations
+
+| Page Type | Expected Mobile Score |
+|---|---|
+| Simple landing page | 70-82 |
+| Homepage with video | 55-70 |
+| Homepage with chat widget | 60-72 |
+| App-heavy store page | 45-62 |
+| Optimized product/blog page | 72-85 |
+
+Wix is not designed to compete with statically-generated sites on raw PageSpeed scores. The platform adds overhead that you can't remove. But for most small businesses and portfolios, scores in the 65-80 range are acceptable.
+
+## Should You Migrate to a Faster Platform?
+
+If you're hitting a ceiling with Wix and performance is critical for your business:
+
+- **For marketing sites:** Consider Webflow or a static site generator
+- **For blogs:** Consider WordPress with a fast theme, or Ghost
+- **For e-commerce:** Consider Shopify
+
+But if you chose Wix because you need to manage your own content without technical knowledge, the performance trade-off may be worth it. A Wix site at 72 is still usable. What matters is whether the performance is affecting your conversions and rankings.
+
+## Quick Checklist
+
+- [ ] All images compressed and resized before upload
+- [ ] Unused apps removed from App Manager
+- [ ] Unnecessary animations disabled
+- [ ] No embedded videos on pages where performance is critical
+- [ ] Custom domain connected (not `.wixsite.com`)
+- [ ] Pages not overloaded with sections and widgets
+
+[Test your Wix site](/test) to see your current PageSpeed score and which metrics are dragging it down.

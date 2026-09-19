@@ -1,0 +1,100 @@
+---
+title: "How to Check Website Speed (Free Tools)"
+description: "A practical guide to the best free tools for checking website speed, what each one measures, and when to use which one."
+date: "2026-03-27"
+---
+
+There are dozens of tools to check website speed, and each gives you slightly different data. Here's which ones to use and what they're actually telling you.
+
+## The Tools That Matter
+
+### 1. PageSpeed Insights (Google)
+
+**URL:** pagespeed.web.dev
+
+The standard reference for web performance. It runs Lighthouse (Google's performance engine) on your URL and gives you a 0-100 score based on six metrics. More importantly, it shows your real-world Core Web Vitals from actual Chrome users if your site has enough traffic.
+
+**Use it when:** You want the official score Google sees, or you want to understand what's affecting your rankings.
+
+**Limitation:** Single test result can vary by 10-15 points depending on server load. Run it 3 times and average the results.
+
+### 2. TheFastestWeb
+
+**URL:** thefastestweb.site/test
+
+Runs PageSpeed Insights on your URL and presents the results clearly with metric-by-metric breakdowns. Also lets you monitor your score daily and get alerts if it drops.
+
+**Use it when:** You want to track your score over time and see how it compares to other sites.
+
+### 3. WebPageTest
+
+**URL:** webpagetest.org
+
+The most detailed free performance tool available. Runs your page in a real browser (Chrome, Firefox) from a real location with a configurable connection speed. Shows a full waterfall of every request, how long each resource takes, and exactly what's blocking what.
+
+**Use it when:** You need to understand the root cause of a slow load, not just the score. If PageSpeed Insights tells you something is slow, WebPageTest tells you why.
+
+**Best feature:** Filmstrip view showing exactly what the page looked like at each moment during load.
+
+### 4. GTmetrix
+
+**URL:** gtmetrix.com
+
+Combines Lighthouse and WebPageTest data in a cleaner interface. Free tier gives you 1 test location (Vancouver) with Chrome. Shows waterfall, video playback, and performance scores.
+
+**Use it when:** You want something more visual than PageSpeed Insights but less technical than WebPageTest.
+
+### 5. Chrome DevTools (Lighthouse)
+
+**Built into Chrome:** F12 > Lighthouse tab
+
+Same Lighthouse engine as PageSpeed Insights but runs locally. Because it's running on your machine without network latency to Google's servers, it's faster but can give slightly different results. Useful for testing local development builds before deploying.
+
+**Use it when:** You're actively debugging and iterating on changes locally.
+
+**How to use:** Open DevTools (F12), go to the Lighthouse tab, select Mobile or Desktop, click "Analyze page load."
+
+### 6. Google Search Console
+
+**URL:** search.google.com/search-console
+
+Not a speed testing tool, but the most important source of real-world Core Web Vitals data. The Core Web Vitals report shows how your pages are performing for actual users, grouped by Good/Needs Improvement/Poor.
+
+**Use it when:** You want to know what Google is actually seeing and using for rankings.
+
+**Limitation:** Only available if you've verified ownership of your site.
+
+## Which Tool to Use for What
+
+| Goal | Tool |
+|---|---|
+| Check overall score | PageSpeed Insights |
+| Track score over time | TheFastestWeb |
+| Debug a specific issue | WebPageTest |
+| Test before deploying | Chrome DevTools |
+| See ranking impact | Google Search Console |
+
+## Testing Best Practices
+
+**Test mobile first.** Google uses mobile Core Web Vitals for rankings. Desktop scores are almost always better and less relevant.
+
+**Run multiple tests.** A single PageSpeed run can vary significantly. Run at least 3 tests and take the average or middle value.
+
+**Test the right pages.** Your homepage might be well-optimized, but product pages, blog posts, or landing pages might not be. Test the pages that drive actual traffic and conversions.
+
+**Test from multiple locations.** WebPageTest lets you choose test locations. Users in Europe get a different experience than users in Singapore. If you have a global audience, test from multiple regions.
+
+**Test consistently.** Run tests at the same time of day if possible. A page that's cached by a CDN will test much faster at midday than at 3am when caches are cold.
+
+## Understanding Score Variability
+
+PageSpeed scores can vary by 10-20 points between runs. This is normal and caused by:
+
+- Server response time variation
+- CDN cache state (cached vs. uncached)
+- Background network conditions during the test
+- Third-party script load times
+
+If you're seeing a sudden drop in score, run the test 3-5 times before reacting. If the average is consistently lower than before, then something changed.
+
+[Test your site now](/test) and get your current PageSpeed score in seconds.

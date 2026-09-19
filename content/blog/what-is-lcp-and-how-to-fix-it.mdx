@@ -1,0 +1,92 @@
+---
+title: "What Is LCP and How to Fix It"
+description: "Largest Contentful Paint is one of the most important Core Web Vitals. Here's what it measures, why it matters, and how to improve it."
+date: "2026-03-22"
+---
+
+Largest Contentful Paint (LCP) measures how long it takes for the largest visible element on your page to load. It's one of Google's three Core Web Vitals and counts for 25% of your PageSpeed score.
+
+A good LCP score is under 2.5 seconds. Above 4 seconds is considered poor and will hurt your rankings.
+
+## What Counts as the LCP Element?
+
+Google measures whichever of these is largest in the viewport when the page loads:
+
+- Hero images or background images
+- Large text blocks (headlines)
+- Video poster images
+- Images inside `<img>` tags
+
+Most of the time, it's your hero image or the main headline at the top of the page.
+
+## Why LCP Matters for SEO
+
+Google uses Core Web Vitals as a ranking factor. A slow LCP tells Google that your page feels slow to users, which can push you down in search results. Sites with LCP under 2.5 seconds consistently outrank those above 4 seconds for the same keywords.
+
+## Common Causes of Poor LCP
+
+### Slow Server Response
+
+If your server takes a long time to respond (high TTFB), LCP will always be slow no matter how optimized your images are. Fix your server first.
+
+### Unoptimized Images
+
+Large, uncompressed images are the most common cause. A 2MB hero image will take seconds to load on a typical connection.
+
+**Fix:** Compress images to WebP format. Aim for under 100KB for images that aren't full-bleed. Use responsive images with `srcset`.
+
+### Render-Blocking Resources
+
+JavaScript and CSS that block rendering delay when the browser can even start painting the page.
+
+**Fix:** Move critical CSS inline. Defer non-critical JavaScript with `defer` or `async`.
+
+### Images Not Preloaded
+
+If your LCP image is loaded via CSS or discovered late in parsing, the browser starts downloading it too late.
+
+**Fix:** Add a preload hint in your `<head>`:
+
+```html
+<link rel="preload" as="image" href="/hero.webp" />
+```
+
+In Next.js, add `priority` to your LCP image:
+
+```tsx
+<Image src="/hero.webp" priority alt="Hero" />
+```
+
+### Lazy-Loaded LCP Image
+
+Never lazy-load your LCP image. If you have `loading="lazy"` on your hero image, remove it immediately.
+
+## How to Find Your LCP Element
+
+1. Open Chrome DevTools
+2. Go to the Performance tab
+3. Record a page load
+4. Look for the "LCP" marker in the timeline
+
+Or run your URL through [Google PageSpeed Insights](https://pagespeed.web.dev/) and scroll to the "Diagnostics" section. It will highlight exactly which element is your LCP and why it's slow.
+
+## LCP Targets
+
+| Score | LCP |
+|---|---|
+| Good | Under 2.5s |
+| Needs improvement | 2.5s to 4s |
+| Poor | Over 4s |
+
+## Quick Checklist
+
+- [ ] Hero image is WebP, under 100KB
+- [ ] LCP image has `priority` (Next.js) or `<link rel="preload">`
+- [ ] No `loading="lazy"` on the LCP image
+- [ ] TTFB is under 800ms
+- [ ] Critical CSS is inlined or loaded early
+- [ ] No render-blocking scripts above the fold
+
+Fixing LCP is usually the highest-impact change you can make to your PageSpeed score. Most sites can go from a 4-second LCP to under 2 seconds with just image optimization and a preload hint.
+
+Want to see your current LCP score? [Test your site for free](/test) and we'll show you your full Core Web Vitals breakdown.

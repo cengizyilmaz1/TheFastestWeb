@@ -1,0 +1,71 @@
+---
+title: "Why Your PageSpeed Score Dropped (And How to Fix It)"
+description: "A sudden PageSpeed score drop can silently kill your Google rankings before you notice. Here's how to diagnose what went wrong and recover fast."
+date: "2026-03-23"
+---
+
+Your site was fast. Then you launched something new, a redesign, a new plugin, a third-party widget, and your PageSpeed score quietly tanked. Traffic followed a few weeks later.
+
+This is exactly what happened to me with FixMyPDF. After migrating to a new framework, traffic dropped from 100+ visitors a day to under 20. The site looked fine. No errors in the console. But the Core Web Vitals had collapsed.
+
+Here's how to figure out why your score dropped and how to get it back.
+
+## The Most Common Causes
+
+### 1. A New Third-Party Script
+
+Analytics tools, chat widgets, A/B testing scripts, ad networks. These are the most frequent culprits. Each one blocks the main thread and drives up your **Total Blocking Time (TBT)**, which accounts for 30% of your PageSpeed score.
+
+Check your score breakdown in [Google PageSpeed Insights](https://pagespeed.web.dev/) and look at the "Reduce JavaScript execution time" and "Avoid long main-thread tasks" diagnostics.
+
+**Fix:** Load third-party scripts with `defer` or `async`, or use a facade (lazy-load the widget only on interaction).
+
+### 2. Unoptimized Images
+
+Adding a hero image, a new team photo, or a background without compressing it first can tank your **Largest Contentful Paint (LCP)**, which is 25% of your score.
+
+**Fix:** Compress images before uploading. Use WebP format. In Next.js, use the `<Image>` component. It automatically serves the right size and format. Make sure your LCP image has `priority` set.
+
+### 3. A Framework or Dependency Upgrade
+
+Upgrading frameworks, adding a new npm package, or switching CSS libraries can add kilobytes of JavaScript you don't realize is there.
+
+**Fix:** Run a bundle analyzer (`@next/bundle-analyzer` for Next.js) to see what's bloating your JS. Look for large dependencies you can replace with smaller alternatives.
+
+### 4. Layout Shifts from Fonts or Ads
+
+If you added a custom font without `font-display: swap`, or if an ad slot loaded in and pushed content down, your **Cumulative Layout Shift (CLS)** will have increased. CLS is 25% of your score.
+
+**Fix:** Always use `font-display: swap` in your CSS. Reserve space for ads and embeds with explicit width/height attributes. Avoid inserting content above existing content after page load.
+
+### 5. Server Response Time Regression
+
+If your hosting got slower (overloaded shared server, cold starts on serverless, a slow database query), your **Time to First Byte (TTFB)** increases, which pushes everything else back.
+
+**Fix:** Check your server logs for slow queries. Use caching (Redis, CDN edge caching). Consider moving to a faster host or region closer to your users.
+
+## How to Diagnose It
+
+1. **Run a PageSpeed test** at [thefastestweb.site/test](/test) or Google PageSpeed Insights
+2. **Look at the score breakdown.** Which metrics dropped? LCP, TBT, CLS?
+3. **Check the "Opportunities" and "Diagnostics" sections.** PageSpeed will tell you exactly what's causing the problem.
+4. **Compare against your history.** If you're listed on TheFastestWeb, your score history shows exactly when it dropped.
+
+## How to Recover
+
+Once you know the cause, the fix is usually straightforward:
+
+- **TBT high?** Audit your JavaScript. Defer scripts, remove unused code.
+- **LCP slow?** Optimize your hero image, preload critical resources.
+- **CLS issues?** Add explicit dimensions to images, reserve space for dynamic content.
+- **TTFB slow?** Cache aggressively, move to edge hosting.
+
+The key is to fix the specific metric that dropped rather than trying to optimize everything at once.
+
+## Monitor It Going Forward
+
+A score drop often goes unnoticed for weeks. By the time you see it in traffic data, Google has already re-ranked your pages.
+
+The best approach is daily monitoring. Know the moment your score changes so you can fix it before it affects rankings. That's what TheFastestWeb does for your site automatically.
+
+[Submit your site](/submit) to get daily speed tracking and alerts when your score drops significantly.

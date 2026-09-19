@@ -1,0 +1,116 @@
+---
+title: "What Is TTI and How to Fix It"
+description: "Time to Interactive measures when your page is fully ready to respond to user input. Here's what causes high TTI and how to fix it."
+date: "2026-03-11"
+---
+
+Time to Interactive (TTI) measures how long it takes for a page to become fully interactive. A page is considered interactive when it has displayed useful content, event handlers are registered for visible elements, and the page responds to user interactions within 50 milliseconds.
+
+TTI is not a direct scoring metric in the latest PageSpeed Insights (it was replaced by Total Blocking Time as a proxy), but it still shows up in your diagnostics and directly affects how your site feels to use.
+
+## What TTI Actually Measures
+
+TTI tracks the point after which the main thread is consistently free for at least 5 seconds. Before that point, the page might look loaded but still be unresponsive to clicks, taps, and keyboard input.
+
+If you've ever clicked a button on a website and nothing happened for a second or two, you experienced high TTI.
+
+## What Causes High TTI
+
+### Heavy JavaScript Bundles
+
+The biggest cause. If your page ships a large JavaScript bundle, the browser has to download, parse, compile, and execute all of it before the page becomes interactive. During this time, the main thread is blocked.
+
+### Too Many Third-Party Scripts
+
+Third-party scripts (analytics, chat, A/B testing, ads) all run on the main thread. Each one delays interactivity.
+
+### Long Tasks
+
+Any JavaScript task that takes more than 50 milliseconds is a "long task." A page with many long tasks will have high TTI because there's never a 5-second quiet window on the main thread.
+
+### Slow Server Response
+
+If the HTML takes a long time to arrive, everything is delayed downstream, including TTI.
+
+## How to Fix TTI
+
+### 1. Reduce JavaScript Bundle Size
+
+Less JavaScript means less parsing and execution time. Strategies:
+
+- Remove unused dependencies
+- Use dynamic imports to split code by route
+- Replace large libraries with smaller alternatives
+- Tree-shake your imports
+
+In Next.js, code splitting happens automatically per route. In other frameworks, use `React.lazy()` or dynamic imports.
+
+### 2. Defer Non-Critical JavaScript
+
+Use `defer` on scripts that don't need to run immediately:
+
+```html
+<script defer src="analytics.js"></script>
+```
+
+In React/Vue/Svelte apps, lazy-load components that aren't needed on the initial render:
+
+```js
+const HeavyChart = lazy(() => import("./HeavyChart"));
+```
+
+### 3. Break Up Long Tasks
+
+Long tasks block the main thread and keep TTI high. Break them into smaller pieces:
+
+```js
+// Instead of one blocking task
+processLargeDataset(data);
+
+// Use scheduler to yield to the browser between chunks
+async function processInChunks(data) {
+  for (let i = 0; i < data.length; i += 100) {
+    processChunk(data.slice(i, i + 100));
+    await new Promise(r => setTimeout(r, 0)); // yield
+  }
+}
+```
+
+### 4. Remove or Delay Third-Party Scripts
+
+Audit every third-party script on your page. For each one, ask whether it needs to load before the page is interactive.
+
+Most analytics tools don't need to run before interaction. Load them with `strategy="lazyOnload"` in Next.js or add `defer` to the script tag.
+
+### 5. Use Server-Side Rendering
+
+Pages rendered on the server are visually complete immediately when they arrive. The remaining JavaScript needed for interactivity is smaller, reducing TTI.
+
+## TTI vs TBT
+
+TTI and TBT (Total Blocking Time) are closely related:
+
+- **TTI:** The timestamp when the page becomes fully interactive
+- **TBT:** The total duration of long tasks between FCP and TTI
+
+TBT is a better metric for optimization because it's less variable and more actionable. Fixing TBT usually fixes TTI as a side effect.
+
+## Realistic TTI Targets
+
+| Site Type | Good TTI |
+|---|---|
+| Static landing page | Under 2s |
+| Marketing site (SSR) | Under 3s |
+| SaaS app (SSR) | Under 4s |
+| Complex dashboard | Under 5s |
+
+## Quick Checklist
+
+- [ ] JavaScript bundle analyzed and reduced
+- [ ] Code splitting enabled (routes load only what they need)
+- [ ] Third-party scripts deferred or lazy-loaded
+- [ ] No synchronous long tasks on page load
+- [ ] SSR or static generation used for public pages
+- [ ] Web Workers used for heavy computation
+
+[Test your site](/test) to see your TTI and identify what's delaying interactivity on your pages.

@@ -1,0 +1,110 @@
+---
+title: "What Is CLS and How to Fix It"
+description: "Cumulative Layout Shift measures visual stability. It's worth 25% of your PageSpeed score and one of the easiest Core Web Vitals to fix once you know what's causing it."
+date: "2026-03-19"
+---
+
+Cumulative Layout Shift (CLS) measures how much your page content moves around while it loads. It's one of Google's three Core Web Vitals and accounts for 25% of your PageSpeed score.
+
+A good CLS score is under 0.1. Above 0.25 is considered poor.
+
+## What CLS Actually Measures
+
+Imagine you're reading an article and an image loads above the text, pushing everything down. Or you're about to click a button and an ad banner appears, making you click the wrong thing. That's layout shift.
+
+CLS scores each unexpected shift based on how much of the viewport moved and how far it moved. The score is the sum of all those shifts during the page load.
+
+## Why CLS Matters
+
+Beyond the PageSpeed score, CLS directly affects user experience. Pages with high CLS feel unstable and unprofessional. Google uses it as a signal that your page is frustrating to use.
+
+The good news: CLS is usually the easiest Core Web Vital to fix. Most causes have straightforward solutions.
+
+## Common Causes of High CLS
+
+### Images Without Dimensions
+
+If your `<img>` tags don't have explicit `width` and `height` attributes, the browser doesn't know how much space to reserve. When the image loads, it pushes everything below it down.
+
+**Fix:** Always include width and height on images:
+
+```html
+<img src="hero.webp" width="800" height="450" alt="Hero" />
+```
+
+In Next.js, the `<Image>` component handles this automatically as long as you provide width and height props.
+
+### Web Fonts Causing FOUT
+
+When a custom font loads and replaces the fallback font, the text can reflow if the two fonts have different character sizes. This is called Flash of Unstyled Text (FOUT).
+
+**Fix:** Use `font-display: swap` and size your fallback font to match your custom font as closely as possible. Modern browsers support `size-adjust` in `@font-face` to match fallback metrics:
+
+```css
+@font-face {
+  font-family: "MyFont";
+  src: url("/fonts/myfont.woff2") format("woff2");
+  font-display: swap;
+}
+```
+
+### Ads, Embeds, and Iframes
+
+Ad networks inject content dynamically, often without reserved space. Social embeds (Twitter cards, YouTube) expand when they load.
+
+**Fix:** Always reserve space for ad slots and embeds before they load:
+
+```css
+.ad-slot {
+  min-height: 250px;
+}
+```
+
+For YouTube embeds, use a 16:9 aspect ratio placeholder:
+
+```css
+.video-wrapper {
+  aspect-ratio: 16 / 9;
+}
+```
+
+### Dynamically Injected Content
+
+If JavaScript injects content (banners, cookie notices, notifications) above existing content after the page loads, it causes layout shift.
+
+**Fix:** Position dynamic content so it doesn't push other elements. Use fixed or absolute positioning for overlays. If you must inject content into the flow, do it before the page renders, not after.
+
+### Late-Loading Embeds
+
+Third-party embeds like Calendly booking widgets, map embeds, or review widgets often don't declare their size upfront.
+
+**Fix:** Wrap the embed in a container with an explicit height, or lazy-load it below the fold where any shift won't be measured.
+
+## How to Find What's Causing Your CLS
+
+**Chrome DevTools:** Open the Performance tab, record a page load, and look for "Layout Shift" entries in the timeline. Click one to see which element shifted and why.
+
+**PageSpeed Insights:** Run your URL through [Google PageSpeed Insights](https://pagespeed.web.dev/). Scroll to the "Avoid large layout shifts" diagnostic. It will show you the specific elements causing shifts and their individual impact scores.
+
+**Web Vitals Extension:** Install the [Web Vitals Chrome extension](https://chrome.google.com/webstore/detail/web-vitals/ahfhijdlegdabablpippeagghigmibgt). It highlights layout shifts in real time with colored overlays as the page loads.
+
+## CLS Targets
+
+| Score | CLS |
+|---|---|
+| Good | Under 0.1 |
+| Needs improvement | 0.1 to 0.25 |
+| Poor | Over 0.25 |
+
+## Quick Checklist
+
+- [ ] All `<img>` tags have explicit `width` and `height`
+- [ ] Fonts use `font-display: swap`
+- [ ] Ad slots have reserved `min-height`
+- [ ] Video and embed containers have explicit dimensions or `aspect-ratio`
+- [ ] Cookie notices and banners don't push content down
+- [ ] No content injected above existing content after page load
+
+CLS is often completely fixable in an afternoon. Adding dimensions to images alone resolves the issue for most sites.
+
+[Test your site](/test) to see your current CLS score and find out exactly which elements are causing shifts.

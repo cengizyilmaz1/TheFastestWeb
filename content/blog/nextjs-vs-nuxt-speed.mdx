@@ -1,0 +1,103 @@
+---
+title: "Next.js vs Nuxt: Which Is Faster?"
+description: "Next.js and Nuxt are the leading meta-frameworks for React and Vue. Here's how they compare on performance, what affects speed on each, and which to choose."
+date: "2026-03-20"
+---
+
+Next.js and Nuxt are the dominant meta-frameworks for building production web applications -- Next.js for React, Nuxt for Vue. Both prioritize performance, but they have different defaults and trade-offs.
+
+## The Short Answer
+
+**Both can be very fast.** In practice, performance differences between Next.js and Nuxt come from how you configure and use them, not from inherent framework overhead. A well-built site on either framework will score 90+ on PageSpeed.
+
+The real question is which one fits your team and use case better, because poorly used either framework will be slow.
+
+## Architecture Comparison
+
+Both frameworks support the same rendering strategies:
+
+- **Static Site Generation (SSG):** Pages pre-rendered at build time, served from CDN. Fastest option.
+- **Server-Side Rendering (SSR):** Pages rendered per request on the server. Dynamic but adds latency.
+- **Client-Side Rendering (CSR):** JavaScript renders the page in the browser. Slowest for initial load.
+
+Next.js and Nuxt default to SSR with hydration, which is a solid balance for most use cases.
+
+## Next.js Performance Characteristics
+
+### Strengths
+
+**React Server Components (RSC):** Next.js App Router introduces RSCs, which render on the server with zero client-side JavaScript. Components that don't need interactivity ship no JS to the browser, reducing bundle size automatically.
+
+**Turbopack:** Next.js 15+ uses Turbopack for development, and its production optimization is mature and well-tested.
+
+**Vercel optimization:** Next.js is developed by Vercel and gets automatic optimizations on that platform -- edge caching, ISR (Incremental Static Regeneration), image optimization.
+
+**`<Image>` component:** Automatic WebP conversion, lazy loading, size optimization. One of the best image optimization solutions in any framework.
+
+**Font optimization:** `next/font` eliminates layout shift from web fonts and self-hosts Google Fonts automatically.
+
+### Watch Out For
+
+**Bundle size in App Router:** Easy to accidentally ship too much client JavaScript if you don't explicitly mark components as server components. Everything is client by default in the Pages Router.
+
+**Hydration cost:** Large React apps have hydration overhead. Consider using React Server Components aggressively to minimize client JavaScript.
+
+## Nuxt Performance Characteristics
+
+### Strengths
+
+**Nitro server engine:** Nuxt's built-in server has excellent performance and deploys to edge runtimes (Cloudflare Workers, Vercel Edge) seamlessly.
+
+**Route rules:** Nuxt's `routeRules` lets you set per-route rendering strategies (SSG, SSR, cached) in one config file. More ergonomic than Next.js's file-based approach.
+
+**Vue's lighter runtime:** Vue 3's runtime is smaller than React's (~34KB vs ~45KB gzipped). This is a small but real advantage for JavaScript bundle size.
+
+**`@nuxt/image`:** Similar to Next.js Image component -- automatic WebP, lazy loading, responsive sizes.
+
+**Payload serialization:** Nuxt automatically serializes server-fetched data and passes it to the client to prevent double-fetching. This reduces hydration overhead without requiring explicit configuration.
+
+### Watch Out For
+
+**Auto-imports:** Nuxt auto-imports components and composables, which is convenient but can pull in more code than you need if you're not careful.
+
+**Islands architecture:** Nuxt doesn't have a built-in islands/RSC equivalent (though it's being developed). All components hydrate on the client unless you use `<ClientOnly>` explicitly.
+
+## Real-World PageSpeed Scores
+
+Both frameworks regularly produce 90+ scores when used correctly:
+
+| Setup | Mobile Score | Desktop Score |
+|---|---|---|
+| Next.js App Router (SSG/SSR) | 85-100 | 90-100 |
+| Next.js Pages Router (SSR) | 80-95 | 90-100 |
+| Nuxt SSG | 85-100 | 90-100 |
+| Nuxt SSR | 80-95 | 90-100 |
+| Either (CSR, no optimization) | 40-65 | 55-80 |
+
+The framework rarely explains the score gap. Images, JavaScript bundle size, and third-party scripts are almost always the real culprits.
+
+## Which Is Faster in Practice?
+
+For static content: **essentially identical.** Both SSG approaches produce pre-rendered HTML served from CDN. Performance is determined by your content and assets, not the framework.
+
+For server-rendered dynamic content: **Next.js has a slight edge on Vercel** due to platform integration. Nuxt has a slight edge on Cloudflare Workers due to Nitro's optimized edge runtime.
+
+For JavaScript bundle size: **Nuxt/Vue can be slightly smaller** due to Vue's lighter runtime, but Next.js RSCs can eliminate more JavaScript for server-only content.
+
+## Which Should You Choose?
+
+**Choose Next.js if:**
+- Your team knows React
+- You're deploying to Vercel
+- You want React Server Components for complex data-heavy pages
+- You need a large ecosystem of React libraries
+
+**Choose Nuxt if:**
+- Your team knows Vue
+- You prefer Vue's composition API and template syntax
+- You want simpler configuration for route-level rendering strategies
+- You want to deploy to Cloudflare Workers or similar edge platforms
+
+Performance should not be the deciding factor between these two. Choose based on your team's expertise and the ecosystem you need. You can build a fast site with either.
+
+[Test your site](/test) to see your current PageSpeed score and what's actually limiting your performance.

@@ -1,0 +1,115 @@
+---
+title: "Squarespace PageSpeed Optimization Guide"
+description: "Squarespace controls most of its own infrastructure, but there are still practical steps you can take to improve your PageSpeed score. Here's what works."
+date: "2026-03-23"
+---
+
+Squarespace is a fully hosted website builder like Wix, but with a stronger emphasis on design quality. Because Squarespace controls the platform, your optimization options are limited compared to self-hosted solutions -- but there are still meaningful improvements you can make.
+
+## Understanding Squarespace's Performance Baseline
+
+Squarespace uses Fastly as its CDN and delivers assets globally. The infrastructure is solid. The issue is that Squarespace templates load substantial amounts of JavaScript and CSS to support their design system, animations, and e-commerce features -- regardless of whether you use all those features on a given page.
+
+Typical Squarespace mobile scores range from 50-75. Getting above 75 requires deliberate optimization.
+
+## What You Can Control
+
+### 1. Optimize Images (Your Biggest Lever)
+
+Squarespace automatically converts uploaded images to WebP and serves them responsively. But it can only work with what you provide.
+
+- **Compress before uploading.** Squarespace's compression is good but not perfect. Running your images through Squoosh or TinyPNG first helps.
+- **Keep images under 500KB before uploading.** Smaller source images result in smaller output.
+- **For banners and hero images:** Aim for under 300KB after compression. Hero images are almost always your LCP element.
+- **Use the Image Block settings.** In the block editor, set explicit aspect ratios and focal points to prevent unexpected cropping that loads excess image area.
+
+### 2. Minimize Custom Code Injection
+
+Squarespace allows code injection through Settings > Advanced > Code Injection. Every script you add here loads on every page.
+
+- Remove any scripts you're no longer using
+- Move third-party scripts from the `<head>` injection to the footer injection (runs after page load)
+- If you have Google Analytics, use Squarespace's built-in Google Analytics integration instead of manually injecting the GA script -- the built-in version is deferred automatically
+
+### 3. Reduce Third-Party Integrations
+
+Each connected service (chat, scheduling, reviews) adds JavaScript. Squarespace's own integrations (like Acuity Scheduling) are somewhat optimized, but third-party embeds are not.
+
+If a widget doesn't directly generate leads or revenue, consider removing it.
+
+### 4. Limit Animations and Effects
+
+Squarespace's scroll animations and entrance effects look polished but add JavaScript overhead. In **Design > Site Styles**, you can often disable:
+
+- Scroll effects (parallax)
+- Entrance animations
+- Page transitions
+
+Disabling these is one of the most impactful changes you can make to TBT on Squarespace.
+
+### 5. Streamline Your Pages
+
+Long pages with many section types load more assets. A page with a gallery, a blog feed, a map, and an e-commerce listing block loads JavaScript for all of those features.
+
+For your most important pages (homepage, landing pages), keep the structure focused. Every feature block you add has a JavaScript cost.
+
+### 6. Use Fewer Fonts
+
+Squarespace lets you use Google Fonts and Typekit. Each font family at each weight is a separate network request. Limit your site to 2 font families, each at 2-3 weights maximum.
+
+In **Design > Fonts**, set fewer font pairings and reduce the number of active weights.
+
+## What You Can't Control on Squarespace
+
+- The JavaScript and CSS that Squarespace's templates load by default
+- Server response time and infrastructure decisions
+- Font loading strategy (`font-display` is controlled by Squarespace)
+- Core template rendering pipeline
+- HTTP headers and caching policies
+
+This is the fundamental trade-off of fully hosted platforms: ease of use in exchange for performance control.
+
+## Realistic Score Expectations
+
+| Page Type | Expected Mobile Score |
+|---|---|
+| Simple landing page (minimal blocks) | 60-75 |
+| Homepage with gallery | 50-65 |
+| Blog post | 60-78 |
+| E-commerce product page | 45-62 |
+| Page with scheduling/booking | 45-60 |
+
+Above 80 on mobile is achievable but requires a very minimal page with few integrations.
+
+## Squarespace vs Competitors on Speed
+
+Squarespace and Wix are comparable in terms of what you can achieve. Both are slower than:
+
+- Self-hosted frameworks (Next.js, Nuxt, Astro, SvelteKit)
+- WordPress with aggressive optimization
+- Webflow (which gives you more control over the code output)
+
+But they're easier to manage without a developer.
+
+## When to Consider Migrating
+
+If PageSpeed is consistently hurting your Google rankings or your conversion rate, and you've hit the ceiling of what Squarespace allows, consider:
+
+- **Webflow:** More performance control, similar visual design approach
+- **WordPress:** Full control, requires more technical management
+- **Astro or SvelteKit:** Developer-focused, very fast out of the box
+
+For most Squarespace users -- small businesses, portfolios, restaurants, service providers -- the performance trade-off is acceptable. A score of 65-72 on mobile is not ideal, but it's not disqualifying either.
+
+## Quick Checklist
+
+- [ ] Images compressed before upload (under 500KB)
+- [ ] Hero/banner images under 300KB
+- [ ] Scroll effects and entrance animations disabled
+- [ ] Code injection audited and cleaned up
+- [ ] Analytics using Squarespace's native integration (not manual script)
+- [ ] Unused integrations removed
+- [ ] Fonts limited to 2 families, 2-3 weights each
+- [ ] Pages use only necessary section blocks
+
+[Test your Squarespace site](/test) to see your current PageSpeed score and identify which metrics need the most attention.

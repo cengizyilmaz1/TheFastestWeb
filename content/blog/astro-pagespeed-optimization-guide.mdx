@@ -1,0 +1,139 @@
+---
+title: "Astro PageSpeed Optimization Guide"
+description: "Astro ships zero JavaScript by default, making it one of the fastest frameworks available. Here's how to keep your Astro site scoring in the 90s and what can still go wrong."
+date: "2026-03-14"
+---
+
+Astro is built for performance. It ships zero JavaScript to the browser by default, uses static generation out of the box, and produces minimal, clean HTML. Most Astro sites score 90-100 on PageSpeed without any optimization.
+
+But there are still things that can drag your score down. Here's what to watch for and how to fix it.
+
+## Why Astro Is Fast by Default
+
+Astro's architecture is fundamentally different from React or Vue SPAs:
+
+- **Zero JS by default.** Components render to static HTML at build time. No hydration overhead.
+- **Islands architecture.** Only interactive components ship JavaScript, and only when needed.
+- **Static output.** Pages are pre-rendered and served instantly from a CDN.
+- **No layout shifts from hydration.** Content is in the HTML from the start.
+
+This means TBT is near zero, FCP is fast, and CLS from hydration doesn't exist. Your score problems, if any, will come from images, fonts, or the interactive islands you add.
+
+## What Can Still Hurt Your Astro Score
+
+### 1. Unoptimized Images
+
+The most common issue. Astro's built-in `<Image>` component from `@astrojs/image` handles optimization, but only if you use it.
+
+**Fix:** Use Astro's Image component instead of raw `<img>` tags:
+
+```astro
+---
+import { Image } from "astro:assets";
+import heroImage from "../assets/hero.jpg";
+---
+
+<Image src={heroImage} alt="Hero" width={1200} height={630} />
+```
+
+This automatically converts to WebP, generates srcset, and sets correct dimensions to prevent CLS.
+
+For external images, compress and resize them before referencing them. Aim for under 100KB for hero images.
+
+### 2. The LCP Image Not Being Prioritized
+
+Astro lazy-loads images by default. Your hero image should load eagerly.
+
+**Fix:** Add `loading="eager"` and `fetchpriority="high"` to your LCP image:
+
+```astro
+<Image
+  src={heroImage}
+  alt="Hero"
+  width={1200}
+  height={630}
+  loading="eager"
+  fetchpriority="high"
+/>
+```
+
+### 3. Too Many Client-Side Islands
+
+Every time you use `client:load`, `client:visible`, or `client:idle` on a component, you're shipping JavaScript. If you have many interactive islands loading on the initial page view, TBT will climb.
+
+**Fix:** Use the right hydration directive for each component:
+
+- `client:load` - loads immediately (use only when necessary)
+- `client:idle` - loads when the browser is idle (good for non-critical UI)
+- `client:visible` - loads when the component enters the viewport (best for below-fold)
+- `client:media` - loads only on certain screen sizes
+
+Replace `client:load` with `client:idle` wherever the component doesn't need to be interactive immediately.
+
+### 4. Third-Party Scripts
+
+Analytics, chat widgets, and other third-party scripts affect Astro sites just like any other. Astro doesn't shield you from these.
+
+**Fix:** Use Astro's `<script>` tag with `is:inline` only for truly critical scripts. For analytics, add the script at the bottom of your layout with `defer`:
+
+```astro
+<script defer src="https://analytics.example.com/script.js"></script>
+```
+
+Or use a lightweight analytics tool. Astro integrates well with Partytown, which runs third-party scripts in a web worker off the main thread:
+
+```bash
+npx astro add partytown
+```
+
+### 5. Google Fonts
+
+Loading fonts from Google Fonts adds an external DNS lookup and render-blocking request.
+
+**Fix:** Download your fonts and self-host them in your `public/fonts/` directory. Add `font-display: swap` and preload your primary font:
+
+```html
+<link rel="preload" href="/fonts/inter.woff2" as="font" type="font/woff2" crossorigin />
+```
+
+### 6. View Transitions API Overhead
+
+Astro's View Transitions feature (`<ViewTransitions />`) adds a small JavaScript bundle to enable smooth page transitions. If you're chasing a perfect 100 score, this adds a few milliseconds of TBT.
+
+For most sites the trade-off is worth it. If you're obsessing over those last few points, you can remove it.
+
+## Astro Score Targets
+
+Astro sites consistently outperform other frameworks. Realistic targets:
+
+| Setup | Realistic Score |
+|---|---|
+| Static site, optimized images, no third-party | 95-100 |
+| Few interactive islands, lightweight analytics | 90-95 |
+| Multiple client:load islands, third-party scripts | 75-90 |
+| Heavy SSR with dynamic content | 70-85 |
+
+## Deployment Matters
+
+Astro's static output shines when deployed to edge networks. The fastest options:
+
+- **Cloudflare Pages** - free, global edge, fastest TTFB
+- **Vercel** - excellent DX, fast edge network
+- **Netlify** - solid, slightly slower than the above two
+- **Astro's own hosting (Astro DB / Starlight)** - optimized for Astro
+
+Avoid deploying static Astro sites to traditional shared hosting. The CDN is where the speed comes from.
+
+## Quick Checklist
+
+- [ ] Using `astro:assets` Image component for all images
+- [ ] Hero/LCP image has `loading="eager"` and `fetchpriority="high"`
+- [ ] All images under 100KB for hero, 30KB for thumbnails
+- [ ] Islands use `client:idle` or `client:visible` instead of `client:load` where possible
+- [ ] Third-party scripts use `defer` or Partytown
+- [ ] Fonts are self-hosted with preload
+- [ ] Deployed to edge CDN (Cloudflare Pages or Vercel)
+
+If you're using Astro and scoring below 85, something specific is causing it. The most likely culprits are images and third-party scripts.
+
+[Test your Astro site](/test) to get your exact score and a breakdown of what's affecting each metric.

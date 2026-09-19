@@ -1,0 +1,118 @@
+---
+title: "What Is TBT and How to Fix It"
+description: "Total Blocking Time is the biggest factor in your PageSpeed score at 30%. Here's what it measures and how to reduce it."
+date: "2026-03-20"
+---
+
+Total Blocking Time (TBT) is the single biggest factor in your Google PageSpeed score, carrying 30% of the total weight. Yet it's one of the least understood metrics.
+
+Here's what it means and how to fix it.
+
+## What TBT Measures
+
+TBT measures the total time the browser's main thread is blocked from responding to user input. A task is considered "blocking" if it takes longer than 50 milliseconds. TBT adds up all the blocking time from those tasks between First Contentful Paint and Time to Interactive.
+
+In simpler terms: TBT measures how long your JavaScript makes the page feel frozen.
+
+A good TBT is under 200ms. Above 600ms is considered poor.
+
+## Why TBT Is Such a Big Deal
+
+When the main thread is blocked, the browser can't respond to clicks, scrolls, or keyboard input. The page appears loaded but feels sluggish. Users notice this and so does Google.
+
+Because TBT is 30% of the score, even a perfect LCP and CLS won't save you if your JavaScript is heavy. A TBT of 600ms alone can drop your score by 15-20 points.
+
+## What Causes High TBT
+
+### Too Much JavaScript
+
+The most common cause by far. Every JavaScript file you ship has to be parsed, compiled, and executed on the main thread. Large bundles from frameworks, UI libraries, and dependencies all contribute.
+
+### Third-Party Scripts
+
+Google Analytics with GTM, chat widgets, A/B testing tools, heat maps, ad scripts. Each of these runs on the main thread. The more you load, the higher your TBT.
+
+### Long Tasks in Your Own Code
+
+Sometimes it's not third-party scripts but your own JavaScript. Expensive computations, large loops, or synchronous data processing on page load all block the thread.
+
+### Unused JavaScript
+
+If you're shipping code that isn't used on the current page, the browser still has to parse it. Code splitting is essential to avoid this.
+
+## How to Fix TBT
+
+### 1. Defer All Non-Critical Scripts
+
+Any script that doesn't need to run before the page is interactive should be deferred:
+
+```html
+<script defer src="analytics.js"></script>
+```
+
+In Next.js, use the `<Script>` component with `strategy="lazyOnload"` for third-party scripts:
+
+```tsx
+<Script src="https://analytics.example.com/script.js" strategy="lazyOnload" />
+```
+
+### 2. Remove Unused JavaScript
+
+Use Chrome DevTools Coverage tab to see which JavaScript is unused on page load. Cut ruthlessly.
+
+For Next.js apps, run `@next/bundle-analyzer` to see what's in your bundle. Common culprits are date libraries (moment.js), icon libraries loading all icons, and large utility libraries where you only use a few functions.
+
+### 3. Break Up Long Tasks
+
+If you have JavaScript that must run on page load, break it into smaller chunks using `setTimeout` or `requestIdleCallback`:
+
+```js
+// Instead of one big task
+processData(largeArray);
+
+// Break it up
+function processInChunks(data, index = 0) {
+  const chunk = data.slice(index, index + 100);
+  process(chunk);
+  if (index + 100 < data.length) {
+    setTimeout(() => processInChunks(data, index + 100), 0);
+  }
+}
+```
+
+### 4. Use Web Workers for Heavy Computation
+
+If you need to do heavy computation (parsing, sorting, transforming large datasets), move it to a Web Worker so it runs off the main thread.
+
+### 5. Load Third-Party Scripts After Interaction
+
+For chat widgets, social embeds, and support tools, consider loading them only when the user first interacts with the page:
+
+```js
+document.addEventListener("click", loadChatWidget, { once: true });
+```
+
+### 6. Switch to Lighter Alternatives
+
+If you're using Google Analytics + GTM, consider switching to [Umami](https://umami.is/) or [Plausible](https://plausible.io/). They're lightweight (under 2KB) and have near-zero TBT impact.
+
+## TBT Targets
+
+| Score | TBT |
+|---|---|
+| Good | Under 200ms |
+| Needs improvement | 200ms to 600ms |
+| Poor | Over 600ms |
+
+## Quick Checklist
+
+- [ ] All third-party scripts use `defer` or `lazyOnload`
+- [ ] Bundle analyzer run, unused JS removed
+- [ ] No synchronous heavy computation on page load
+- [ ] Code splitting enabled (default in Next.js)
+- [ ] Chat/support widgets load on interaction, not page load
+- [ ] Lightweight analytics instead of GTM-based setup
+
+Fixing TBT is often the most impactful change you can make to your PageSpeed score. Start by auditing your third-party scripts and deferring everything that isn't critical.
+
+[Test your site](/test) to see your current TBT and full PageSpeed breakdown.

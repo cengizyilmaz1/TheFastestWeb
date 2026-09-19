@@ -1,0 +1,112 @@
+import {
+  welcomeEmail,
+  proUpgradeEmail,
+  adSlotConfirmationEmail,
+  speedTrendAlertEmail,
+  weeklyRecapEmail,
+  monitoringPauseEmail,
+  listingRemovalEmail,
+  badgeWarningEmail,
+  badgeDeletionEmail,
+} from "@/lib/email/templates";
+
+export default function EmailPreviewPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ template?: string }>;
+}) {
+  return <EmailPreview searchParams={searchParams} />;
+}
+
+async function EmailPreview({
+  searchParams,
+}: {
+  searchParams: Promise<{ template?: string }>;
+}) {
+  const { template } = await searchParams;
+  const name = "Ramesh Kumar";
+
+  const emails: Record<string, { subject: string; html: string }> = {
+    welcome: welcomeEmail(name),
+    "pro-upgrade": proUpgradeEmail(name),
+    "ad-slot": adSlotConfirmationEmail(name, "BuiltByMe", "A home for those who build on their own"),
+    "speed-trend": speedTrendAlertEmail(name, "FixMyPDF", "fixmypdf", [
+      { date: "Feb 10", score: 92 },
+      { date: "Feb 11", score: 85 },
+      { date: "Feb 12", score: 78 },
+    ], { fcp: "1.2s", lcp: "2.8s", cls: "0.05", tbt: "320ms", si: "3.1s" }),
+    "monitoring-pause": monitoringPauseEmail(name, [
+      { name: "FixMyPDF", slug: "fixmypdf", score: 94 },
+      { name: "SubmitWell", slug: "submitwell", score: 81 },
+    ]),
+    "listing-removal": listingRemovalEmail(name, [
+      { name: "FixMyPDF", slug: "fixmypdf", score: 94 },
+    ]),
+    "badge-deletion": badgeDeletionEmail(
+      name,
+      "Refer to Earn",
+      "https://www.refertoearn.co.uk"
+    ),
+    "badge-warning": badgeWarningEmail(
+      name,
+      "Refer to Earn",
+      "https://www.refertoearn.co.uk",
+      "refer-to-earn"
+    ),
+    "weekly-recap": weeklyRecapEmail(
+      name,
+      [
+        { name: "FixMyPDF", slug: "fixmypdf", score: 97, previousScore: 92, rank: 1 },
+        { name: "SubmitWell", slug: "submitwell", score: 84, previousScore: 86, rank: 4 },
+      ],
+      [
+        { name: "BuiltByMe", tagline: "A home for those who build on their own", url: "https://builtby.me" },
+        { name: "ShipFast", tagline: "Launch your SaaS in days", url: "https://shipfast.com" },
+        { name: "Indie Hackers", tagline: "Community for bootstrapped founders", url: "https://indiehackers.com" },
+      ]
+    ),
+  };
+
+  const selectedTemplate = template || "welcome";
+  const email = emails[selectedTemplate];
+
+  return (
+    <div className="py-8 px-5">
+      <div className="max-w-[560px] mx-auto mb-6">
+        <h1 className="font-display font-[800] text-[1.3rem] mb-4">
+          Email Preview
+        </h1>
+        <div className="flex flex-wrap gap-2 mb-4">
+          {Object.keys(emails).map((key) => (
+            <a
+              key={key}
+              href={`/email-preview?template=${key}`}
+              className={`px-3.5 py-2 rounded-lg text-[0.82rem] font-semibold no-underline transition-all ${
+                key === selectedTemplate
+                  ? "bg-accent text-bg-deep"
+                  : "bg-bg-card border border-border text-text-secondary hover:bg-bg-card-hover"
+              }`}
+            >
+              {key}
+            </a>
+          ))}
+        </div>
+        <div className="bg-bg-card border border-border rounded-lg px-3.5 py-2 mb-4 text-[0.8rem]">
+          <span className="text-text-muted">Subject:</span>{" "}
+          <span className="text-text-primary font-semibold">
+            {email.subject}
+          </span>
+        </div>
+      </div>
+
+      <div className="max-w-[600px] mx-auto border border-border rounded-[14px] overflow-hidden">
+        <iframe
+          srcDoc={email.html}
+          className="w-full border-none"
+          style={{ height: "750px" }}
+          title="Email Preview"
+        />
+      </div>
+    </div>
+  );
+}

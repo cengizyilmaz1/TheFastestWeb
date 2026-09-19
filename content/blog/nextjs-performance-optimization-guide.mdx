@@ -1,0 +1,171 @@
+---
+title: "Next.js Performance Optimization Guide"
+description: "Next.js gives you a great starting point for performance, but there's plenty that can go wrong. Here's how to get the most out of your Next.js site's PageSpeed score."
+date: "2026-03-18"
+---
+
+Next.js is one of the fastest frameworks available out of the box. Server-side rendering, automatic code splitting, and built-in image optimization give you a solid foundation. But there's still plenty that can slow things down.
+
+Here's a practical guide to squeezing the best PageSpeed scores out of a Next.js site.
+
+## Use the Image Component Correctly
+
+The `<Image>` component from `next/image` is one of the most impactful performance features in Next.js. It automatically serves WebP, resizes images for the requesting device, and lazy-loads below-the-fold images.
+
+But it only works well if you use it properly.
+
+**Always set `priority` on your LCP image:**
+
+```tsx
+import Image from "next/image";
+
+<Image
+  src="/hero.webp"
+  width={1200}
+  height={630}
+  alt="Hero"
+  priority
+/>
+```
+
+Without `priority`, Next.js lazy-loads the image, which will hurt your LCP score significantly.
+
+**Never use `fill` on above-the-fold images without a sized container.** The browser needs to know the dimensions upfront to avoid layout shifts.
+
+## Load Scripts the Right Way
+
+The `<Script>` component gives you fine-grained control over when third-party scripts load.
+
+```tsx
+import Script from "next/script";
+
+// Loads after the page is interactive
+<Script src="https://analytics.example.com/script.js" strategy="lazyOnload" />
+
+// Loads after hydration but before lazyOnload
+<Script src="..." strategy="afterInteractive" />
+
+// Injects into the document head (use sparingly)
+<Script src="..." strategy="beforeInteractive" />
+```
+
+For Google Analytics, always use `afterInteractive` or `lazyOnload`. Never load it with `beforeInteractive` unless you have a specific reason.
+
+## Enable Turbopack in Development
+
+Next.js 15+ ships with Turbopack as the default dev bundler. If you're still on Webpack, switch:
+
+```json
+{
+  "scripts": {
+    "dev": "next dev --turbopack"
+  }
+}
+```
+
+Turbopack doesn't affect production builds yet, but faster dev builds mean faster iteration.
+
+## Use React Server Components for Static Content
+
+App Router lets you render components on the server with zero client-side JavaScript. If a component doesn't need interactivity, make it a Server Component (the default in App Router).
+
+Every kilobyte of JavaScript you don't ship to the client is a direct TBT reduction.
+
+```tsx
+// This runs on the server, ships zero JS to the client
+export default async function BlogList() {
+  const posts = await getPosts();
+  return <ul>{posts.map(p => <li key={p.id}>{p.title}</li>)}</ul>;
+}
+```
+
+Only add `"use client"` at the top of files that genuinely need browser APIs or React state.
+
+## Analyze Your Bundle
+
+Install the bundle analyzer to see exactly what's in your JavaScript bundle:
+
+```bash
+npm install @next/bundle-analyzer
+```
+
+```js
+// next.config.js
+const withBundleAnalyzer = require("@next/bundle-analyzer")({
+  enabled: process.env.ANALYZE === "true",
+});
+module.exports = withBundleAnalyzer({});
+```
+
+```bash
+ANALYZE=true npm run build
+```
+
+Look for large dependencies you only use a small part of. Common culprits:
+
+- `moment.js` (use `date-fns` instead, much smaller)
+- Icon libraries importing all icons (import only what you use)
+- Full `lodash` instead of individual functions
+
+## Use `next/font` for Custom Fonts
+
+Loading fonts from Google Fonts directly adds a render-blocking request. `next/font` downloads fonts at build time and serves them from your own domain with zero layout shift:
+
+```tsx
+import { Inter } from "next/font/google";
+
+const inter = Inter({ subsets: ["latin"], display: "swap" });
+```
+
+This eliminates the external font request, removes FOUT, and improves both FCP and CLS.
+
+## Implement Proper Caching
+
+Use `revalidate` in your server components and route handlers to cache responses at the edge:
+
+```tsx
+export const revalidate = 3600; // revalidate every hour
+```
+
+For static pages that rarely change, use:
+
+```tsx
+export const revalidate = false; // cache indefinitely until next deploy
+```
+
+Cached pages respond from Vercel's edge network in milliseconds, giving you near-perfect TTFB.
+
+## Avoid Client-Side Data Fetching for Initial Content
+
+If your page fetches data on the client with `useEffect`, the user sees a blank/loading state while waiting. This hurts LCP and makes the page feel slow.
+
+Move data fetching to Server Components:
+
+```tsx
+// Instead of useEffect + useState
+export default async function Page() {
+  const data = await fetchData(); // runs on server
+  return <Component data={data} />;
+}
+```
+
+## Minimize Middleware
+
+Next.js middleware runs on every request. If your middleware does heavy work (database queries, complex logic), it adds latency to every page load.
+
+Keep middleware lean. Use it only for authentication checks and redirects, not for data fetching.
+
+## What a Well-Optimized Next.js Site Looks Like
+
+The best-performing Next.js sites on [TheFastestWeb](/leaderboard/perfect) typically have:
+
+- Server Components for all static and data-fetching logic
+- `priority` on hero images
+- `lazyOnload` for all analytics and third-party scripts
+- `next/font` for typography
+- Aggressive `revalidate` caching on data-heavy pages
+- Bundle sizes under 100KB of JavaScript for the initial page load
+
+You don't need all of these on day one. Start with the image and script fixes, they have the highest impact for the least effort.
+
+[Test your Next.js site](/test) to see where you stand right now.

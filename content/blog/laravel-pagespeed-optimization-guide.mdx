@@ -1,0 +1,225 @@
+---
+title: "Laravel PageSpeed Optimization Guide"
+description: "Laravel is a PHP framework that can power very fast websites when configured correctly. Here's how to optimize a Laravel app for high PageSpeed scores."
+date: "2026-03-24"
+---
+
+Laravel is the most popular PHP framework and powers millions of websites. Like any server-rendered framework, its performance depends on how you configure it, what you cache, and how you deliver assets to users.
+
+Here's how to get your Laravel site scoring well on PageSpeed.
+
+## The Foundation: Reduce Server Response Time (TTFB)
+
+Every metric on PageSpeed starts with TTFB. If your server takes 800ms to respond, that's 800ms before the browser even starts rendering.
+
+### Enable Route Caching
+
+In production, cache your routes so Laravel doesn't parse route files on every request:
+
+```bash
+php artisan route:cache
+php artisan config:cache
+php artisan view:cache
+```
+
+Run these as part of your deployment process. Remember to clear them when you make changes:
+
+```bash
+php artisan optimize:clear
+```
+
+Or use the shortcut that runs all caches at once:
+
+```bash
+php artisan optimize
+```
+
+### Use a PHP Opcode Cache
+
+Make sure OPcache is enabled on your server. It caches compiled PHP bytecode so PHP doesn't need to compile your files on every request. It's enabled by default on most managed hosting but worth verifying:
+
+```ini
+; php.ini
+opcache.enable=1
+opcache.memory_consumption=256
+opcache.max_accelerated_files=20000
+opcache.revalidate_freq=0
+```
+
+### Use Redis or Memcached for Cache
+
+File-based caching works but Redis is significantly faster. Use Redis for sessions, cache, and queues:
+
+```env
+CACHE_DRIVER=redis
+SESSION_DRIVER=redis
+QUEUE_CONNECTION=redis
+```
+
+```bash
+composer require predis/predis
+```
+
+## Cache Your Database Queries
+
+Repeated database queries are a common cause of slow TTFB. Cache expensive queries:
+
+```php
+$users = Cache::remember('users', 3600, function () {
+    return User::with('posts')->where('active', true)->get();
+});
+```
+
+For public-facing pages where all users see the same content, cache the entire response using response caching:
+
+```bash
+composer require spatie/laravel-responsecache
+```
+
+This caches the entire HTTP response, making repeat visits effectively instant.
+
+## Optimize Your Frontend Assets
+
+### Use Vite (Laravel 12+ Default)
+
+Laravel's default Vite integration handles asset bundling, minification, and cache-busting. Make sure you're running the production build:
+
+```bash
+npm run build
+```
+
+The production build minifies JS and CSS, adds content hashes for caching, and tree-shakes unused code.
+
+### Defer and Async JavaScript
+
+Make sure non-critical scripts don't block rendering:
+
+```html
+<!-- Add defer to non-critical scripts -->
+<script defer src="{{ asset('js/analytics.js') }}"></script>
+```
+
+In Blade templates, put non-critical scripts at the end of `<body>` or add `defer`.
+
+### Inline Critical CSS
+
+For your above-the-fold CSS, inline it in the `<head>` to avoid a render-blocking stylesheet request. Extract critical CSS from your main stylesheet and inline it directly in your layout:
+
+```blade
+<style>
+    /* Critical CSS here */
+</style>
+<link rel="preload" href="{{ mix('css/app.css') }}" as="style" onload="this.rel='stylesheet'">
+```
+
+## Optimize Images
+
+### Use Laravel's Storage with Image Processing
+
+For user-uploaded images, process them before storing to ensure they're web-optimized:
+
+```bash
+composer require intervention/image
+```
+
+```php
+use Intervention\Image\ImageManager;
+
+$manager = new ImageManager(['driver' => 'imagick']);
+$image = $manager->make($request->file('photo'))
+    ->resize(800, null, function ($constraint) {
+        $constraint->aspectRatio();
+        $constraint->upsize();
+    })
+    ->encode('webp', 85);
+```
+
+Store WebP versions alongside originals and serve WebP to browsers that support it.
+
+### Add Width and Height to Image Tags
+
+Prevent layout shift by always specifying dimensions:
+
+```blade
+<img
+    src="{{ asset('images/hero.webp') }}"
+    width="1200"
+    height="630"
+    alt="Hero image"
+    loading="eager"
+>
+```
+
+Use `loading="lazy"` for images below the fold, `loading="eager"` (or no attribute) for your LCP image.
+
+## Use a CDN for Static Assets
+
+Serve CSS, JavaScript, images, and other static files from a CDN to reduce latency for global users. With Vite and Laravel:
+
+```env
+ASSET_URL=https://your-cdn.example.com
+```
+
+Cloudflare's free plan works well for this -- it proxies your origin and caches static assets globally.
+
+## Enable HTTP Compression
+
+Make sure your server sends compressed responses. For Nginx:
+
+```nginx
+gzip on;
+gzip_types text/plain text/css application/json application/javascript text/xml;
+gzip_min_length 1000;
+
+# Or even better, use Brotli if available
+brotli on;
+brotli_types text/plain text/css application/json application/javascript;
+```
+
+For Apache:
+
+```apache
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/css application/javascript application/json
+</IfModule>
+```
+
+## Configure Long-term Caching for Assets
+
+Vite already adds content hashes to asset filenames. Configure your web server to cache these aggressively:
+
+```nginx
+# Nginx
+location ~* \.(js|css|woff2|png|webp|jpg)$ {
+    expires 1y;
+    add_header Cache-Control "public, max-age=31536000, immutable";
+}
+```
+
+## Deploy on a Fast Server
+
+Laravel benefits significantly from good hosting:
+
+- **Managed Laravel hosting:** Laravel Forge on DigitalOcean or Linode, Ploi
+- **Platform hosting:** Laravel Vapor (serverless, auto-scaling), Railway, Render
+- **VPS with optimization:** Any VPS with PHP-FPM, Nginx, Redis, OPcache configured properly
+
+Shared hosting is the most common cause of poor TTFB on Laravel sites. If your server response time is over 600ms, hosting is likely the bottleneck.
+
+## Quick Checklist
+
+- [ ] `php artisan optimize` run as part of deployment
+- [ ] OPcache enabled and configured
+- [ ] Redis used for cache, sessions, and queues
+- [ ] Database queries cached for public pages
+- [ ] Vite production build (`npm run build`) deployed
+- [ ] Non-critical JS deferred or placed before `</body>`
+- [ ] Images compressed and served as WebP
+- [ ] Width and height set on all images
+- [ ] CDN configured for static assets
+- [ ] Gzip or Brotli compression enabled
+- [ ] Long-term cache headers set for versioned assets
+
+A well-configured Laravel application can comfortably score 85+ on PageSpeed. The biggest wins are usually server-side: faster TTFB through caching and good hosting makes every other metric better.
+
+[Test your Laravel site](/test) to see your current PageSpeed score and identify where to focus your optimization work.

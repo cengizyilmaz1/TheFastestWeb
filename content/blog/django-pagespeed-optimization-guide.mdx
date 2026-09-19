@@ -1,0 +1,278 @@
+---
+title: "Django PageSpeed Optimization Guide"
+description: "Django is a Python web framework that can serve very fast pages with the right configuration. Here's how to optimize a Django site for top PageSpeed scores."
+date: "2026-03-25"
+---
+
+Django is a batteries-included Python web framework used by some of the highest-traffic sites on the web. With the right setup, Django sites can score 90+ on PageSpeed. Without it, they often score in the 40s-60s due to slow TTFB and unoptimized assets.
+
+Here's how to optimize Django for performance.
+
+## Reduce TTFB: The Foundation
+
+Everything starts with how quickly Django responds to requests. A slow TTFB means slow FCP, LCP, and everything else.
+
+### Use a Production-Ready Server
+
+Never run `python manage.py runserver` in production. Use Gunicorn or uWSGI:
+
+```bash
+gunicorn myapp.wsgi:application --workers 4 --bind 0.0.0.0:8000
+```
+
+Workers should be `2 * CPU cores + 1`. For async views, consider Uvicorn with Gunicorn:
+
+```bash
+gunicorn myapp.asgi:application -k uvicorn.workers.UvicornWorker --workers 4
+```
+
+### Enable Database Query Optimization
+
+Unoptimized database queries are the most common cause of slow TTFB. Use Django's query optimization tools:
+
+```python
+# Bad: N+1 query problem
+for article in Article.objects.all():
+    print(article.author.name)  # One query per article
+
+# Good: Single query with JOIN
+articles = Article.objects.select_related("author").all()
+```
+
+For many-to-many or reverse FK relationships:
+
+```python
+articles = Article.objects.prefetch_related("tags").all()
+```
+
+Enable query logging in development to catch N+1 problems before they hit production:
+
+```python
+# settings.py (development only)
+LOGGING = {
+    "version": 1,
+    "handlers": {"console": {"class": "logging.StreamHandler"}},
+    "loggers": {
+        "django.db.backends": {
+            "handlers": ["console"],
+            "level": "DEBUG",
+        }
+    },
+}
+```
+
+### Use Caching Aggressively
+
+Django's cache framework supports multiple backends. Use Redis for production:
+
+```bash
+pip install django-redis
+```
+
+```python
+# settings.py
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": "redis://127.0.0.1:6379/1",
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        },
+    }
+}
+```
+
+Cache expensive views with the `cache_page` decorator:
+
+```python
+from django.views.decorators.cache import cache_page
+
+@cache_page(60 * 60)  # Cache for 1 hour
+def blog_list(request):
+    articles = Article.objects.select_related("author").published()
+    return render(request, "blog/list.html", {"articles": articles})
+```
+
+Or cache at the template fragment level for pages with some dynamic content:
+
+```html
+{% load cache %}
+{% cache 3600 article_list %}
+  <!-- expensive template fragment -->
+{% endcache %}
+```
+
+## Optimize Static File Delivery
+
+### Use WhiteNoise for Simple Deployments
+
+WhiteNoise serves static files efficiently from Django itself with correct cache headers and compression:
+
+```bash
+pip install whitenoise
+```
+
+```python
+# settings.py
+MIDDLEWARE = [
+    "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
+    # ...
+]
+
+STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+```
+
+WhiteNoise adds Brotli and gzip compression automatically and sets long-term cache headers for versioned files.
+
+### Use a CDN for Production Scale
+
+For higher traffic, serve static files from a CDN:
+
+```python
+# settings.py
+STATIC_URL = "https://your-cdn.example.com/static/"
+MEDIA_URL = "https://your-cdn.example.com/media/"
+```
+
+Use django-storages with S3 or a similar service:
+
+```bash
+pip install django-storages boto3
+```
+
+```python
+DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
+STATICFILES_STORAGE = "storages.backends.s3boto3.S3StaticStorage"
+```
+
+Serve assets from S3 + CloudFront for global CDN distribution.
+
+### Run collectstatic in Deployment
+
+```bash
+python manage.py collectstatic --noinput
+```
+
+This copies all static files to `STATIC_ROOT` and (with WhiteNoise or custom storage) adds content hashes to filenames for long-term caching.
+
+## Optimize Frontend Assets
+
+### Minify JavaScript and CSS
+
+Use a bundler like Vite or webpack for your frontend assets:
+
+```bash
+npm install vite
+```
+
+Or use Django's built-in static files with a minification library:
+
+```bash
+pip install django-compressor
+```
+
+```python
+INSTALLED_APPS = ["compressor", ...]
+COMPRESS_ENABLED = True
+COMPRESS_OFFLINE = True  # Pre-compress for production
+```
+
+In templates:
+
+```html
+{% load compress %}
+{% compress css %}
+<link rel="stylesheet" href="{% static 'css/main.css' %}">
+{% endcompress %}
+```
+
+### Defer Non-Critical JavaScript
+
+In your base template, ensure scripts don't block rendering:
+
+```html
+<!-- Blocks rendering - avoid -->
+<script src="{% static 'js/analytics.js' %}"></script>
+
+<!-- Deferred - good -->
+<script defer src="{% static 'js/analytics.js' %}"></script>
+```
+
+## Optimize Images
+
+### Process Images on Upload
+
+Use Pillow (already a Django dependency) or ImageKit for automatic image optimization:
+
+```bash
+pip install django-imagekit
+```
+
+```python
+from imagekit.models import ImageSpecField
+from imagekit.processors import ResizeToFit
+
+class Article(models.Model):
+    image = models.ImageField(upload_to="articles/")
+    image_thumbnail = ImageSpecField(
+        source="image",
+        processors=[ResizeToFit(800, 600)],
+        format="WEBP",
+        options={"quality": 85},
+    )
+```
+
+### Always Set Width and Height
+
+Prevent layout shift in templates:
+
+```html
+<img
+    src="{{ article.image.url }}"
+    width="{{ article.image.width }}"
+    height="{{ article.image.height }}"
+    alt="{{ article.title }}"
+    loading="lazy"
+>
+```
+
+For your hero/LCP image, use `loading="eager"` (or omit the attribute).
+
+## Use Database Connection Pooling
+
+Django opens a new database connection per request by default. Use a connection pooler:
+
+```bash
+pip install django-db-connection-pool
+```
+
+Or use PgBouncer in front of PostgreSQL for high-traffic deployments.
+
+## Deploy to a Fast Platform
+
+Django performance varies significantly by hosting:
+
+- **Railway or Render:** Easy deployment, decent performance, auto-scaling
+- **Fly.io:** Deploy close to your users globally
+- **DigitalOcean App Platform:** Managed, auto-scaling
+- **VPS (DigitalOcean, Linode):** Most control, most configuration required
+
+For database: use managed PostgreSQL (Supabase, RDS, DigitalOcean Managed Database) rather than running PostgreSQL on the same server as your app.
+
+## Quick Checklist
+
+- [ ] Gunicorn or uWSGI in production (not `runserver`)
+- [ ] N+1 queries eliminated (`select_related`, `prefetch_related`)
+- [ ] Redis configured for caching
+- [ ] Expensive views or fragments cached
+- [ ] WhiteNoise installed and configured (or CDN for static files)
+- [ ] `collectstatic` run as part of deployment
+- [ ] JavaScript deferred or placed at end of body
+- [ ] Images converted to WebP and compressed
+- [ ] Width and height attributes on all images
+- [ ] Database connection pooling configured
+
+Django can be very fast -- Instagram, Pinterest, and Disqus all use or used Django at massive scale. But it requires configuration. The defaults are safe, not fast.
+
+[Test your Django site](/test) to see your current PageSpeed score and find out where the bottlenecks are.
