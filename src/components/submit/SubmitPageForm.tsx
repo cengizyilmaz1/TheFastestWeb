@@ -2,14 +2,15 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { SpeedGauge } from "@/components/speed-test/SpeedGauge";
 import { MetricCard } from "@/components/speed-test/MetricCard";
 import { getFaviconUrl, getDomain, isValidUrl, slugify } from "@/lib/utils";
 import { FaviconImg } from "@/components/ui/FaviconImg";
-import { ProNudgeModal } from "@/components/submit/ProNudgeModal";
 import { signIn } from "next-auth/react";
 import type { User } from "@/db/schema";
+import { PageSpeedPending } from "@/components/speed-test/PageSpeedPending";
 
 interface SpeedResult {
   score: number;
@@ -23,11 +24,13 @@ interface SpeedResult {
   lcpScore: number;
   clsScore: number;
   tbtScore: number;
-  ttiScore: number;
+  ttiScore: number | null;
   siScore: number;
 }
 
 interface RawSpeedData {
+  testResultId?: string;
+  expiresAt?: string;
   score: number;
   fcp: string;
   lcp: string;
@@ -39,8 +42,12 @@ interface RawSpeedData {
   lcpMs: number;
   clsRaw: number;
   tbtMs: number;
-  ttiMs: number;
+  ttiMs: number | null;
   siMs: number;
+}
+
+function hasFreshTest(data: RawSpeedData | null): boolean {
+  return Boolean(data?.testResultId && data.expiresAt && Date.parse(data.expiresAt) > Date.now());
 }
 
 interface SiteMeta {
@@ -50,41 +57,20 @@ interface SiteMeta {
   domain: string;
 }
 
-const ANALYSIS_STAGES = [
-  "Connecting to speed testing service",
-  "Loading page in a real browser",
-  "Rendering above-the-fold content",
-  "Measuring First Contentful Paint",
-  "Measuring Largest Contentful Paint",
-  "Analyzing Cumulative Layout Shift",
-  "Calculating Total Blocking Time",
-  "Evaluating Time to Interactive",
-  "Computing Speed Index",
-  "Analyzing performance metrics",
-  "Computing weighted score",
-  "Generating final performance score",
-];
-
 interface Props {
   user: User | null;
+  siteUrl: string;
 }
 
-export function SubmitPageForm({ user }: Props) {
-
+export function SubmitPageForm({ user, siteUrl }: Props) {
   const searchParams = useSearchParams();
-  const justUpgraded = searchParams.get("upgraded") === "1";
+  const justUpgraded = searchParams.get("upgraded") === "1" && user?.isPro === true;
   const [showUpgradeBanner, setShowUpgradeBanner] = useState(justUpgraded);
 
   // Step 1: URL input
   const [url, setUrl] = useState("");
   const [testing, setTesting] = useState(false);
   const [testError, setTestError] = useState("");
-
-  // Progress animation
-  const [currentStage, setCurrentStage] = useState(0);
-  const [progress, setProgress] = useState(0);
-  const stageTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const progressRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Step 2: Results
   const [speedResult, setSpeedResult] = useState<SpeedResult | null>(null);
@@ -98,7 +84,6 @@ export function SubmitPageForm({ user }: Props) {
   const [category, setCategory] = useState("other");
   const [customFavicon, setCustomFavicon] = useState("");
   const [showOnLeaderboard, setShowOnLeaderboard] = useState(true);
-  const [selectedPlan, setSelectedPlan] = useState<"free" | "pro">("free");
   const [badgeTheme, setBadgeTheme] = useState<"dark" | "light">("dark");
   const [badgeVerified, setBadgeVerified] = useState(false);
   const [verifying, setVerifying] = useState(false);
@@ -107,7 +92,6 @@ export function SubmitPageForm({ user }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [submitted, setSubmitted] = useState(false);
-  const [showNudge, setShowNudge] = useState(false);
   const [proSubmitUpgrade, setProSubmitUpgrade] = useState(false); // true when auto-submitted after Pro upgrade
 
   // Holds pending data for auto-submit after Pro checkout return
@@ -116,14 +100,15 @@ export function SubmitPageForm({ user }: Props) {
     category: string; customFavicon: string; showOnLeaderboard: boolean;
     rawSpeedData: RawSpeedData | null;
   } | null>(null);
+  const restoredRef = useRef(false);
 
   // On mount: restore state from sessionStorage (from /test page OR after Pro upgrade checkout)
   useEffect(() => {
+    if (restoredRef.current) return;
+    restoredRef.current = true;
     try {
       // Priority: pending submission saved before Pro checkout — auto-submit on return.
-      // Only trust this if we actually came back from a completed Polar checkout
-      // (?upgraded=1); otherwise the checkout was abandoned/failed and this is stale
-      // data that must not bypass the free-tier badge check below.
+      // The server-loaded account must confirm Pro; a return URL alone is not proof.
       const pending = sessionStorage.getItem("tfwPendingSubmit");
       if (pending && !justUpgraded) {
         sessionStorage.removeItem("tfwPendingSubmit");
@@ -158,7 +143,12 @@ export function SubmitPageForm({ user }: Props) {
       const stored = sessionStorage.getItem("tfwSpeedResult");
       if (!stored) return;
       const data = JSON.parse(stored);
-      if (!data.url || !data.score) return;
+      if (!data.url || typeof data.score !== "number") return;
+      if (!hasFreshTest(data)) {
+        setUrl(data.url);
+        setTestError("Run a new test while signed in to prepare your listing.");
+        return;
+      }
 
       setUrl(data.url);
       setSpeedResult({
@@ -167,15 +157,17 @@ export function SubmitPageForm({ user }: Props) {
         tbt: data.tbt, tti: data.tti, si: data.si,
         fcpScore: data.fcpScore ?? 0, lcpScore: data.lcpScore ?? 0,
         clsScore: data.clsScore ?? 0, tbtScore: data.tbtScore ?? 0,
-        ttiScore: data.ttiScore ?? 0, siScore: data.siScore ?? 0,
+        ttiScore: data.ttiScore ?? null, siScore: data.siScore ?? 0,
       });
       setRawSpeedData({
+        testResultId: data.testResultId,
+        expiresAt: data.expiresAt,
         score: data.score,
         fcp: data.fcp, lcp: data.lcp, cls: data.cls,
         tbt: data.tbt, tti: data.tti, si: data.si,
         fcpMs: data.fcpMs ?? 0, lcpMs: data.lcpMs ?? 0,
         clsRaw: data.clsRaw ?? 0, tbtMs: data.tbtMs ?? 0,
-        ttiMs: data.ttiMs ?? 0, siMs: data.siMs ?? 0,
+        ttiMs: data.ttiMs ?? null, siMs: data.siMs ?? 0,
       });
 
       const domain = getDomain(data.url);
@@ -196,51 +188,7 @@ export function SubmitPageForm({ user }: Props) {
     } catch {
       // ignore parse errors
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Progress animation
-  useEffect(() => {
-    if (!testing) {
-      setCurrentStage(0);
-      setProgress(0);
-      if (stageTimeout.current) clearTimeout(stageTimeout.current);
-      if (progressRef.current) clearInterval(progressRef.current);
-      return;
-    }
-
-    let stage = 0;
-    setCurrentStage(0);
-    setProgress(0);
-
-    function advanceStage() {
-      if (stage < ANALYSIS_STAGES.length - 1) {
-        stage++;
-        setCurrentStage(stage);
-        const delay = 1500 + Math.random() * 2000;
-        stageTimeout.current = setTimeout(advanceStage, delay);
-      }
-    }
-    stageTimeout.current = setTimeout(advanceStage, 2000);
-
-    progressRef.current = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 98) return 98;
-        const increment =
-          prev < 30 ? 1.2 :
-          prev < 60 ? 0.8 :
-          prev < 85 ? 0.4 :
-          prev < 92 ? 0.2 :
-          0.05;
-        return Math.min(prev + increment, 98);
-      });
-    }, 200);
-
-    return () => {
-      if (stageTimeout.current) clearTimeout(stageTimeout.current);
-      if (progressRef.current) clearInterval(progressRef.current);
-    };
-  }, [testing]);
+  }, [justUpgraded, user?.twitterHandle]);
 
   async function signInWithGoogle() {
     await signIn("google", { callbackUrl: "/submit" });
@@ -263,7 +211,11 @@ export function SubmitPageForm({ user }: Props) {
     setTesting(true);
     setTestError("");
     setSpeedResult(null);
+    setRawSpeedData(null);
     setSiteMeta(null);
+    setBadgeVerified(false);
+    setSubmitError("");
+    setVerifyError("");
 
     const domain = getDomain(testUrl);
     const favicon = getFaviconUrl(testUrl);
@@ -279,8 +231,9 @@ export function SubmitPageForm({ user }: Props) {
         throw new Error(speedData.error || "Speed test failed");
       }
 
-      setProgress(100);
-      await new Promise((r) => setTimeout(r, 300));
+      if (!speedData.testResultId) {
+        throw new Error("Your session has expired. Sign in and run a new test to prepare your listing.");
+      }
 
       setSpeedResult({
         score: speedData.score,
@@ -294,11 +247,13 @@ export function SubmitPageForm({ user }: Props) {
         lcpScore: speedData.lcpScore ?? 0,
         clsScore: speedData.clsScore ?? 0,
         tbtScore: speedData.tbtScore ?? 0,
-        ttiScore: speedData.ttiScore ?? 0,
+        ttiScore: speedData.ttiScore ?? null,
         siScore: speedData.siScore ?? 0,
       });
 
       setRawSpeedData({
+        testResultId: speedData.testResultId,
+        expiresAt: speedData.expiresAt,
         score: speedData.score,
         fcp: speedData.fcp,
         lcp: speedData.lcp,
@@ -310,7 +265,7 @@ export function SubmitPageForm({ user }: Props) {
         lcpMs: speedData.lcpMs ?? 0,
         clsRaw: speedData.cls ?? 0,
         tbtMs: speedData.tbtMs ?? 0,
-        ttiMs: speedData.ttiMs ?? 0,
+        ttiMs: speedData.ttiMs ?? null,
         siMs: speedData.siMs ?? 0,
       });
 
@@ -332,37 +287,14 @@ export function SubmitPageForm({ user }: Props) {
     }
   }
 
-  async function handleUpgradeFromNudge() {
-    // Save the full pending submission to sessionStorage before going to checkout
-    sessionStorage.setItem("tfwPendingSubmit", JSON.stringify({
-      url, name, desc, twitter, category,
-      customFavicon, showOnLeaderboard,
-      speedResult, rawSpeedData, siteMeta,
-    }));
-    const resp = await fetch("/api/checkout", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ product: "pro" }),
-    });
-    if (resp.status === 401) { window.location.href = "/submit"; return; }
-    const data = await resp.json();
-    window.location.href = data.url || "/pricing";
-  }
-
-  // Auto-submit after Pro upgrade — fires when speedResult is set from sessionStorage restore
-  useEffect(() => {
-    if (!autoSubmitRef.current) return;
-    if (!speedResult) return;
-    const d = autoSubmitRef.current;
-    autoSubmitRef.current = null;
-    submitFromData(d, true);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [speedResult]);
-
   const submitFromData = useCallback(async (
     d: { url: string; name: string; desc: string; twitter: string; category: string; customFavicon: string; showOnLeaderboard: boolean; rawSpeedData: RawSpeedData | null },
     isProUpgrade = false,
   ) => {
+    if (!hasFreshTest(d.rawSpeedData)) {
+      setSubmitError("This test can no longer be used for a listing. Run a new test while signed in, then submit again.");
+      return;
+    }
     setSubmitting(true);
     setSubmitError("");
     const fullUrl = d.url.startsWith("http") ? d.url : `https://${d.url}`;
@@ -377,7 +309,7 @@ export function SubmitPageForm({ user }: Props) {
           twitterHandle: d.twitter || undefined,
           category: d.category,
           faviconUrl: d.customFavicon || undefined,
-          speedData: d.rawSpeedData,
+          testResultId: d.rawSpeedData?.testResultId,
           isListed: d.showOnLeaderboard,
         }),
       });
@@ -396,9 +328,22 @@ export function SubmitPageForm({ user }: Props) {
     }
   }, []);
 
+  // Auto-submit after Pro upgrade — fires when speedResult is set from sessionStorage restore
+  useEffect(() => {
+    if (!autoSubmitRef.current) return;
+    if (!speedResult) return;
+    const d = autoSubmitRef.current;
+    autoSubmitRef.current = null;
+    submitFromData(d, true);
+
+  }, [speedResult, submitFromData]);
+
   async function handleSubmit(e?: React.FormEvent) {
     if (e) e.preventDefault();
-    setShowNudge(false);
+    if (!hasFreshTest(rawSpeedData)) {
+      setSubmitError("Run a new test while signed in before submitting your website.");
+      return;
+    }
     setSubmitting(true);
     setSubmitError("");
 
@@ -415,7 +360,7 @@ export function SubmitPageForm({ user }: Props) {
           twitterHandle: twitter || undefined,
           category,
           faviconUrl: customFavicon || undefined,
-          speedData: rawSpeedData,
+          testResultId: rawSpeedData?.testResultId,
           isListed: showOnLeaderboard,
         }),
       });
@@ -436,6 +381,10 @@ export function SubmitPageForm({ user }: Props) {
 
   async function handleVerifyAndSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!hasFreshTest(rawSpeedData)) {
+      setSubmitError("Run a new test while signed in before verifying and submitting your website.");
+      return;
+    }
     const slug = slugify(name) || slugify(getDomain(url));
     setVerifyError("");
 
@@ -448,7 +397,7 @@ export function SubmitPageForm({ user }: Props) {
         );
         const data = await resp.json();
         if (!data.verified) {
-          setVerifyError("Badge not found on your site. Paste the embed code and publish your page, then try again.");
+          setVerifyError(data.reason || data.error || "Your badge could not be verified. Please publish the embed code and try again.");
           setVerifying(false);
           return;
         }
@@ -631,25 +580,7 @@ export function SubmitPageForm({ user }: Props) {
               </div>
             </div>
             <div className="max-w-full mx-auto">
-              <div className="h-1.5 bg-bg-card rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-accent to-accent-bright rounded-full transition-all duration-300 ease-out"
-                  style={{ width: `${progress}%` }}
-                />
-              </div>
-              <div className="flex justify-between mt-2.5">
-                <span className="text-[0.78rem] text-text-secondary">
-                  {ANALYSIS_STAGES[currentStage]}...
-                </span>
-                <span className="text-[0.7rem] text-text-muted font-mono">
-                  {Math.round(progress)}%
-                </span>
-              </div>
-              <p className="text-[0.7rem] text-text-muted mt-3 text-center">
-                {progress > 85
-                  ? "Almost done, computing your final score"
-                  : "This usually takes 30-60 seconds"}
-              </p>
+              <PageSpeedPending />
             </div>
           </div>
         )}
@@ -664,14 +595,6 @@ export function SubmitPageForm({ user }: Props) {
   // ── Step 2: Results + Submit form ──
   return (
     <div className="animate-fade-in-up">
-      {showNudge && (
-        <ProNudgeModal
-          onContinueFree={() => handleSubmit()}
-          onClose={() => setShowNudge(false)}
-          onUpgrade={handleUpgradeFromNudge}
-        />
-      )}
-
       {/* Upgrade banner (also shown in step 2 when user returns from checkout) */}
       {showUpgradeBanner && (
         <div className="bg-gradient-to-r from-[rgba(245,158,11,0.12)] to-[rgba(245,158,11,0.04)] border border-accent/30 rounded-[12px] px-4 py-3.5 mb-4 flex items-start gap-3">
@@ -717,6 +640,7 @@ export function SubmitPageForm({ user }: Props) {
         </div>
 
         <SpeedGauge score={speedResult.score} />
+        <p className="text-[0.7rem] text-text-muted text-center mb-4">Mobile lab measurement · Google PageSpeed Insights</p>
 
         <div className="grid grid-cols-3 gap-2 max-[480px]:grid-cols-2">
           <MetricCard label="FCP" value={speedResult.fcp} score={speedResult.fcpScore} />
@@ -741,8 +665,6 @@ export function SubmitPageForm({ user }: Props) {
           e.preventDefault();
           if (user?.isPro) {
             handleSubmit();
-          } else if (selectedPlan === "pro") {
-            handleUpgradeFromNudge();
           } else {
             handleVerifyAndSubmit(e);
           }
@@ -750,8 +672,7 @@ export function SubmitPageForm({ user }: Props) {
           {/* Submitting as */}
           <div className="flex items-center gap-2.5 bg-bg-card border border-border rounded-lg px-3.5 py-2.5 mb-3.5">
             {user.avatarUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={user.avatarUrl} alt="" className="w-6 h-6 rounded-full" referrerPolicy="no-referrer" />
+              <Image unoptimized width={24} height={24} src={user.avatarUrl} alt="" className="w-6 h-6 rounded-full" referrerPolicy="no-referrer" />
             ) : (
               <div className="w-6 h-6 rounded-full bg-bg-elevated flex items-center justify-center text-[9px] font-bold text-text-muted">
                 {user.name.split(" ").map(n => n[0]).join("")}
@@ -880,16 +801,13 @@ export function SubmitPageForm({ user }: Props) {
           {!user?.isPro && (
             <div className="mb-3.5">
               <div className="text-[0.75rem] font-semibold text-text-secondary mb-2">Choose your plan</div>
+              <p className="text-[0.72rem] text-text-muted mb-3">New Pro upgrades are temporarily unavailable. You can submit with the free plan.</p>
               <div className="grid grid-cols-2 gap-2.5">
                 {/* Free plan card */}
                 <button
                   type="button"
-                  onClick={() => { setSelectedPlan("free"); setBadgeVerified(false); setVerifyError(""); }}
-                  className={`text-left p-3 rounded-[10px] border transition-all duration-150 cursor-pointer ${
-                    selectedPlan === "free"
-                      ? "border-accent bg-[rgba(245,158,11,0.06)]"
-                      : "border-border bg-bg-card hover:border-border-light"
-                  }`}
+                  aria-pressed="true"
+                  className="text-left p-3 rounded-[10px] border border-accent bg-[rgba(245,158,11,0.06)]"
                 >
                   <div className="text-[0.8rem] font-bold text-text-primary mb-1.5">Free</div>
                   {[
@@ -898,7 +816,7 @@ export function SubmitPageForm({ user }: Props) {
                     ["✓", "Speed alerts", false],
                     ["✓", "Daily tracking", false],
                     ["~", "Badge embed required", true],
-                    ["~", "Paused after 10 days inactive, removed at 30", true],
+                    ["✓", "Permanent listing", false],
                   ].map(([icon, label, muted]) => (
                     <div key={String(label)} className={`flex items-start gap-1 text-[0.7rem] mb-0.5 ${muted ? "text-text-muted" : "text-text-secondary"}`}>
                       <span className={muted ? "text-text-muted" : "text-green"}>{String(icon)}</span>
@@ -910,12 +828,8 @@ export function SubmitPageForm({ user }: Props) {
                 {/* Pro plan card */}
                 <button
                   type="button"
-                  onClick={() => setSelectedPlan("pro")}
-                  className={`text-left p-3 rounded-[10px] border transition-all duration-150 cursor-pointer ${
-                    selectedPlan === "pro"
-                      ? "border-accent bg-[rgba(245,158,11,0.06)]"
-                      : "border-border bg-bg-card hover:border-border-light"
-                  }`}
+                  disabled
+                  className="text-left p-3 rounded-[10px] border border-border bg-bg-card opacity-60 cursor-not-allowed"
                 >
                   <div className="flex items-center justify-between mb-1.5">
                     <div className="text-[0.8rem] font-bold text-text-primary">Pro</div>
@@ -938,10 +852,10 @@ export function SubmitPageForm({ user }: Props) {
               </div>
 
               {/* Badge embed section — shown when Free is selected */}
-              {selectedPlan === "free" && (() => {
+              {(() => {
                 const badgeSlug = slugify(name) || slugify(getDomain(url));
                 const domain = getDomain(url);
-                const embedCode = `<a href="https://thefastestweb.site/site/${badgeSlug}" target="_blank" rel="noopener"><img src="https://thefastestweb.site/api/badge/${badgeSlug}?variant=speedometer&theme=${badgeTheme}" alt="Speed Score on TheFastestWeb" width="288" height="80" /></a>`;
+                const embedCode = `<a href="${siteUrl}/site/${badgeSlug}" target="_blank" rel="noopener"><img src="${siteUrl}/api/badge/${badgeSlug}?variant=speedometer&theme=${badgeTheme}" alt="Speed Score on TheFastestWeb" width="288" height="80" /></a>`;
                 return (
                   <div className="mt-3 p-3 bg-bg-card border border-border rounded-[10px]">
                     <div className="flex items-center justify-between mb-2">
@@ -971,8 +885,8 @@ export function SubmitPageForm({ user }: Props) {
 
                     {/* Badge preview */}
                     <div className={`flex justify-center items-center rounded-lg p-4 mb-3 ${badgeTheme === "light" ? "bg-[#f1f5f9]" : "bg-[#070809]"}`}>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
+                      <Image
+                        unoptimized
                         src={`/api/badge/${badgeSlug}?preview=${speedResult.score}&domain=${encodeURIComponent(domain)}&variant=speedometer&theme=${badgeTheme}`}
                         alt="Badge preview"
                         width={288}
@@ -1007,7 +921,10 @@ export function SubmitPageForm({ user }: Props) {
           )}
 
           {submitError && (
-            <div className="text-red text-[0.82rem] mb-3">{submitError}</div>
+            <div className="text-red text-[0.82rem] mb-3" role="alert">
+              {submitError}
+              <button type="button" onClick={runTest} className="block mt-2 text-accent underline underline-offset-2">Run a new test</button>
+            </div>
           )}
 
           <button
@@ -1027,8 +944,6 @@ export function SubmitPageForm({ user }: Props) {
               </>
             ) : user?.isPro ? (
               "Submit to Leaderboard"
-            ) : selectedPlan === "pro" ? (
-              "Pay & Submit \u2192"
             ) : (
               "Verify & Submit"
             )}

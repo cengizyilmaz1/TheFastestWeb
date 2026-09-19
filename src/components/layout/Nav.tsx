@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { SubmitButton } from "@/components/submit/SubmitButton";
 import { UserMenu } from "@/components/layout/UserMenu";
 import { MobileMenu } from "@/components/layout/MobileMenu";
@@ -12,8 +13,7 @@ export function Nav({ user }: NavProps) {
   return (
     <nav className="fixed top-0 left-[190px] right-[190px] z-[100] bg-[rgba(17,15,13,0.88)] backdrop-blur-[20px] border-b border-border px-6 h-[60px] flex items-center justify-between max-[1100px]:left-0 max-[1100px]:right-0 max-[768px]:px-4">
       <Link href="/" className="flex items-center gap-2 no-underline shrink-0">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/logo.png" alt="TheFastestWeb" className="w-8 h-8 object-contain" />
+        <Image src="/logo.png" alt="TheFastestWeb" width={32} height={32} className="w-8 h-8 object-contain" />
         <span className="font-display font-[800] text-[1.15rem] text-text-primary tracking-[-0.02em]">
           TheFastestWeb
         </span>

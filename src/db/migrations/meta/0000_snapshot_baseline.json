@@ -1,0 +1,1430 @@
+{
+  "enums": [
+    {
+      "name": "ad_position",
+      "labels": [
+        "left",
+        "right"
+      ]
+    },
+    {
+      "name": "category",
+      "labels": [
+        "saas",
+        "tool",
+        "directory",
+        "agency",
+        "ecommerce",
+        "blog",
+        "portfolio",
+        "other"
+      ]
+    },
+    {
+      "name": "payment_status",
+      "labels": [
+        "pending",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "name": "strategy",
+      "labels": [
+        "mobile",
+        "desktop"
+      ]
+    },
+    {
+      "name": "tier",
+      "labels": [
+        "free",
+        "pro"
+      ]
+    }
+  ],
+  "policies": [],
+  "routines": [],
+  "relations": [
+    {
+      "rls": true,
+      "kind": "r",
+      "name": "ad_clicks",
+      "view": null,
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "default": "gen_random_uuid()",
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "ad_slot_id",
+          "type": "integer",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "ip",
+          "type": "text",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "user_agent",
+          "type": "text",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "referrer",
+          "type": "text",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "clicked_at",
+          "type": "timestamp with time zone",
+          "default": "now()",
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        }
+      ],
+      "indexes": [
+        {
+          "name": "ad_clicks_pkey",
+          "valid": true,
+          "definition": "CREATE UNIQUE INDEX ad_clicks_pkey ON public.ad_clicks USING btree (id)"
+        }
+      ],
+      "options": null,
+      "forceRls": false,
+      "triggers": [],
+      "constraints": [
+        {
+          "name": "ad_clicks_ad_slot_id_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (ad_slot_id) REFERENCES public.ad_slots(id)"
+        },
+        {
+          "name": "ad_clicks_clicked_at_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL clicked_at"
+        },
+        {
+          "name": "ad_clicks_id_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL id"
+        },
+        {
+          "name": "ad_clicks_pkey",
+          "type": "p",
+          "validated": true,
+          "definition": "PRIMARY KEY (id)"
+        }
+      ]
+    },
+    {
+      "rls": false,
+      "kind": "v",
+      "name": "ad_clicks_with_names",
+      "view": " SELECT ac.id,\n    ac.ad_slot_id,\n    ads.name AS ad_name,\n    ads.url AS ad_url,\n    ads.\"position\" AS ad_position,\n    ac.ip,\n    ac.user_agent,\n    ac.referrer,\n    ac.clicked_at\n   FROM (public.ad_clicks ac\n     LEFT JOIN public.ad_slots ads ON ((ads.id = ac.ad_slot_id)))\n  ORDER BY ac.clicked_at DESC;",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "ad_slot_id",
+          "type": "integer",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "ad_name",
+          "type": "text",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "ad_url",
+          "type": "text",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "ad_position",
+          "type": "public.ad_position",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "ip",
+          "type": "text",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "user_agent",
+          "type": "text",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "referrer",
+          "type": "text",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "clicked_at",
+          "type": "timestamp with time zone",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        }
+      ],
+      "indexes": [],
+      "options": null,
+      "forceRls": false,
+      "triggers": [],
+      "constraints": []
+    },
+    {
+      "rls": true,
+      "kind": "r",
+      "name": "ad_slots",
+      "view": null,
+      "columns": [
+        {
+          "name": "id",
+          "type": "integer",
+          "default": "nextval('public.ad_slots_id_seq'::regclass)",
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "position",
+          "type": "public.ad_position",
+          "default": null,
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "order_index",
+          "type": "integer",
+          "default": null,
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "default": null,
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "url",
+          "type": "text",
+          "default": null,
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "is_active",
+          "type": "boolean",
+          "default": "true",
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "tagline",
+          "type": "text",
+          "default": null,
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "favicon_url",
+          "type": "text",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "polar_subscription_id",
+          "type": "text",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "default": "now()",
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        }
+      ],
+      "indexes": [
+        {
+          "name": "ad_slots_pkey",
+          "valid": true,
+          "definition": "CREATE UNIQUE INDEX ad_slots_pkey ON public.ad_slots USING btree (id)"
+        }
+      ],
+      "options": null,
+      "forceRls": false,
+      "triggers": [],
+      "constraints": [
+        {
+          "name": "ad_slots_id_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL id"
+        },
+        {
+          "name": "ad_slots_is_active_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL is_active"
+        },
+        {
+          "name": "ad_slots_name_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL name"
+        },
+        {
+          "name": "ad_slots_order_index_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL order_index"
+        },
+        {
+          "name": "ad_slots_pkey",
+          "type": "p",
+          "validated": true,
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "name": "ad_slots_position_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL \"position\""
+        },
+        {
+          "name": "ad_slots_tagline_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL tagline"
+        },
+        {
+          "name": "ad_slots_url_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL url"
+        },
+        {
+          "name": "ad_slots_user_id_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (user_id) REFERENCES public.users(id)"
+        }
+      ]
+    },
+    {
+      "rls": true,
+      "kind": "r",
+      "name": "cron_logs",
+      "view": null,
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "default": "gen_random_uuid()",
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "total_sites",
+          "type": "integer",
+          "default": null,
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "tested_count",
+          "type": "integer",
+          "default": null,
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "failed_count",
+          "type": "integer",
+          "default": null,
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "duration_ms",
+          "type": "integer",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "results",
+          "type": "jsonb",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "error",
+          "type": "text",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "default": "now()",
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "completed_at",
+          "type": "timestamp with time zone",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        }
+      ],
+      "indexes": [
+        {
+          "name": "cron_logs_pkey",
+          "valid": true,
+          "definition": "CREATE UNIQUE INDEX cron_logs_pkey ON public.cron_logs USING btree (id)"
+        }
+      ],
+      "options": null,
+      "forceRls": false,
+      "triggers": [],
+      "constraints": [
+        {
+          "name": "cron_logs_failed_count_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL failed_count"
+        },
+        {
+          "name": "cron_logs_id_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL id"
+        },
+        {
+          "name": "cron_logs_pkey",
+          "type": "p",
+          "validated": true,
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "name": "cron_logs_started_at_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL started_at"
+        },
+        {
+          "name": "cron_logs_tested_count_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL tested_count"
+        },
+        {
+          "name": "cron_logs_total_sites_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL total_sites"
+        }
+      ]
+    },
+    {
+      "rls": true,
+      "kind": "r",
+      "name": "payments",
+      "view": null,
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "default": "gen_random_uuid()",
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "site_id",
+          "type": "uuid",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "default": null,
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "polar_checkout_id",
+          "type": "text",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "amount_cents",
+          "type": "integer",
+          "default": null,
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "status",
+          "type": "public.payment_status",
+          "default": "'pending'::public.payment_status",
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "default": "now()",
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        }
+      ],
+      "indexes": [
+        {
+          "name": "payments_pkey",
+          "valid": true,
+          "definition": "CREATE UNIQUE INDEX payments_pkey ON public.payments USING btree (id)"
+        }
+      ],
+      "options": null,
+      "forceRls": false,
+      "triggers": [],
+      "constraints": [
+        {
+          "name": "payments_amount_cents_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL amount_cents"
+        },
+        {
+          "name": "payments_created_at_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL created_at"
+        },
+        {
+          "name": "payments_id_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL id"
+        },
+        {
+          "name": "payments_pkey",
+          "type": "p",
+          "validated": true,
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "name": "payments_site_id_sites_id_fk",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (site_id) REFERENCES public.sites(id)"
+        },
+        {
+          "name": "payments_status_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL status"
+        },
+        {
+          "name": "payments_user_id_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL user_id"
+        },
+        {
+          "name": "payments_user_id_users_id_fk",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (user_id) REFERENCES public.users(id)"
+        }
+      ]
+    },
+    {
+      "rls": true,
+      "kind": "r",
+      "name": "sites",
+      "view": null,
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "default": "gen_random_uuid()",
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "slug",
+          "type": "text",
+          "default": null,
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "default": null,
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "url",
+          "type": "text",
+          "default": null,
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "default": null,
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "favicon_url",
+          "type": "text",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "owner_id",
+          "type": "uuid",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "owner_name",
+          "type": "text",
+          "default": null,
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "twitter_handle",
+          "type": "text",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "tier",
+          "type": "public.tier",
+          "default": "'free'::public.tier",
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "is_listed",
+          "type": "boolean",
+          "default": "false",
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "current_score",
+          "type": "integer",
+          "default": "0",
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "current_load_time",
+          "type": "text",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "current_fcp",
+          "type": "text",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "current_lcp",
+          "type": "text",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "current_cls",
+          "type": "text",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "current_tbt",
+          "type": "text",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "current_tti",
+          "type": "text",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "current_si",
+          "type": "text",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "trend",
+          "type": "real",
+          "default": "0",
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "country_flag",
+          "type": "text",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "default": "now()",
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "last_tested_at",
+          "type": "timestamp with time zone",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "category",
+          "type": "public.category",
+          "default": "'other'::public.category",
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "monitoring_paused",
+          "type": "boolean",
+          "default": "false",
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "requires_badge",
+          "type": "boolean",
+          "default": "false",
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "badge_warning_sent_at",
+          "type": "timestamp with time zone",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        }
+      ],
+      "indexes": [
+        {
+          "name": "sites_pkey",
+          "valid": true,
+          "definition": "CREATE UNIQUE INDEX sites_pkey ON public.sites USING btree (id)"
+        },
+        {
+          "name": "sites_slug_unique",
+          "valid": true,
+          "definition": "CREATE UNIQUE INDEX sites_slug_unique ON public.sites USING btree (slug)"
+        },
+        {
+          "name": "sites_url_unique",
+          "valid": true,
+          "definition": "CREATE UNIQUE INDEX sites_url_unique ON public.sites USING btree (url)"
+        }
+      ],
+      "options": null,
+      "forceRls": false,
+      "triggers": [],
+      "constraints": [
+        {
+          "name": "sites_category_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL category"
+        },
+        {
+          "name": "sites_created_at_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL created_at"
+        },
+        {
+          "name": "sites_current_score_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL current_score"
+        },
+        {
+          "name": "sites_description_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL description"
+        },
+        {
+          "name": "sites_id_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL id"
+        },
+        {
+          "name": "sites_is_listed_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL is_listed"
+        },
+        {
+          "name": "sites_monitoring_paused_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL monitoring_paused"
+        },
+        {
+          "name": "sites_name_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL name"
+        },
+        {
+          "name": "sites_owner_id_users_id_fk",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (owner_id) REFERENCES public.users(id)"
+        },
+        {
+          "name": "sites_owner_name_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL owner_name"
+        },
+        {
+          "name": "sites_pkey",
+          "type": "p",
+          "validated": true,
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "name": "sites_requires_badge_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL requires_badge"
+        },
+        {
+          "name": "sites_slug_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL slug"
+        },
+        {
+          "name": "sites_slug_unique",
+          "type": "u",
+          "validated": true,
+          "definition": "UNIQUE (slug)"
+        },
+        {
+          "name": "sites_tier_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL tier"
+        },
+        {
+          "name": "sites_url_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL url"
+        },
+        {
+          "name": "sites_url_unique",
+          "type": "u",
+          "validated": true,
+          "definition": "UNIQUE (url)"
+        }
+      ]
+    },
+    {
+      "rls": true,
+      "kind": "r",
+      "name": "speed_checks",
+      "view": null,
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "default": "gen_random_uuid()",
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "url",
+          "type": "text",
+          "default": null,
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "score",
+          "type": "integer",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "load_time_ms",
+          "type": "integer",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "ip",
+          "type": "text",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "user_agent",
+          "type": "text",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "strategy",
+          "type": "public.strategy",
+          "default": "'mobile'::public.strategy",
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "default": "now()",
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        }
+      ],
+      "indexes": [
+        {
+          "name": "speed_checks_pkey",
+          "valid": true,
+          "definition": "CREATE UNIQUE INDEX speed_checks_pkey ON public.speed_checks USING btree (id)"
+        }
+      ],
+      "options": null,
+      "forceRls": false,
+      "triggers": [],
+      "constraints": [
+        {
+          "name": "speed_checks_created_at_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL created_at"
+        },
+        {
+          "name": "speed_checks_id_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL id"
+        },
+        {
+          "name": "speed_checks_pkey",
+          "type": "p",
+          "validated": true,
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "name": "speed_checks_strategy_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL strategy"
+        },
+        {
+          "name": "speed_checks_url_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL url"
+        }
+      ]
+    },
+    {
+      "rls": true,
+      "kind": "r",
+      "name": "speed_tests",
+      "view": null,
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "default": "gen_random_uuid()",
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "site_id",
+          "type": "uuid",
+          "default": null,
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "score",
+          "type": "integer",
+          "default": null,
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "load_time_ms",
+          "type": "integer",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "fcp_ms",
+          "type": "integer",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "lcp_ms",
+          "type": "integer",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "cls",
+          "type": "real",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "tbt_ms",
+          "type": "integer",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "tti_ms",
+          "type": "integer",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "si_ms",
+          "type": "integer",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "raw_response",
+          "type": "jsonb",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "strategy",
+          "type": "public.strategy",
+          "default": "'mobile'::public.strategy",
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "tested_at",
+          "type": "timestamp with time zone",
+          "default": "now()",
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        }
+      ],
+      "indexes": [
+        {
+          "name": "speed_tests_pkey",
+          "valid": true,
+          "definition": "CREATE UNIQUE INDEX speed_tests_pkey ON public.speed_tests USING btree (id)"
+        }
+      ],
+      "options": null,
+      "forceRls": false,
+      "triggers": [],
+      "constraints": [
+        {
+          "name": "speed_tests_id_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL id"
+        },
+        {
+          "name": "speed_tests_pkey",
+          "type": "p",
+          "validated": true,
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "name": "speed_tests_score_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL score"
+        },
+        {
+          "name": "speed_tests_site_id_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL site_id"
+        },
+        {
+          "name": "speed_tests_site_id_sites_id_fk",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (site_id) REFERENCES public.sites(id)"
+        },
+        {
+          "name": "speed_tests_strategy_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL strategy"
+        },
+        {
+          "name": "speed_tests_tested_at_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL tested_at"
+        }
+      ]
+    },
+    {
+      "rls": true,
+      "kind": "r",
+      "name": "users",
+      "view": null,
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "default": "gen_random_uuid()",
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "email",
+          "type": "text",
+          "default": null,
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "default": null,
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "avatar_url",
+          "type": "text",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "default": "now()",
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "twitter_handle",
+          "type": "text",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "is_pro",
+          "type": "boolean",
+          "default": "false",
+          "notNull": true,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "last_active_at",
+          "type": "timestamp with time zone",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        },
+        {
+          "name": "grandfather_warning_sent_at",
+          "type": "timestamp with time zone",
+          "default": null,
+          "notNull": false,
+          "identity": "",
+          "generated": ""
+        }
+      ],
+      "indexes": [
+        {
+          "name": "users_email_unique",
+          "valid": true,
+          "definition": "CREATE UNIQUE INDEX users_email_unique ON public.users USING btree (email)"
+        },
+        {
+          "name": "users_pkey",
+          "valid": true,
+          "definition": "CREATE UNIQUE INDEX users_pkey ON public.users USING btree (id)"
+        }
+      ],
+      "options": null,
+      "forceRls": false,
+      "triggers": [],
+      "constraints": [
+        {
+          "name": "users_created_at_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL created_at"
+        },
+        {
+          "name": "users_email_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL email"
+        },
+        {
+          "name": "users_email_unique",
+          "type": "u",
+          "validated": true,
+          "definition": "UNIQUE (email)"
+        },
+        {
+          "name": "users_id_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL id"
+        },
+        {
+          "name": "users_is_pro_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL is_pro"
+        },
+        {
+          "name": "users_name_not_null",
+          "type": "n",
+          "validated": true,
+          "definition": "NOT NULL name"
+        },
+        {
+          "name": "users_pkey",
+          "type": "p",
+          "validated": true,
+          "definition": "PRIMARY KEY (id)"
+        }
+      ]
+    }
+  ],
+  "sequences": [
+    {
+      "name": "ad_slots_id_seq",
+      "type": "integer",
+      "cache": 1,
+      "cycle": false,
+      "start": 1,
+      "maximum": 2147483647,
+      "minimum": 1,
+      "ownedBy": "ad_slots.id",
+      "increment": 1
+    }
+  ],
+  "otherTypes": []
+}

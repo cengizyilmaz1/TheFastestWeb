@@ -1,124 +1,39 @@
-import { NextRequest, NextResponse } from "next/server";
-import { runStableSpeedTest } from "@/lib/pagespeed";
-import { getDb } from "@/db/index";
-import { speedChecks } from "@/db/schema";
+import { NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
+import { auth } from "@/auth";
+import { getDb } from "@/db";
+import { speedChecks, verifiedSpeedTests } from "@/db/schema";
+import { runPageSpeedTest, METHODOLOGY_VERSION } from "@/lib/pagespeed";
+import { withApi } from "@/lib/http/api";
+import { AppError } from "@/lib/http/errors";
+import { enforceRateLimit } from "@/modules/security/rate-limit";
+import { normalizeSubmittedUrl } from "@/modules/sites/input";
 
-// Simple in-memory rate limiting
-const rateLimit = new Map<string, { count: number; resetAt: number }>();
-
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now();
-  const entry = rateLimit.get(ip);
-
-  if (!entry || now > entry.resetAt) {
-    rateLimit.set(ip, { count: 1, resetAt: now + 3600000 }); // 1 hour
-    return true;
-  }
-
-  if (entry.count >= 10) return false;
-  entry.count++;
-  return true;
-}
-
-// Simple cache for recent results
-const cache = new Map<string, { data: unknown; expiresAt: number }>();
-
-export async function GET(request: NextRequest) {
-  const url = request.nextUrl.searchParams.get("url");
-  const strategy =
-    (request.nextUrl.searchParams.get("strategy") as "mobile" | "desktop") ||
-    "mobile";
-
-  if (!url) {
-    return NextResponse.json({ error: "URL is required" }, { status: 400 });
-  }
-
-  // Validate URL — must have a real domain with TLD
-  try {
-    const parsed = new URL(url);
-    const parts = parsed.hostname.split(".");
-    if (!parsed.hostname.includes(".") || parts[parts.length - 1].length < 2) {
-      return NextResponse.json(
-        { error: "Please enter a valid URL (e.g. yoursite.com)" },
-        { status: 400 }
-      );
+export const GET = withApi(async (request) => {
+  const url = normalizeSubmittedUrl(request.nextUrl.searchParams.get("url") || "");
+  const strategy = request.nextUrl.searchParams.get("strategy") || "mobile";
+  if (strategy !== "mobile" && strategy !== "desktop") throw new AppError("INVALID_REQUEST", "Choose mobile or desktop.", 400);
+  const session = await auth();
+  const actor = session?.user?.id || "anonymous";
+  // A global quota bounds upstream cost even if client forwarding headers are spoofed.
+  await enforceRateLimit("psi-global", "all", 100, 3600);
+  await enforceRateLimit("psi-actor", actor, session?.user?.id ? 10 : 20, 3600);
+  const db = getDb();
+  if (!db) throw new AppError("DATABASE_UNAVAILABLE", "Testing is temporarily unavailable.", 503);
+  const psi = await runPageSpeedTest(url, strategy);
+  const { rawResponse: _raw, ...result } = psi;
+  void _raw;
+  let testResultId: string | undefined;
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+  await db.transaction(async (tx) => {
+    if (session?.user?.id) {
+      const [proof] = await tx.insert(verifiedSpeedTests).values({
+        userId: session.user.id, normalizedUrl: url, strategy, jobId: randomUUID(),
+        result, methodologyVersion: strategy === "mobile" ? METHODOLOGY_VERSION : "psi-v1-single-desktop", expiresAt,
+      }).returning({ id: verifiedSpeedTests.id });
+      testResultId = proof.id;
     }
-  } catch {
-    return NextResponse.json({ error: "Invalid URL" }, { status: 400 });
-  }
-
-  // Rate limiting
-  const ip =
-    request.headers.get("x-forwarded-for")?.split(",")[0] ||
-    request.headers.get("x-real-ip") ||
-    "unknown";
-
-  if (!checkRateLimit(ip)) {
-    return NextResponse.json(
-      { error: "Rate limited — max 10 tests per hour. Please wait." },
-      { status: 429 }
-    );
-  }
-
-  // Check cache (5 minutes)
-  const cacheKey = `${url}:${strategy}`;
-  const cached = cache.get(cacheKey);
-  if (cached && Date.now() < cached.expiresAt) {
-    return NextResponse.json(cached.data);
-  }
-
-  try {
-    const psi = await runStableSpeedTest(url, strategy);
-
-    const result = {
-      score: psi.score,
-      fcp: psi.fcp,
-      lcp: psi.lcp,
-      clsDisplay: psi.clsDisplay,
-      tbt: psi.tbt,
-      tti: psi.tti,
-      si: psi.si,
-      fcpMs: psi.fcpMs,
-      lcpMs: psi.lcpMs,
-      cls: psi.cls,
-      tbtMs: psi.tbtMs,
-      ttiMs: psi.ttiMs,
-      siMs: psi.siMs,
-      fcpScore: psi.fcpScore,
-      lcpScore: psi.lcpScore,
-      clsScore: psi.clsScore,
-      tbtScore: psi.tbtScore,
-      ttiScore: psi.ttiScore,
-      siScore: psi.siScore,
-    };
-
-    // Cache for 5 minutes
-    cache.set(cacheKey, { data: result, expiresAt: Date.now() + 300000 });
-
-    // Track the speed check
-    const db = getDb();
-    if (db) {
-      try {
-        await db.insert(speedChecks).values({
-          url,
-          score: psi.score,
-          loadTimeMs: psi.lcpMs ?? null,
-          ip,
-          userAgent: request.headers.get("user-agent") || null,
-          strategy,
-        });
-      } catch (e) {
-        console.error("[speed-check] insert failed:", e);
-      }
-    }
-
-    return NextResponse.json(result);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Failed to run speed test";
-    const isClientError = message.includes("(400)") || message.includes("(404)") || message.includes("Invalid");
-    return NextResponse.json(
-      { error: message },
-      { status: isClientError ? 400 : 500 }
-    );
-  }
-}
+    await tx.insert(speedChecks).values({ url, score: result.score, loadTimeMs: result.loadTimeMs, strategy });
+  });
+  return NextResponse.json({ ...result, testResultId, expiresAt: testResultId ? expiresAt.toISOString() : undefined }, { headers: { "Cache-Control": "no-store" } });
+});

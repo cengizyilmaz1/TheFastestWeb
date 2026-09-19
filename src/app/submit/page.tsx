@@ -1,3 +1,4 @@
+import { siteConfig } from "@/config/site";
 import { Metadata } from "next";
 import { Suspense } from "react";
 import { SubmitPageForm } from "@/components/submit/SubmitPageForm";
@@ -7,7 +8,7 @@ export const metadata: Metadata = {
   title: "Submit Your Website | TheFastestWeb",
   description:
     "Submit your website to the TheFastestWeb leaderboard. Free speed testing, daily monitoring, dofollow backlink, and historical performance tracking.",
-  alternates: { canonical: "https://thefastestweb.site/submit" },
+  alternates: { canonical: `${siteConfig.url}/submit` },
   openGraph: {
     title: "Submit Your Website | TheFastestWeb",
     description: "Submit your website to the TheFastestWeb leaderboard. Free speed testing, daily monitoring, dofollow backlink, and historical performance tracking.",
@@ -33,7 +34,7 @@ export default async function SubmitPage() {
       </div>
 
       <Suspense fallback={null}>
-        <SubmitPageForm user={user} />
+        <SubmitPageForm user={user} siteUrl={siteConfig.url} />
       </Suspense>
     </div>
   );

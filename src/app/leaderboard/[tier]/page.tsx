@@ -1,3 +1,5 @@
+import { siteConfig } from "@/config/site";
+import { safeJsonLd } from "@/lib/seo/json-ld";
 import { notFound } from "next/navigation";
 import { Metadata } from "next";
 import Link from "next/link";
@@ -70,8 +72,8 @@ export async function generateMetadata({
   return {
     title,
     description,
-    alternates: { canonical: `https://thefastestweb.site/leaderboard/${tier}` },
-    openGraph: { title, description, url: `https://thefastestweb.site/leaderboard/${tier}`, type: "website" },
+    alternates: { canonical: `${siteConfig.url}/leaderboard/${tier}` },
+    openGraph: { title, description, url: `${siteConfig.url}/leaderboard/${tier}`, type: "website" },
     twitter: { card: "summary_large_image", title, description },
   };
 }
@@ -92,20 +94,20 @@ export default async function TierPage({
     "@type": "ItemList",
     name: `${config.label} Websites by PageSpeed Score`,
     description: config.description(siteList.length, siteList[0]),
-    url: `https://thefastestweb.site/leaderboard/${tier}`,
+    url: `${siteConfig.url}/leaderboard/${tier}`,
     itemListOrder: "https://schema.org/ItemListOrderDescending",
     numberOfItems: siteList.length,
     itemListElement: siteList.slice(0, 10).map((site, i) => ({
       "@type": "ListItem",
       position: i + 1,
-      url: `https://thefastestweb.site/site/${site.slug}`,
+      url: `${siteConfig.url}/site/${site.slug}`,
       name: `${site.name} — PageSpeed ${site.currentScore}/100`,
     })),
   };
 
   return (
     <div className="py-[40px] px-5 pb-[60px]">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(jsonLd) }} />
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-[0.8rem] text-text-muted mb-6">
         <Link href="/" className="text-text-muted no-underline hover:text-accent">

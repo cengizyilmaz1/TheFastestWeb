@@ -1,44 +1,30 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/db/index";
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { getDb } from "@/db";
 import { sites } from "@/db/schema";
 import { desc, asc, eq, sql } from "drizzle-orm";
-
-export async function GET(request: NextRequest) {
-  const offset = parseInt(request.nextUrl.searchParams.get("offset") || "0");
-  const limit = parseInt(request.nextUrl.searchParams.get("limit") || "20");
-  const sort = request.nextUrl.searchParams.get("sort") || "score";
-
+import { withApi } from "@/lib/http/api";
+import { AppError } from "@/lib/http/errors";
+const pagination = z.object({
+  offset: z.coerce.number().int().min(0).max(10000).default(0),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  sort: z.enum(["score", "loadtime"]).default("score"),
+});
+export const GET = withApi(async (request) => {
+  const parsed = pagination.safeParse(Object.fromEntries(request.nextUrl.searchParams));
+  if (!parsed.success) throw new AppError("INVALID_REQUEST", "Invalid pagination or sort.", 400);
+  const { offset, limit, sort } = parsed.data;
   const db = getDb();
-  if (!db) {
-    return NextResponse.json({ sites: [], total: 0, hasMore: false });
-  }
-
-  try {
-    const orderBy =
-      sort === "loadtime"
-        ? [asc(sites.currentLoadTime), desc(sites.currentScore), asc(sites.createdAt)]
-        : [desc(sites.currentScore), asc(sites.currentLoadTime), asc(sites.createdAt)];
-
-    const rows = await db
-      .select()
-      .from(sites)
-      .where(eq(sites.isListed, true))
-      .orderBy(...orderBy)
-      .offset(offset)
-      .limit(limit);
-
-    const [{ count }] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(sites)
-      .where(eq(sites.isListed, true));
-
-    return NextResponse.json({
-      sites: rows,
-      total: count,
-      hasMore: offset + limit < count,
-    });
-  } catch (err) {
-    console.error("DB read failed:", err);
-    return NextResponse.json({ sites: [], total: 0, hasMore: false });
-  }
-}
+  if (!db) throw new AppError("DATABASE_UNAVAILABLE", "The directory is temporarily unavailable.", 503);
+  // Historic load time is a display string; compare converted milliseconds.
+  const loadMs = sql`CASE
+    WHEN ${sites.currentLoadTime} ~ '^[0-9]+([.][0-9]+)?ms$' THEN replace(${sites.currentLoadTime}, 'ms', '')::numeric
+    WHEN ${sites.currentLoadTime} ~ '^[0-9]+([.][0-9]+)?s$' THEN replace(${sites.currentLoadTime}, 's', '')::numeric * 1000
+    ELSE NULL END`;
+  const orderBy = sort === "loadtime"
+    ? [asc(loadMs), desc(sites.currentScore), asc(sites.createdAt), asc(sites.id)]
+    : [desc(sites.currentScore), asc(loadMs), asc(sites.createdAt), asc(sites.id)];
+  const rows = await db.select().from(sites).where(eq(sites.isListed, true)).orderBy(...orderBy).offset(offset).limit(limit);
+  const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(sites).where(eq(sites.isListed, true));
+  return NextResponse.json({ sites: rows, total: count, hasMore: offset + rows.length < count });
+});

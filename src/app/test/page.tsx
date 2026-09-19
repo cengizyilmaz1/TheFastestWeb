@@ -1,3 +1,4 @@
+import { siteConfig } from "@/config/site";
 import { Metadata } from "next";
 import { TestForm } from "@/components/speed-test/TestForm";
 
@@ -5,7 +6,7 @@ export const metadata: Metadata = {
   title: "Test Your Website Speed | TheFastestWeb",
   description:
     "Enter any URL to get a real website performance score. Free, instant results.",
-  alternates: { canonical: "https://thefastestweb.site/test" },
+  alternates: { canonical: `${siteConfig.url}/test` },
   openGraph: {
     title: "Test Your Website Speed | TheFastestWeb",
     description: "Enter any URL to get a real website performance score. Free, instant results.",

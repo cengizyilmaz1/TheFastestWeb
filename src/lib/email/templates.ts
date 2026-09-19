@@ -1,3 +1,5 @@
+import { siteConfig } from "@/config/site";
+
 // Shared email styles
 const colors = {
   bg: "#110F0D",
@@ -11,8 +13,7 @@ const colors = {
   green: "#22C55E",
 };
 
-const BASE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL || "https://thefastestweb.site";
+const BASE_URL = siteConfig.url;
 
 function emailWrapper(content: string): string {
   return `<!DOCTYPE html>

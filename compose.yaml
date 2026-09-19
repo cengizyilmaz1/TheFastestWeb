@@ -1,0 +1,54 @@
+services:
+  postgres:
+    image: postgres:18-bookworm
+    environment:
+      POSTGRES_DB: thefastestweb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?Set a new PostgreSQL admin password}
+      TZ: UTC
+      PGTZ: UTC
+    volumes:
+      # PostgreSQL 18 images store versioned data beneath /var/lib/postgresql.
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d thefastestweb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      NODE_ENV: production
+      SITE_URL: ${SITE_URL:-https://thefastestweb.site}
+      DATABASE_URL: ${DATABASE_URL:?Set the least-privilege application database URL}
+      AUTH_SECRET: ${AUTH_SECRET:?Generate a new auth secret}
+      AUTH_GOOGLE_ID: ${AUTH_GOOGLE_ID:?Set your Google OAuth client ID}
+      AUTH_GOOGLE_SECRET: ${AUTH_GOOGLE_SECRET:?Set your Google OAuth client secret}
+      AUTH_URL: ${AUTH_URL:-}
+      AUTH_TRUST_HOST: "true"
+      GOOGLE_PSI_API_KEY: ${GOOGLE_PSI_API_KEY:-}
+      GOOGLE_PSI_API_KEY_BACKUP: ${GOOGLE_PSI_API_KEY_BACKUP:-}
+      CRON_SECRET: ${CRON_SECRET:-}
+      UNAVATAR_API_KEY: ${UNAVATAR_API_KEY:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DB_MAX_CONNECTIONS: ${DB_MAX_CONNECTIONS:-10}
+      DB_CONNECT_TIMEOUT_SECONDS: ${DB_CONNECT_TIMEOUT_SECONDS:-10}
+      DB_IDLE_TIMEOUT_SECONDS: ${DB_IDLE_TIMEOUT_SECONDS:-20}
+      DB_STATEMENT_TIMEOUT_MS: ${DB_STATEMENT_TIMEOUT_MS:-10000}
+      ENABLE_LEGACY_RESEND: "false"
+    expose:
+      - "3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    shm_size: 256mb
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+volumes:
+  postgres_data:

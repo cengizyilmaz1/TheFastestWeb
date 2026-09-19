@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
+import Image from "next/image";
 
 interface FaviconImgProps {
   url: string;
@@ -11,8 +12,6 @@ interface FaviconImgProps {
 
 export function FaviconImg({ url, src: initialSrc, alt = "", className = "" }: FaviconImgProps) {
   const [fallbackLevel, setFallbackLevel] = useState(0);
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
 
   let domain = "";
   try {
@@ -55,13 +54,15 @@ export function FaviconImg({ url, src: initialSrc, alt = "", className = "" }: F
     </div>
   );
 
-  if (!mounted || !currentSrc || !domain) {
+  if (!currentSrc || !domain) {
     return letterPlaceholder;
   }
 
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
+    <Image
+      unoptimized
+      width={64}
+      height={64}
       src={currentSrc}
       alt={alt}
       className={className}

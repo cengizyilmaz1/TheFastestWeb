@@ -1,4 +1,7 @@
+import { siteConfig } from "@/config/site";
 import { MetadataRoute } from "next";
+
+export const dynamic = "force-dynamic";
 
 export default function robots(): MetadataRoute.Robots {
   return {
@@ -7,6 +10,6 @@ export default function robots(): MetadataRoute.Robots {
       allow: "/",
       disallow: ["/api/", "/auth/", "/email-preview"],
     },
-    sitemap: "https://thefastestweb.site/sitemap.xml",
+    sitemap: `${siteConfig.url}/sitemap.xml`,
   };
 }

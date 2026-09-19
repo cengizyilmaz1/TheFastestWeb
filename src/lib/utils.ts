@@ -75,25 +75,6 @@ export function slugify(text: string): string {
     .replace(/(^-|-$)/g, "");
 }
 
-export function generateChartPoints(
-  count: number,
-  min: number,
-  max: number
-): number[] {
-  const pts: number[] = [];
-  let val = min + Math.random() * (max - min) * 0.3;
-  for (let i = 0; i < count; i++) {
-    val += (Math.random() - 0.4) * 8;
-    val = Math.max(min, Math.min(max, val));
-    pts.push(val);
-  }
-  pts[pts.length - 1] = Math.max(
-    pts[pts.length - 1],
-    min + (max - min) * 0.7
-  );
-  return pts;
-}
-
 export function generateSVGPath(
   points: number[],
   width: number,

@@ -1,7 +1,12 @@
+import { siteConfig } from "@/config/site";
+import { safeJsonLd } from "@/lib/seo/json-ld";
 import Link from "next/link";
+import Image from "next/image";
 import { notFound } from "next/navigation";
 import { Metadata } from "next";
 import { getDb } from "@/db/index";
+import { auth } from "@/auth";
+import { logger } from "@/infrastructure/logging/logger";
 import { sites, speedTests, Site } from "@/db/schema";
 import { FaviconImg } from "@/components/ui/FaviconImg";
 import { eq, desc, sql } from "drizzle-orm";
@@ -20,9 +25,13 @@ async function getSiteBySlug(slug: string): Promise<Site | null> {
       .from(sites)
       .where(eq(sites.slug, slug))
       .limit(1);
+    if (row && !row.isListed) {
+      const session = await auth();
+      if (!row.ownerId || session?.user?.id !== row.ownerId) return null;
+    }
     return row || null;
-  } catch (err) {
-    console.error("DB lookup failed:", err);
+  } catch {
+    logger.error({ event: "site.lookup_failed", code: "DATABASE_UNAVAILABLE" });
     return null;
   }
 }
@@ -35,7 +44,7 @@ async function getSiteRank(siteScore: number): Promise<number> {
     const [{ count }] = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(sites)
-      .where(sql`${sites.currentScore} > ${siteScore}`);
+      .where(sql`${sites.currentScore} > ${siteScore} AND ${sites.isListed} = true`);
     return count + 1;
   } catch {
     return 1;
@@ -49,12 +58,12 @@ interface TestHistoryPoint {
 
 interface LatestMetrics {
   score: number;
-  fcpMs: number;
-  lcpMs: number;
-  cls: number;
-  tbtMs: number;
-  ttiMs: number;
-  siMs: number;
+  fcpMs: number | null;
+  lcpMs: number | null;
+  cls: number | null;
+  tbtMs: number | null;
+  ttiMs: number | null;
+  siMs: number | null;
 }
 
 async function getTestData(siteId: string) {
@@ -89,12 +98,12 @@ async function getTestData(siteId: string) {
     const latest: LatestMetrics | null = latestTest
       ? {
           score: latestTest.score,
-          fcpMs: latestTest.fcpMs ?? 0,
-          lcpMs: latestTest.lcpMs ?? 0,
-          cls: latestTest.cls ?? 0,
-          tbtMs: latestTest.tbtMs ?? 0,
-          ttiMs: latestTest.ttiMs ?? 0,
-          siMs: latestTest.siMs ?? 0,
+          fcpMs: latestTest.fcpMs,
+          lcpMs: latestTest.lcpMs,
+          cls: latestTest.cls,
+          tbtMs: latestTest.tbtMs,
+          ttiMs: latestTest.ttiMs,
+          siMs: latestTest.siMs,
         }
       : null;
 
@@ -120,13 +129,14 @@ export async function generateMetadata({
   return {
     title,
     description,
+    ...(site.isListed ? {} : { robots: { index: false, follow: false } }),
     alternates: {
-      canonical: `https://thefastestweb.site/site/${slug}`,
+      canonical: `${siteConfig.url}/site/${slug}`,
     },
     openGraph: {
       title,
       description,
-      url: `https://thefastestweb.site/site/${slug}`,
+      url: `${siteConfig.url}/site/${slug}`,
       type: "website",
     },
     twitter: {
@@ -147,15 +157,15 @@ export default async function SiteDetailPage({
   if (!site) notFound();
 
   const rank = await getSiteRank(site.currentScore);
-  const { history, latest, testCount } = await getTestData(site.id);
+  const { history, latest } = await getTestData(site.id);
   const trend = site.trend ?? 0;
 
   // Format latest metrics for display
-  const formatMs = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${ms} ms`;
+  const formatMs = (ms: number | null) => ms === null ? null : ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${ms} ms`;
   const latestMetrics = latest ? {
     fcp: formatMs(latest.fcpMs),
     lcp: formatMs(latest.lcpMs),
-    cls: latest.cls.toFixed(3),
+    cls: latest.cls?.toFixed(3) ?? null,
     tbt: formatMs(latest.tbtMs),
     tti: formatMs(latest.ttiMs),
     si: formatMs(latest.siMs),
@@ -175,7 +185,7 @@ export default async function SiteDetailPage({
     "@type": "WebPage",
     name: `${site.name} Speed Report`,
     description: site.description,
-    url: `https://thefastestweb.site/site/${site.slug}`,
+    url: `${siteConfig.url}/site/${site.slug}`,
     mainEntity: {
       "@type": "WebSite",
       name: site.name,
@@ -184,9 +194,9 @@ export default async function SiteDetailPage({
     breadcrumb: {
       "@type": "BreadcrumbList",
       itemListElement: [
-        { "@type": "ListItem", position: 1, name: "TheFastestWeb", item: "https://thefastestweb.site" },
-        { "@type": "ListItem", position: 2, name: "Websites", item: "https://thefastestweb.site" },
-        { "@type": "ListItem", position: 3, name: site.name, item: `https://thefastestweb.site/site/${site.slug}` },
+        { "@type": "ListItem", position: 1, name: "TheFastestWeb", item: siteConfig.url },
+        { "@type": "ListItem", position: 2, name: "Websites", item: siteConfig.url },
+        { "@type": "ListItem", position: 3, name: site.name, item: `${siteConfig.url}/site/${site.slug}` },
       ],
     },
   };
@@ -195,7 +205,7 @@ export default async function SiteDetailPage({
     <div className="py-[30px] px-5 pb-[50px]">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(jsonLd) }}
       />
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-[0.8rem] text-text-muted mb-6">
@@ -228,7 +238,7 @@ export default async function SiteDetailPage({
               </h1>
               <div className="flex gap-2 shrink-0">
                 <a
-                  href={`https://x.com/intent/tweet?text=${encodeURIComponent(`${site.name} scored ${site.currentScore}/100 on TheFastestWeb`)}&url=${encodeURIComponent(`https://thefastestweb.site/site/${site.slug}`)}`}
+                  href={`https://x.com/intent/tweet?text=${encodeURIComponent(`${site.name} scored ${site.currentScore}/100 on TheFastestWeb`)}&url=${encodeURIComponent(`${siteConfig.url}/site/${site.slug}`)}`}
                   target="_blank"
                   rel="noopener"
                   className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-[10px] bg-bg-card border border-border text-text-primary font-semibold text-[0.82rem] cursor-pointer transition-all duration-200 font-body no-underline hover:bg-bg-card-hover hover:border-border-light whitespace-nowrap"
@@ -284,8 +294,10 @@ export default async function SiteDetailPage({
                 className="inline-flex items-center gap-2 no-underline text-inherit hover:text-accent transition-colors"
               >
                 {site.twitterHandle ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
+                  <Image
+                    unoptimized
+                    width={34}
+                    height={34}
                     src={`/api/avatar/${site.twitterHandle.replace("@", "")}`}
                     alt={site.ownerName}
                     className="w-[34px] h-[34px] rounded-full object-cover"

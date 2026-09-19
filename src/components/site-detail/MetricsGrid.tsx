@@ -13,31 +13,34 @@ interface MetricsGridProps {
   label?: string;
 }
 
-function parseMs(val: string): number {
-  if (!val || val === "N/A") return 0;
+function parseMs(val: string): number | null {
+  if (!val || val === "N/A") return null;
   const sMatch = val.match(/([\d.]+)\s*s/);
   if (sMatch) return parseFloat(sMatch[1]) * 1000;
   const msMatch = val.match(/([\d.]+)\s*ms/);
   if (msMatch) return parseFloat(msMatch[1]);
-  return parseFloat(val) || 0;
+  const parsed = parseFloat(val);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
-function parseCls(val: string): number {
-  if (!val || val === "N/A") return 0;
-  return parseFloat(val) || 0;
+function parseCls(val: string): number | null {
+  const parsed = parseFloat(val);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 // Google Core Web Vitals thresholds
-function cwvStatus(metric: "lcp" | "cls", val: string): "pass" | "warn" | "fail" {
-  if (!val || val === "N/A") return "warn";
+function cwvStatus(metric: "lcp" | "cls", val: string): "pass" | "warn" | "fail" | "unknown" {
+  if (!val || val === "N/A") return "unknown";
   if (metric === "lcp") {
     const ms = parseMs(val);
+    if (ms === null) return "unknown";
     if (ms <= 2500) return "pass";
     if (ms <= 4000) return "warn";
     return "fail";
   }
   if (metric === "cls") {
     const v = parseCls(val);
+    if (v === null) return "unknown";
     if (v <= 0.1) return "pass";
     if (v <= 0.25) return "warn";
     return "fail";
@@ -46,6 +49,7 @@ function cwvStatus(metric: "lcp" | "cls", val: string): "pass" | "warn" | "fail"
 }
 
 const statusConfig = {
+  unknown: { label: "Unavailable", dotClass: "bg-text-muted", textClass: "text-text-muted", bgClass: "bg-bg-elevated" },
   pass: { label: "Good", dotClass: "bg-green", textClass: "text-green", bgClass: "bg-green-dim" },
   warn: { label: "Needs Work", dotClass: "bg-orange", textClass: "text-orange", bgClass: "bg-orange-dim" },
   fail: { label: "Poor", dotClass: "bg-red", textClass: "text-red", bgClass: "bg-red-dim" },

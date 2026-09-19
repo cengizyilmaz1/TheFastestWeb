@@ -4,14 +4,16 @@ import { MetricInfoTip } from "@/components/ui/MetricInfoTip";
 interface MetricCardProps {
   label: string;
   value: string;
-  score: number; // 0-1
+  score: number | null; // 0-1; null means the provider did not report this metric.
 }
 
 export function MetricCard({ label, value, score }: MetricCardProps) {
   const info = METRIC_INFO[label];
 
   const color =
-    score >= 0.9
+    score === null
+      ? "text-text-muted"
+      : score >= 0.9
       ? "text-green"
       : score >= 0.5
         ? "text-accent-bright"

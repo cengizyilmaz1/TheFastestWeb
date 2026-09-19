@@ -1,31 +1,23 @@
 import Link from "next/link";
+import Image from "next/image";
 
 export function Footer() {
   return (
     <footer className="border-t border-border py-6 px-8 text-[0.78rem]">
       <div className="flex items-center justify-between gap-4 max-[600px]:flex-col max-[600px]:items-center max-[600px]:text-center">
-        {/* Built by */}
-        <a
-          href="https://x.com/ramesh_mkumar"
-          target="_blank"
-          rel="noopener noreferrer"
+        <Link
+          href="/"
           className="flex items-center gap-2 no-underline group shrink-0"
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/api/avatar/ramesh_mkumar"
-            alt="Ramesh"
+          <Image
+            src="/logo.png"
+            alt=""
             width={24}
             height={24}
             className="w-6 h-6 rounded-full object-cover"
           />
-          <span className="text-text-muted">
-            Built by{" "}
-            <span className="text-text-secondary underline underline-offset-2 decoration-border group-hover:text-accent group-hover:decoration-accent transition-colors">
-              Ramesh
-            </span>
-          </span>
-        </a>
+          <span className="text-text-secondary group-hover:text-accent transition-colors">TheFastestWeb</span>
+        </Link>
 
         {/* Links */}
         <div className="text-center text-text-muted">

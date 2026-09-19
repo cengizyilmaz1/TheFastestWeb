@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/db/index";
 import { sites } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { escapeXml } from "@/lib/seo/xml";
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
@@ -12,7 +13,7 @@ function scoreColor(score: number): string {
 }
 
 function clampDomain(domain: string): string {
-  return domain.length > 26 ? domain.substring(0, 24) + "\u2026" : domain;
+  return escapeXml(domain.length > 26 ? domain.substring(0, 24) + "\u2026" : domain);
 }
 
 function domainFontSize(len: number): number {
@@ -23,7 +24,7 @@ function domainFontSize(len: number): number {
 }
 
 function scoreDisplay(score: number): string {
-  return score > 0 ? String(score) : "\u2014";
+  return String(score);
 }
 
 interface Tokens {
@@ -237,15 +238,17 @@ export async function GET(
   const db = getDb();
   let score = 0;
   let domain = "";
+  let found = false;
 
   if (db) {
     const [site] = await db
       .select({ currentScore: sites.currentScore, url: sites.url, name: sites.name })
       .from(sites)
-      .where(eq(sites.slug, slug))
+      .where(and(eq(sites.slug, slug), eq(sites.isListed, true)))
       .limit(1);
 
     if (site) {
+      found = true;
       score = site.currentScore;
       try {
         domain = new URL(site.url).hostname.replace("www.", "");
@@ -255,20 +258,24 @@ export async function GET(
     }
   }
 
-  if (score === 0 && previewScore) {
+  if (!found && previewScore) {
     const p = parseInt(previewScore, 10);
     if (!isNaN(p) && p >= 0 && p <= 100) score = p;
   }
   if (!domain && previewDomain) domain = previewDomain;
+  if (!found && !previewScore) return new NextResponse(null, { status: 404 });
 
   let svg: string;
   if (variant === "speedometer") svg = buildSpeedometer(score, domain, theme);
   else if (variant === "scorecard") svg = buildScoreCard(score, domain, theme);
   else svg = buildGlow(score, domain, theme);
+  if (previewScore) svg = svg.replaceAll("CERTIFIED SPEED SCORE", "PREVIEW — SAMPLE");
 
   return new NextResponse(svg, {
     headers: {
       "Content-Type": "image/svg+xml",
+      "X-Content-Type-Options": "nosniff",
+      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
       "Cache-Control": previewScore || score === 0
         ? "no-store"
         : "public, max-age=3600, stale-while-revalidate=86400",

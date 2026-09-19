@@ -50,9 +50,8 @@ function formatTooltipDate(iso: string): string {
   });
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function CustomTooltip({ active, payload }: any) {
-  if (!active || !payload?.[0]) return null;
+function CustomTooltip({ active, payload }: { active?: boolean; payload?: readonly { payload?: DataPoint }[] }) {
+  if (!active || !payload?.[0]?.payload) return null;
   const { score, testedAt } = payload[0].payload;
   return (
     <div className="bg-bg-elevated border border-border rounded-lg px-3 py-1.5 shadow-lg">

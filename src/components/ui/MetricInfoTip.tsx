@@ -14,9 +14,7 @@ export function MetricInfoTip({ metric }: MetricInfoTipProps) {
   const tooltipRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const info = METRIC_INFO[metric];
-  if (!info) return null;
 
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   const updatePosition = useCallback(() => {
     if (!buttonRef.current) return;
     const rect = buttonRef.current.getBoundingClientRect();
@@ -38,10 +36,8 @@ export function MetricInfoTip({ metric }: MetricInfoTipProps) {
     setPos({ top, left });
   }, []);
 
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
     if (!open) return;
-    updatePosition();
 
     function handleClickOutside(e: MouseEvent) {
       if (
@@ -61,13 +57,18 @@ export function MetricInfoTip({ metric }: MetricInfoTipProps) {
       document.removeEventListener("mousedown", handleClickOutside);
       window.removeEventListener("scroll", handleScroll, true);
     };
-  }, [open, updatePosition]);
+  }, [open]);
+
+  if (!info) return null;
 
   return (
     <>
       <button
         ref={buttonRef}
-        onClick={() => setOpen(!open)}
+        onClick={() => {
+          if (!open) updatePosition();
+          setOpen(!open);
+        }}
         className="w-[18px] h-[18px] rounded-full border border-border-light text-text-muted flex items-center justify-center cursor-pointer bg-transparent hover:text-accent hover:border-accent transition-colors"
         aria-label={`Tips for ${metric}`}
       >

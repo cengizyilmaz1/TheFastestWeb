@@ -21,7 +21,7 @@ export function Sidebar({ position, count = 5, adSlots = [] }: SidebarProps) {
         <SidebarCard key={slot.id} slot={slot} />
       ))}
       {Array.from({ length: Math.max(0, emptyCount) }).map((_, i) => (
-        <AdCTA key={`empty-${i}`} position={position} />
+        <AdCTA key={`empty-${i}`} />
       ))}
     </aside>
   );

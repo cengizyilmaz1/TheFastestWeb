@@ -1,10 +1,12 @@
+import { siteConfig } from "@/config/site";
 import { Metadata } from "next";
 import Link from "next/link";
+import Image from "next/image";
 import { notFound } from "next/navigation";
 import { getDb } from "@/db/index";
 import { users, sites, speedTests } from "@/db/schema";
 import { FaviconImg } from "@/components/ui/FaviconImg";
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, desc, sql, and, inArray } from "drizzle-orm";
 
 export const revalidate = 300;
 
@@ -28,7 +30,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const userSites = await db
     .select({ score: sites.currentScore, name: sites.name })
     .from(sites)
-    .where(eq(sites.ownerId, userId));
+    .where(and(eq(sites.ownerId, userId), eq(sites.isListed, true)));
 
   const siteCount = userSites.length;
   const bestScore = siteCount > 0 ? Math.max(...userSites.map((s) => s.score)) : null;
@@ -40,7 +42,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title,
     description,
-    alternates: { canonical: `https://thefastestweb.site/profile/${userId}` },
+    alternates: { canonical: `${siteConfig.url}/profile/${userId}` },
     openGraph: { title, description },
     twitter: { card: "summary", title, description },
   };
@@ -62,7 +64,7 @@ export default async function ProfilePage({ params }: Props) {
   const userSites = await db
     .select()
     .from(sites)
-    .where(eq(sites.ownerId, userId))
+    .where(and(eq(sites.ownerId, userId), eq(sites.isListed, true)))
     .orderBy(desc(sites.currentScore));
 
   // Compute aggregate stats
@@ -78,11 +80,12 @@ export default async function ProfilePage({ params }: Props) {
     const [result] = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(speedTests)
-      .where(sql`${speedTests.siteId} IN ${siteIds}`);
+      .where(inArray(speedTests.siteId, siteIds));
     totalTests = result?.count ?? 0;
   }
 
   const bestSite = userSites[0] ?? null;
+  const avatarUrl = user.twitterHandle ? `/api/avatar/${user.twitterHandle.replace("@", "")}` : user.avatarUrl;
 
   return (
     <div className="py-[30px] px-5 pb-[50px]">
@@ -97,17 +100,21 @@ export default async function ProfilePage({ params }: Props) {
 
       {/* Profile header */}
       <div className="flex items-center gap-4 mb-6">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={
-            user.twitterHandle
-              ? `/api/avatar/${user.twitterHandle.replace("@", "")}`
-              : user.avatarUrl || ""
-          }
-          alt={user.name}
-          className="w-[72px] h-[72px] rounded-full border-2 border-border object-cover"
-          referrerPolicy="no-referrer"
-        />
+        {avatarUrl ? (
+          <Image
+            unoptimized
+            width={72}
+            height={72}
+            src={avatarUrl}
+            alt={user.name}
+            className="w-[72px] h-[72px] rounded-full border-2 border-border object-cover"
+            referrerPolicy="no-referrer"
+          />
+        ) : (
+          <div className="w-[72px] h-[72px] rounded-full border-2 border-border flex items-center justify-center font-bold text-text-muted" aria-label={user.name}>
+            {user.name.trim().charAt(0).toUpperCase()}
+          </div>
+        )}
         <div className="flex-1">
           <div className="flex items-center gap-2.5">
             <h1 className="font-display font-[800] text-[1.6rem] tracking-[-0.02em]">

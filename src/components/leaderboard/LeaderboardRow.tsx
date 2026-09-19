@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import Image from "next/image";
 import { Site } from "@/db/schema";
 import { FaviconImg } from "@/components/ui/FaviconImg";
 
@@ -11,9 +11,6 @@ interface LeaderboardRowProps {
 }
 
 export function LeaderboardRow({ site, rank }: LeaderboardRowProps) {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-
   let rankDisplay: React.ReactNode = rank;
   let topClass = "";
 
@@ -81,9 +78,11 @@ export function LeaderboardRow({ site, rank }: LeaderboardRowProps) {
             className="flex items-center gap-2 text-text-secondary text-[0.82rem] no-underline hover:text-text-primary transition-colors"
             onClick={(e) => e.stopPropagation()}
           >
-            {site.twitterHandle && mounted ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+            {site.twitterHandle ? (
+              <Image
+                unoptimized
+                width={24}
+                height={24}
                 src={`/api/avatar/${site.twitterHandle.replace("@", "")}`}
                 alt={site.ownerName}
                 className="w-6 h-6 rounded-full shrink-0 object-cover"

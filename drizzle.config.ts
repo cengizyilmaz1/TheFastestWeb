@@ -5,9 +5,10 @@ config({ path: ".env.local" });
 
 export default defineConfig({
   schema: "./src/db/schema.ts",
-  out: "./src/db/migrations",
+  // Generated proposals are reviewed into the guarded SQL runner; never push/migrate directly.
+  out: "./.analysis-temp/drizzle-proposals",
   dialect: "postgresql",
   dbCredentials: {
-    url: process.env.DATABASE_URL!,
+    url: process.env.MIGRATION_DATABASE_URL || process.env.DATABASE_URL || "",
   },
 });

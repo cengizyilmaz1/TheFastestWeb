@@ -1,3 +1,5 @@
+import { siteConfig } from "@/config/site";
+import { safeJsonLd } from "@/lib/seo/json-ld";
 import { notFound } from "next/navigation";
 import { Metadata } from "next";
 import Link from "next/link";
@@ -21,7 +23,7 @@ export async function generateMetadata({
   return {
     title: post.title,
     description: post.description,
-    alternates: { canonical: `https://thefastestweb.site/blog/${slug}` },
+    alternates: { canonical: `${siteConfig.url}/blog/${slug}` },
     openGraph: {
       title: post.title,
       description: post.description,
@@ -59,14 +61,14 @@ export default async function BlogPostPage({
     publisher: {
       "@type": "Organization",
       name: "TheFastestWeb",
-      url: "https://thefastestweb.site",
+      url: siteConfig.url,
     },
-    url: `https://thefastestweb.site/blog/${slug}`,
+    url: `${siteConfig.url}/blog/${slug}`,
   };
 
   return (
     <div className="py-[40px] px-5 pb-[80px] max-w-[720px] mx-auto">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(jsonLd) }} />
 
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-[0.8rem] text-text-muted mb-8">

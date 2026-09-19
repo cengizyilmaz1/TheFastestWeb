@@ -1,88 +1,42 @@
-import NextAuth from "next-auth";
+import NextAuth, { getServerSession, type NextAuthOptions } from "next-auth";
 import Google from "next-auth/providers/google";
-import { getDb } from "@/db/index";
-import { users } from "@/db/schema";
-import { eq } from "drizzle-orm";
-import { randomUUID } from "crypto";
-import { sendEmail } from "@/lib/email/send";
-import { welcomeEmail } from "@/lib/email/templates";
+import { getEnv } from "@/config/env";
+import { logger } from "@/infrastructure/logging/logger";
+import { synchronizeGoogleUser } from "@/modules/auth/google-user";
 
 declare module "next-auth" {
-  interface Session {
-    user: {
-      id: string;
-      name?: string | null;
-      email?: string | null;
-      image?: string | null;
-    };
-  }
+  interface Session { user: { id: string; name?: string | null; email?: string | null; image?: string | null }; }
 }
 
-export const { handlers, signIn, signOut, auth } = NextAuth({
-  providers: [
-    Google({
-      clientId: process.env.AUTH_GOOGLE_ID!,
-      clientSecret: process.env.AUTH_GOOGLE_SECRET!,
-    }),
-  ],
-  session: { strategy: "jwt" },
-  pages: {
-    signIn: "/auth/login",
-    error: "/auth/login",
-  },
-  callbacks: {
-    async signIn({ user }) {
-      const db = getDb();
-      if (!db || !user.email) return true;
-
-      const email = user.email;
-      const name = user.name || email.split("@")[0];
-      const avatarUrl = user.image || null;
-
-      // Check if user already exists (match by email — handles existing Supabase users)
-      const [existing] = await db
-        .select({ id: users.id })
-        .from(users)
-        .where(eq(users.email, email))
-        .limit(1);
-
-      if (existing) {
-        // Update name/avatar, store DB ID on the Auth.js user object for JWT
-        await db
-          .update(users)
-          .set({ name, avatarUrl })
-          .where(eq(users.id, existing.id));
-        user.id = existing.id;
-      } else {
-        // New user
-        const newId = randomUUID();
-        await db.insert(users).values({ id: newId, email, name, avatarUrl });
-        user.id = newId;
-
-        // Send welcome email
+export function createAuthOptions(): NextAuthOptions {
+  const env = getEnv();
+  return {
+    secret: env.AUTH_SECRET,
+    providers: [Google({ clientId: env.AUTH_GOOGLE_ID || "", clientSecret: env.AUTH_GOOGLE_SECRET || "", checks: ["pkce", "state"] })],
+    session: { strategy: "jwt" },
+    pages: { signIn: "/auth/login", error: "/auth/login" },
+    logger: {
+      error: (code) => logger.error({ event: "auth.error", code }),
+      warn: (code) => logger.warn({ event: "auth.warning", code }),
+      debug: () => undefined,
+    },
+    callbacks: {
+      async signIn({ user, account, profile }) {
+        if (account?.provider !== "google" || !user.email || !(profile && "email_verified" in profile && profile.email_verified === true)) return false;
         try {
-          const mail = welcomeEmail(name);
-          await sendEmail(email, mail.subject, mail.html);
-        } catch (err) {
-          console.error("[auth] Welcome email failed:", err);
+          user.id = await synchronizeGoogleUser({ email: user.email, name: user.name, image: user.image });
+          return true;
+        } catch {
+          logger.error({ event: "auth.identity_failed", code: "DATABASE_UNAVAILABLE" });
+          return false;
         }
-      }
-
-      return true;
+      },
+      async jwt({ token, user }) { if (user?.id) token.dbUserId = user.id; return token; },
+      async session({ session, token }) { if (typeof token.dbUserId === "string") session.user.id = token.dbUserId; return session; },
     },
+  };
+}
 
-    async jwt({ token, user }) {
-      if (user?.id) {
-        token.dbUserId = user.id;
-      }
-      return token;
-    },
-
-    async session({ session, token }) {
-      if (token.dbUserId) {
-        session.user.id = token.dbUserId as string;
-      }
-      return session;
-    },
-  },
-});
+export const auth = () => getServerSession(createAuthOptions());
+const handler = NextAuth(createAuthOptions());
+export const handlers = { GET: handler, POST: handler };

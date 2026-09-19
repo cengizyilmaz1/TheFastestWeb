@@ -1,12 +1,15 @@
+import { siteConfig } from "@/config/site";
 import { MetadataRoute } from "next";
 import { getDb } from "@/db/index";
 import { sites } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getAllPosts } from "@/lib/blog";
+import { AppError } from "@/lib/http/errors";
 
-const BASE_URL = "https://thefastestweb.site";
+export const dynamic = "force-dynamic";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const BASE_URL = siteConfig.url;
   const staticPages: MetadataRoute.Sitemap = [
     {
       url: BASE_URL,
@@ -42,7 +45,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   // Fetch all listed sites for dynamic pages
   const db = getDb();
-  if (!db) return staticPages;
+  if (!db) throw new AppError("DATABASE_UNAVAILABLE", "The sitemap is temporarily unavailable.", 503);
 
   try {
     const allSites = await db
@@ -84,6 +87,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
     return [...staticPages, ...blogPages, ...categoryPages, ...tierPages, ...sitePages];
   } catch {
-    return staticPages;
+    throw new AppError("DATABASE_UNAVAILABLE", "The sitemap is temporarily unavailable.", 503);
   }
 }

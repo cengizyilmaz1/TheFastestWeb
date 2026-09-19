@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { SpeedGauge } from "./SpeedGauge";
 import { MetricCard } from "./MetricCard";
 import { getDomain, isValidUrl } from "@/lib/utils";
 import { FaviconImg } from "@/components/ui/FaviconImg";
+import { PageSpeedPending } from "./PageSpeedPending";
 
 interface TestResult {
   score: number;
@@ -19,24 +20,9 @@ interface TestResult {
   lcpScore: number;
   clsScore: number;
   tbtScore: number;
-  ttiScore: number;
+  ttiScore: number | null;
   siScore: number;
 }
-
-const ANALYSIS_STAGES = [
-  "Connecting to speed testing service",
-  "Loading page in a real browser",
-  "Rendering above-the-fold content",
-  "Measuring First Contentful Paint",
-  "Measuring Largest Contentful Paint",
-  "Analyzing Cumulative Layout Shift",
-  "Calculating Total Blocking Time",
-  "Evaluating Time to Interactive",
-  "Computing Speed Index",
-  "Running second test for accuracy",
-  "Averaging results from both runs",
-  "Generating final performance score",
-];
 
 export function TestForm() {
   const [url, setUrl] = useState("");
@@ -45,55 +31,6 @@ export function TestForm() {
   const [result, setResult] = useState<TestResult | null>(null);
   const [rawData, setRawData] = useState<Record<string, unknown> | null>(null);
   const [testedUrl, setTestedUrl] = useState("");
-  const [currentStage, setCurrentStage] = useState(0);
-  const stageTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const progressRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const [progress, setProgress] = useState(0);
-
-  useEffect(() => {
-    if (!testing) {
-      setCurrentStage(0);
-      setProgress(0);
-      if (stageTimeout.current) clearTimeout(stageTimeout.current);
-      if (progressRef.current) clearInterval(progressRef.current);
-      return;
-    }
-
-    let stage = 0;
-    setCurrentStage(0);
-    setProgress(0);
-
-    // Rotate through stages
-    function advanceStage() {
-      if (stage < ANALYSIS_STAGES.length - 1) {
-        stage++;
-        setCurrentStage(stage);
-        const delay = 1500 + Math.random() * 2000;
-        stageTimeout.current = setTimeout(advanceStage, delay);
-      }
-    }
-    stageTimeout.current = setTimeout(advanceStage, 2000);
-
-    // Smooth progress bar — slow crawl after 85% to avoid dead silence
-    progressRef.current = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 98) return 98;
-        const increment =
-          prev < 30 ? 1.2 :
-          prev < 60 ? 0.8 :
-          prev < 85 ? 0.4 :
-          prev < 92 ? 0.2 :
-          0.05;
-        return Math.min(prev + increment, 98);
-      });
-    }, 200);
-
-    return () => {
-      if (stageTimeout.current) clearTimeout(stageTimeout.current);
-      if (progressRef.current) clearInterval(progressRef.current);
-    };
-  }, [testing]);
-
   async function runTest() {
     let testUrl = url.trim();
     if (!testUrl) return;
@@ -123,9 +60,6 @@ export function TestForm() {
         throw new Error(data.error || "Failed to test site");
       }
 
-      setProgress(100);
-      await new Promise((r) => setTimeout(r, 300));
-
       setRawData(data);
       setResult({
         score: data.score,
@@ -139,7 +73,7 @@ export function TestForm() {
         lcpScore: data.lcpScore ?? 0,
         clsScore: data.clsScore ?? 0,
         tbtScore: data.tbtScore ?? 0,
-        ttiScore: data.ttiScore ?? 0,
+        ttiScore: data.ttiScore ?? null,
         siScore: data.siScore ?? 0,
       });
     } catch (err) {
@@ -155,7 +89,7 @@ export function TestForm() {
         Test Your Website Speed
       </h2>
       <p className="text-text-secondary mb-7 text-[0.95rem]">
-        Enter any URL to get a real performance score. Free, instant results.
+        Enter a public website URL for a Google PageSpeed Insights mobile lab test.
       </p>
 
       {/* URL Input */}
@@ -201,25 +135,7 @@ export function TestForm() {
 
           {/* Single progress bar */}
           <div className="max-w-[400px] mx-auto">
-            <div className="h-1.5 bg-bg-card rounded-full overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-accent to-accent-bright rounded-full transition-all duration-300 ease-out"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-            <div className="flex justify-between mt-2.5">
-              <span className="text-[0.78rem] text-text-secondary">
-                {ANALYSIS_STAGES[currentStage]}...
-              </span>
-              <span className="text-[0.7rem] text-text-muted font-mono">
-                {Math.round(progress)}%
-              </span>
-            </div>
-            <p className="text-[0.7rem] text-text-muted mt-3">
-              {progress > 85
-                ? "Running two tests and averaging for a stable score"
-                : "This usually takes 30-60 seconds"}
-            </p>
+            <PageSpeedPending />
           </div>
         </div>
       )}
@@ -248,6 +164,7 @@ export function TestForm() {
           </div>
 
           <SpeedGauge score={result.score} />
+          <p className="text-[0.7rem] text-text-muted mb-4">Mobile lab measurement · Google PageSpeed Insights</p>
 
           <div className="grid grid-cols-3 gap-2.5 max-w-[480px] mx-auto max-[640px]:grid-cols-2">
             <MetricCard label="FCP" value={result.fcp} score={result.fcpScore} />
@@ -262,7 +179,7 @@ export function TestForm() {
             {result.score >= 80 ? (
               <div className="mb-3">
                 <p className="text-[0.82rem] text-text-secondary mb-1">
-                  Your site scored <strong className="text-green font-mono">{result.score}/100</strong> — faster than most.
+                  Your mobile lab score is <strong className="text-green font-mono">{result.score}/100</strong>.
                 </p>
                 <p className="text-[0.75rem] text-text-muted">
                   Claim your spot on the leaderboard and get a <strong className="text-text-primary">free backlink</strong>.
@@ -277,6 +194,8 @@ export function TestForm() {
               href="/submit"
               onClick={() => {
                 sessionStorage.setItem("tfwSpeedResult", JSON.stringify({
+                  testResultId: rawData?.testResultId,
+                  expiresAt: rawData?.expiresAt,
                   url: testedUrl,
                   score: result.score,
                   fcp: result.fcp,
@@ -295,7 +214,7 @@ export function TestForm() {
                   lcpMs: rawData?.lcpMs ?? 0,
                   clsRaw: rawData?.cls ?? 0,
                   tbtMs: rawData?.tbtMs ?? 0,
-                  ttiMs: rawData?.ttiMs ?? 0,
+                  ttiMs: rawData?.ttiMs ?? null,
                   siMs: rawData?.siMs ?? 0,
                 }));
               }}

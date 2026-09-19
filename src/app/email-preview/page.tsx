@@ -1,3 +1,4 @@
+import { notFound } from "next/navigation";
 import {
   welcomeEmail,
   proUpgradeEmail,
@@ -15,6 +16,7 @@ export default function EmailPreviewPage({
 }: {
   searchParams: Promise<{ template?: string }>;
 }) {
+  if (process.env.NODE_ENV === "production") notFound();
   return <EmailPreview searchParams={searchParams} />;
 }
 

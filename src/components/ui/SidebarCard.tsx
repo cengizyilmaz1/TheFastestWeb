@@ -1,6 +1,7 @@
 "use client";
 
 import { AdSlot } from "@/db/schema";
+import Image from "next/image";
 
 interface SidebarCardProps {
   slot: AdSlot;
@@ -10,7 +11,7 @@ export function SidebarCard({ slot }: SidebarCardProps) {
   function handleClick() {
     navigator.sendBeacon(
       "/api/ad-click",
-      JSON.stringify({ id: slot.id })
+      new Blob([JSON.stringify({ id: slot.id })], { type: "application/json" })
     );
   }
 
@@ -24,8 +25,10 @@ export function SidebarCard({ slot }: SidebarCardProps) {
     >
       <div className="[perspective:400px] shrink-0 mb-1.5">
         {slot.faviconUrl ? (
-          /* eslint-disable-next-line @next/next/no-img-element */
-          <img
+          <Image
+            unoptimized
+            width={40}
+            height={40}
             src={slot.faviconUrl}
             alt=""
             className="animate-coin-toss w-[40px] h-[40px] rounded-[8px] object-contain bg-white p-1"

@@ -1,3 +1,4 @@
+import { siteConfig } from "@/config/site";
 import type { Metadata } from "next";
 import Link from "next/link";
 
@@ -5,7 +6,7 @@ export const metadata: Metadata = {
   title: "About | TheFastestWeb",
   description:
     "The story behind TheFastestWeb: why speed matters more than you think, and how a traffic drop taught me that the hard way.",
-  alternates: { canonical: "https://thefastestweb.site/about" },
+  alternates: { canonical: `${siteConfig.url}/about` },
   openGraph: {
     title: "About | TheFastestWeb",
     description: "The story behind TheFastestWeb: why speed matters more than you think, and how a traffic drop taught me that the hard way.",

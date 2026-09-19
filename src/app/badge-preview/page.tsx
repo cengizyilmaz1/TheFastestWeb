@@ -1,3 +1,5 @@
+import Image from "next/image";
+import { notFound } from "next/navigation";
 /**
  * Temp badge design preview page — not linked anywhere, not indexed.
  * Visit: /badge-preview
@@ -31,6 +33,7 @@ const VARIANTS = [
 const SCORES = [97, 75, 42];
 
 export default function BadgePreviewPage() {
+  if (process.env.NODE_ENV === "production") notFound();
   return (
     <div style={{ fontFamily: "-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif", padding: "40px", background: "#09090b", minHeight: "100vh", color: "#f0f0f0" }}>
       <h1 style={{ fontSize: "1.5rem", fontWeight: 800, marginBottom: "4px" }}>Badge Design Preview</h1>
@@ -85,15 +88,13 @@ export default function BadgePreviewPage() {
             <div>
               <div style={{ fontSize: "0.7rem", color: "#4b5563", marginBottom: "8px", letterSpacing: "0.05em", textTransform: "uppercase" }}>Dark</div>
               <div style={{ background: "#0a0a0b", padding: "20px", borderRadius: "12px", display: "inline-block" }}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={`${BASE}&variant=${v.id}&theme=dark`} width={288} height={80} alt={`${v.name} dark`} style={{ display: "block" }} />
+                <Image unoptimized src={`${BASE}&variant=${v.id}&theme=dark`} width={288} height={80} alt={`${v.name} dark`} style={{ display: "block" }} />
               </div>
             </div>
             <div>
               <div style={{ fontSize: "0.7rem", color: "#4b5563", marginBottom: "8px", letterSpacing: "0.05em", textTransform: "uppercase" }}>Light</div>
               <div style={{ background: "#f1f5f9", padding: "20px", borderRadius: "12px", display: "inline-block" }}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={`${BASE}&variant=${v.id}&theme=light`} width={288} height={80} alt={`${v.name} light`} style={{ display: "block" }} />
+                <Image unoptimized src={`${BASE}&variant=${v.id}&theme=light`} width={288} height={80} alt={`${v.name} light`} style={{ display: "block" }} />
               </div>
             </div>
           </div>
@@ -105,8 +106,7 @@ export default function BadgePreviewPage() {
               <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
                 {SCORES.map((s) => (
                   <div key={s} style={{ background: th === "dark" ? "#0a0a0b" : "#f1f5f9", padding: "16px", borderRadius: "10px", display: "inline-block" }}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
+                    <Image unoptimized
                       src={`/api/badge/${SLUG}?preview=${s}&domain=${encodeURIComponent(DOMAIN)}&variant=${v.id}&theme=${th}`}
                       width={288} height={80} alt={`score ${s} ${th}`}
                       style={{ display: "block" }}
@@ -127,8 +127,7 @@ export default function BadgePreviewPage() {
         <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
           {VARIANTS.map((v) => (
             <div key={v.id} style={{ background: "#0a0a0b", padding: "16px", borderRadius: "10px" }}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
+              <Image unoptimized
                 src={`/api/badge/${SLUG}?preview=91&domain=${encodeURIComponent("verylongdomainname-example.io")}&variant=${v.id}&theme=dark`}
                 width={288} height={80} alt={`${v.id} long domain`}
                 style={{ display: "block" }}

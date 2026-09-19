@@ -8,7 +8,9 @@ import { Footer } from "@/components/layout/Footer";
 import { getCurrentUser } from "@/lib/auth";
 import { getDb } from "@/db/index";
 import { adSlots, users, sites } from "@/db/schema";
-import { eq, and, or, isNull, gt } from "drizzle-orm";
+import { eq, and, or, isNull, gt, lt, sql } from "drizzle-orm";
+import { safeJsonLd } from "@/lib/seo/json-ld";
+import { siteConfig } from "@/config/site";
 import "./globals.css";
 
 const outfit = Outfit({
@@ -30,7 +32,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://thefastestweb.site"),
+  metadataBase: new URL(siteConfig.url),
   title: {
     default: "TheFastestWeb: Speed Rankings for the Web",
     template: "%s | TheFastestWeb",
@@ -52,7 +54,7 @@ export const metadata: Metadata = {
       "Discover, benchmark, and showcase the world's fastest websites.",
     type: "website",
     siteName: "TheFastestWeb",
-    url: "https://thefastestweb.site",
+    url: siteConfig.url,
     images: [{ url: "/og.png", width: 1536, height: 1024, alt: "TheFastestWeb: How Fast Is Your Website?" }],
   },
   twitter: {
@@ -88,17 +90,18 @@ export default async function RootLayout({
   // Update lastActiveAt for free users at most once per 12 hours (server-side, ad-blocker-proof)
   // Also un-pause any sites that were paused due to inactivity — user is back.
   if (db && user && !user.isPro) {
-    const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000);
-    if (!user.lastActiveAt || user.lastActiveAt < twelveHoursAgo) {
-      await db
+    await db.transaction(async (transaction) => {
+      const updated = await transaction
         .update(users)
-        .set({ lastActiveAt: new Date() })
-        .where(eq(users.id, user.id));
-      await db
+        .set({ lastActiveAt: sql`now()` })
+        .where(and(eq(users.id, user.id), or(isNull(users.lastActiveAt), lt(users.lastActiveAt, sql`now() - interval '12 hours'`))))
+        .returning({ id: users.id });
+      if (updated.length === 0) return;
+      await transaction
         .update(sites)
         .set({ monitoringPaused: false })
         .where(and(eq(sites.ownerId, user.id), eq(sites.monitoringPaused, true)));
-    }
+    });
   }
 
   // Fetch active ad slots
@@ -109,57 +112,40 @@ export default async function RootLayout({
         .where(
           and(
             eq(adSlots.isActive, true),
-            or(isNull(adSlots.expiresAt), gt(adSlots.expiresAt, new Date()))
+            or(isNull(adSlots.expiresAt), gt(adSlots.expiresAt, sql`now()`))
           )
         )
     : [];
 
   return (
     <html lang="en">
-      <head>
-        <script async src="https://www.googletagmanager.com/gtag/js?id=G-SR10Q81EM3" />
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-SR10Q81EM3');`,
-          }}
-        />
-        <script defer src="https://cloud.umami.is/script.js" data-website-id="a7e6c2ca-de08-4c86-94ed-fe0f83f4c776" />
-      </head>
       <body
         className={`${outfit.variable} ${jetbrainsMono.variable} ${inter.variable} antialiased`}
       >
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
+            __html: safeJsonLd({
               "@context": "https://schema.org",
               "@graph": [
                 {
                   "@type": "WebSite",
-                  "@id": "https://thefastestweb.site/#website",
+                  "@id": `${siteConfig.url}/#website`,
                   name: "TheFastestWeb",
-                  url: "https://thefastestweb.site",
+                  url: siteConfig.url,
                   description: "Speed rankings for the web. Discover, benchmark, and showcase the world's fastest websites.",
                   potentialAction: {
                     "@type": "SearchAction",
-                    target: "https://thefastestweb.site/?q={search_term_string}",
+                    target: `${siteConfig.url}/?q={search_term_string}`,
                     "query-input": "required name=search_term_string",
                   },
                 },
                 {
                   "@type": "Organization",
-                  "@id": "https://thefastestweb.site/#organization",
+                  "@id": `${siteConfig.url}/#organization`,
                   name: "TheFastestWeb",
-                  url: "https://thefastestweb.site",
-                  logo: "https://thefastestweb.site/favicon/favicon-96x96.png",
-                  founder: {
-                    "@type": "Person",
-                    name: "Ramesh Kumar",
-                    url: "https://x.com/ramesh_mkumar",
-                  },
-                  sameAs: [
-                    "https://x.com/thefastestweb",
-                  ],
+                  url: siteConfig.url,
+                  logo: `${siteConfig.url}/favicon/favicon-96x96.png`,
                 },
               ],
             }),

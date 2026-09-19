@@ -6,36 +6,54 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint . --max-warnings=0",
+    "typecheck": "next typegen && tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:integration": "tsx scripts/db/integration.ts && vitest run --config vitest.integration.config.mts",
+    "db:migrate": "tsx scripts/db/migrate.ts",
+    "audit:production": "npm audit --omit=dev",
+    "test:runtime": "vitest run src/config/shutdown.test.ts"
   },
   "dependencies": {
-    "@polar-sh/sdk": "^0.43.0",
-    "@sparticuz/chromium-min": "^149.0.0",
-    "@supabase/ssr": "^0.8.0",
-    "@supabase/supabase-js": "^2.95.3",
-    "@tailwindcss/typography": "^0.5.19",
-    "dotenv": "^17.2.4",
-    "drizzle-orm": "^0.45.1",
-    "gray-matter": "^4.0.3",
-    "next": "16.1.6",
-    "next-auth": "^5.0.0-beta.30",
-    "next-mdx-remote": "^6.0.0",
-    "postgres": "^3.4.8",
-    "puppeteer-core": "^25.3.0",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
-    "recharts": "^3.7.0",
-    "resend": "^6.9.2"
+    "@tailwindcss/typography": "0.5.20",
+    "dotenv": "18.0.1",
+    "drizzle-orm": "0.45.2",
+    "gray-matter": "4.0.3",
+    "next": "16.3.5",
+    "next-auth": "4.24.15",
+    "next-mdx-remote": "6.0.0",
+    "postgres": "3.4.9",
+    "puppeteer-core": "25.11.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "recharts": "3.10.1",
+    "resend": "6.28.1",
+    "zod": "4.6.5",
+    "pino": "10.3.1",
+    "ipaddr.js": "2.5.0",
+    "parse5": "8.0.1"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^20.19.33",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "drizzle-kit": "^0.31.9",
-    "eslint": "^9",
-    "eslint-config-next": "16.1.6",
-    "tailwindcss": "^4",
-    "typescript": "^5"
+    "@tailwindcss/postcss": "4.3.3",
+    "@types/node": "24.13.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "drizzle-kit": "0.31.10",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.3.5",
+    "tailwindcss": "4.3.3",
+    "typescript": "6.0.3",
+    "vitest": "5.0.1",
+    "tsx": "4.23.13"
+  },
+  "engines": {
+    "node": ">=24.0.0 <25",
+    "npm": ">=11"
+  },
+  "overrides": {
+    "@esbuild-kit/core-utils": {
+      "esbuild": "0.25.12"
+    }
   }
 }

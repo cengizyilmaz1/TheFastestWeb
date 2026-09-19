@@ -1,61 +1,33 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/db/index";
+import { NextResponse } from "next/server";
+import { createHmac } from "node:crypto";
+import { z } from "zod";
+import { and, eq, gte, sql } from "drizzle-orm";
+import { getDb } from "@/db";
 import { adSlots, adClicks } from "@/db/schema";
-import { eq, and, gte } from "drizzle-orm";
+import { getEnv } from "@/config/env";
+import { withApi } from "@/lib/http/api";
+import { AppError } from "@/lib/http/errors";
+import { assertSameOrigin, readJson } from "@/modules/security/request";
+import { enforceRateLimit } from "@/modules/security/rate-limit";
 
-export async function POST(request: NextRequest) {
-  const body = await request.json().catch(() => null);
-  const id = body?.id;
-
-  if (!id || isNaN(Number(id))) {
-    return NextResponse.json({ error: "invalid" }, { status: 400 });
-  }
-
-  const db = getDb();
-  if (!db) return NextResponse.json({ ok: false }, { status: 500 });
-
-  try {
-    const [slot] = await db
-      .select({ id: adSlots.id })
-      .from(adSlots)
-      .where(eq(adSlots.id, Number(id)))
-      .limit(1);
-
-    if (!slot) return NextResponse.json({ error: "not found" }, { status: 404 });
-
-    const ip =
-      request.headers.get("x-forwarded-for")?.split(",")[0].trim() ||
-      request.headers.get("x-real-ip") ||
-      null;
-
-    // Deduplicate: same IP + same slot within 1 hour
-    if (ip) {
-      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-      const [existing] = await db
-        .select({ id: adClicks.id })
-        .from(adClicks)
-        .where(
-          and(
-            eq(adClicks.adSlotId, slot.id),
-            eq(adClicks.ip, ip),
-            gte(adClicks.clickedAt, oneHourAgo)
-          )
-        )
-        .limit(1);
-
-      if (existing) return NextResponse.json({ ok: true, deduped: true });
-    }
-
-    await db.insert(adClicks).values({
-      adSlotId: slot.id,
-      ip,
-      userAgent: request.headers.get("user-agent") || null,
-      referrer: request.headers.get("referer") || null,
-    });
-
-    return NextResponse.json({ ok: true });
-  } catch (e) {
-    console.error("[ad-click] error:", e);
-    return NextResponse.json({ error: "server error" }, { status: 500 });
-  }
-}
+export const POST = withApi(async (request) => {
+  assertSameOrigin(request);
+  const { id } = await readJson(request, z.object({ id: z.number().int().positive() }).strict(), 1024);
+  await enforceRateLimit("ad-click-global", "all", 1000, 3600);
+  const db = getDb(), secret = getEnv().AUTH_SECRET;
+  if (!db || !secret) throw new AppError("SERVICE_UNAVAILABLE", "Click tracking is temporarily unavailable.", 503);
+  // This pseudonym reduces retained data. Forwarded addresses are NOT an auth boundary.
+  const day = new Date().toISOString().slice(0, 10);
+  const ip = (request.headers.get("x-forwarded-for")?.split(",")[0] || "unknown").trim().slice(0, 64);
+  const pseudonym = createHmac("sha256", secret).update(day + "\0" + ip).digest("hex");
+  const deduped = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${"click:" + id + ":" + pseudonym}, 0))`);
+    const [slot] = await tx.select({ id: adSlots.id }).from(adSlots).where(and(eq(adSlots.id, id), eq(adSlots.isActive, true))).limit(1);
+    if (!slot) throw new AppError("NOT_FOUND", "Advertisement not found.", 404);
+    const [existing] = await tx.select({ id: adClicks.id }).from(adClicks).where(and(eq(adClicks.adSlotId, id), eq(adClicks.ip, pseudonym), gte(adClicks.clickedAt, new Date(Date.now() - 3_600_000)))).limit(1);
+    if (existing) return true;
+    await tx.insert(adClicks).values({ adSlotId: id, ip: pseudonym });
+    return false;
+  });
+  return NextResponse.json({ ok: true, deduped }, { headers: { "Cache-Control": "no-store" } });
+});

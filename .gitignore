@@ -32,15 +32,20 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # Private migration material and local audit artifacts
 env.md
 *-db-dump.sql
 *.dump
+*.sql.gz
+*.backup
+*-restore.sql
 *.bundle
 *.zip
 .analysis-temp/
 .npm-cache/
+.tooling/
 
 # vercel
 .vercel

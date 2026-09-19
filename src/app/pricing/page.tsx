@@ -1,3 +1,5 @@
+import { siteConfig } from "@/config/site";
+import { safeJsonLd } from "@/lib/seo/json-ld";
 import type { Metadata } from "next";
 import { PricingTiers } from "@/components/pricing/PricingTiers";
 import { getCurrentUser } from "@/lib/auth";
@@ -5,15 +7,15 @@ import { getCurrentUser } from "@/lib/auth";
 export const metadata: Metadata = {
   title: "Pricing | TheFastestWeb",
   description:
-    "Submit your site for free, upgrade for unlimited listings, or get a featured ad slot with daily email mentions.",
-  alternates: { canonical: "https://thefastestweb.site/pricing" },
+    "Submit your site for free. Existing Pro memberships remain active; new upgrades and advertising purchases are temporarily unavailable.",
+  alternates: { canonical: `${siteConfig.url}/pricing` },
   openGraph: {
     title: "Pricing | TheFastestWeb",
-    description: "Submit your site for free, upgrade for unlimited listings, or get a featured ad slot with daily email mentions.",
+    description: "Submit your site for free. Existing Pro memberships remain active; new upgrades and advertising purchases are temporarily unavailable.",
   },
   twitter: {
     title: "Pricing | TheFastestWeb",
-    description: "Submit your site for free, upgrade for unlimited listings, or get a featured ad slot with daily email mentions.",
+    description: "Submit your site for free. Existing Pro memberships remain active; new upgrades and advertising purchases are temporarily unavailable.",
   },
 };
 
@@ -34,15 +36,15 @@ const faqJsonLd = {
       name: "What does the Pro plan include?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "Pro is a one-time $9 payment. It gives you unlimited site submissions, dofollow backlinks on all your listings, and priority support.",
+        text: "Existing Pro members retain unlimited site submissions, dofollow backlinks, and listings without a badge requirement. New upgrades are temporarily unavailable.",
       },
     },
     {
       "@type": "Question",
-      name: "Is the Pro upgrade a subscription?",
+      name: "Can I upgrade to Pro now?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "No. Pro is a one-time payment of $9 — no recurring charges, no subscriptions.",
+        text: "New Pro upgrades are temporarily unavailable. Existing Pro plans remain active.",
       },
     },
     {
@@ -50,7 +52,7 @@ const faqJsonLd = {
       name: "What is an ad slot?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "Ad slots are featured sponsor placements in the sidebar of TheFastestWeb, visible to all visitors. They renew monthly at $19/month and include your site name, tagline, and favicon.",
+        text: "Ad slots are featured sponsor placements in the sidebar of TheFastestWeb. New advertising purchases are temporarily unavailable.",
       },
     },
     {
@@ -58,7 +60,7 @@ const faqJsonLd = {
       name: "How is my website speed score calculated?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "Scores are calculated using Google PageSpeed Insights (Lighthouse v10). The composite score is weighted: TBT 30%, LCP 25%, CLS 25%, FCP 10%, and Speed Index 10%.",
+        text: "The score comes from one mobile lab test run by Google PageSpeed Insights. We retain the reported Lighthouse score and metrics; lab conditions can vary between measurements.",
       },
     },
   ],
@@ -69,7 +71,7 @@ export default async function PricingPage() {
 
   return (
     <div className="py-[60px] px-5 pb-[80px]">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(faqJsonLd) }} />
       <div className="text-center mb-12">
         <h1 className="font-display text-[clamp(1.8rem,3.5vw,2.6rem)] font-[900] tracking-[-0.03em] mb-3">
           Simple,{" "}
@@ -79,8 +81,7 @@ export default async function PricingPage() {
           Pricing
         </h1>
         <p className="text-text-secondary text-[0.95rem] max-w-[460px] mx-auto">
-          Start free. Upgrade when you need more. No subscriptions for site
-          listings — pay once and you&apos;re set.
+          Start with a free website listing and a mobile PageSpeed measurement.
         </p>
       </div>
 

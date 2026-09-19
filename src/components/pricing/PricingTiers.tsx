@@ -1,10 +1,6 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
-import { AdPurchaseModal } from "@/components/ads/AdPurchaseModal";
-
-const INACTIVITY_INFO = "Speed monitoring pauses after 10 days without login. Listing is removed after 30 days of inactivity. Log back in at any time to reactivate instantly.";
 
 const tiers = [
   {
@@ -18,7 +14,7 @@ const tiers = [
       { text: "Speed trend alerts", included: true },
       { text: "Daily speed monitoring", included: true },
       { text: "Badge embed required", included: true, conditional: true },
-      { text: "Pauses after 10 days inactive, removed at 30", included: true, conditional: true, info: INACTIVITY_INFO },
+      { text: "Permanent website listing", included: true },
       { text: "Unlimited website listings", included: false },
       { text: "Lifetime tracking", included: false },
     ],
@@ -32,7 +28,7 @@ const tiers = [
     price: "$9",
     period: "one-time",
     description:
-      "Unlimited sites, dofollow backlinks, and priority support. Pay once, own forever.",
+      "Existing Pro members retain unlimited sites and listings without a badge requirement.",
     features: [
       { text: "Unlimited website listings", included: true },
       { text: "Dofollow backlink", included: true },
@@ -75,41 +71,11 @@ interface PricingTiersProps {
 }
 
 export function PricingTiers({ isPro = false }: PricingTiersProps) {
-  const [loading, setLoading] = useState(false);
-  const [adModalOpen, setAdModalOpen] = useState(false);
-  const [infoTooltip, setInfoTooltip] = useState<string | null>(null);
-
-  async function handleProCheckout() {
-    setLoading(true);
-    try {
-      const resp = await fetch("/api/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ product: "pro" }),
-      });
-
-      if (resp.status === 401) {
-        window.location.href = "/submit";
-        return;
-      }
-
-      const data = await resp.json();
-      if (data.url) {
-        window.location.href = data.url;
-      }
-    } catch {
-      // fallback to submit page
-      window.location.href = "/submit";
-    } finally {
-      setLoading(false);
-    }
-  }
-
   return (
     <>
-    {infoTooltip && (
-      <div className="fixed inset-0 z-40" onClick={() => setInfoTooltip(null)} />
-    )}
+    <p role="status" className="max-w-[700px] mx-auto text-center text-[0.85rem] text-text-secondary mb-8">
+      New Pro upgrades and advertising purchases are temporarily unavailable. Existing plans remain active.
+    </p>
     <div className="grid grid-cols-3 gap-5 max-w-[900px] mx-auto max-[800px]:grid-cols-1 max-[800px]:max-w-[400px]">
       {tiers.map((tier) => (
         <div
@@ -122,7 +88,7 @@ export function PricingTiers({ isPro = false }: PricingTiersProps) {
         >
           {tier.highlight && (
             <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-gradient-to-r from-accent to-accent-bright text-bg-deep text-[0.68rem] font-bold tracking-wide uppercase">
-              Most Popular
+              Existing Pro plans
             </div>
           )}
 
@@ -162,24 +128,7 @@ export function PricingTiers({ isPro = false }: PricingTiersProps) {
                 )}
                 <span className="flex items-center gap-1">
                   {feature.text}
-                  {"info" in feature && feature.info && (
-                    <span className="relative inline-flex">
-                      <button
-                        type="button"
-                        onClick={() => setInfoTooltip(infoTooltip === feature.text ? null : feature.text)}
-                        className="w-[14px] h-[14px] rounded-full bg-bg-elevated border border-border text-text-muted text-[9px] font-bold flex items-center justify-center cursor-pointer hover:border-border-light hover:text-text-primary transition-colors"
-                        aria-label="More info"
-                      >
-                        i
-                      </button>
-                      {infoTooltip === feature.text && (
-                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-[220px] bg-bg-elevated border border-border rounded-[10px] p-3 text-[0.75rem] text-text-secondary shadow-[0_8px_24px_rgba(0,0,0,0.4)] z-50" onClick={(e) => e.stopPropagation()}>
-                          {feature.info}
-                          <div className="absolute top-full left-1/2 -translate-x-1/2 w-2 h-2 bg-bg-elevated border-r border-b border-border rotate-45 -mt-1" />
-                        </div>
-                      )}
-                    </span>
-                  )}
+
                 </span>
               </li>
             ))}
@@ -192,19 +141,18 @@ export function PricingTiers({ isPro = false }: PricingTiersProps) {
               </div>
             ) : (
               <button
-                onClick={handleProCheckout}
-                disabled={loading}
+                disabled
                 className="block w-full text-center py-2.5 rounded-[10px] font-semibold text-[0.88rem] no-underline transition-all duration-200 cursor-pointer border-none font-body bg-gradient-to-br from-accent to-accent-bright text-bg-deep shadow-[0_0_20px_var(--color-accent-glow)] hover:-translate-y-0.5 hover:shadow-[0_0_30px_rgba(245,158,11,0.25)] disabled:opacity-60"
               >
-                {loading ? "Redirecting..." : tier.cta}
+                Upgrades temporarily unavailable
               </button>
             )
           ) : "isAdCheckout" in tier && tier.isAdCheckout ? (
             <button
-              onClick={() => setAdModalOpen(true)}
+              disabled
               className="block w-full text-center py-2.5 rounded-[10px] font-semibold text-[0.88rem] no-underline transition-all duration-200 cursor-pointer border-none font-body bg-bg-elevated border border-border text-text-primary hover:bg-bg-card-hover hover:border-border-light"
             >
-              {tier.cta}
+              Purchases temporarily unavailable
             </button>
           ) : (
             <Link
@@ -218,7 +166,6 @@ export function PricingTiers({ isPro = false }: PricingTiersProps) {
       ))}
     </div>
 
-      <AdPurchaseModal open={adModalOpen} onClose={() => setAdModalOpen(false)} />
     </>
   );
 }

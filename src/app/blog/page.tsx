@@ -1,3 +1,4 @@
+import { siteConfig } from "@/config/site";
 import { Metadata } from "next";
 import Link from "next/link";
 import { getPaginatedPosts, POSTS_PER_PAGE, getAllPosts } from "@/lib/blog";
@@ -5,7 +6,7 @@ import { getPaginatedPosts, POSTS_PER_PAGE, getAllPosts } from "@/lib/blog";
 export const metadata: Metadata = {
   title: "Blog | TheFastestWeb",
   description: "Guides and tips on website speed, Core Web Vitals, and PageSpeed optimization. Learn how the fastest sites on the web stay fast.",
-  alternates: { canonical: "https://thefastestweb.site/blog" },
+  alternates: { canonical: `${siteConfig.url}/blog` },
   openGraph: {
     title: "Blog | TheFastestWeb",
     description: "Guides and tips on website speed, Core Web Vitals, and PageSpeed optimization.",

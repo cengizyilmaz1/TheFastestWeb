@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { signOut } from "next-auth/react";
 
 interface UserMenuProps {
@@ -47,8 +48,10 @@ export function UserMenu({ userId, name, avatarUrl, twitterHandle, isPro }: User
         className="flex items-center gap-2 ml-1 px-2 py-1 rounded-lg border-none bg-transparent cursor-pointer transition-all duration-200 hover:bg-bg-card"
       >
         {displayAvatar ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
+          <Image
+            unoptimized
+            width={28}
+            height={28}
             src={displayAvatar}
             alt={name}
             className="w-7 h-7 rounded-full object-cover"

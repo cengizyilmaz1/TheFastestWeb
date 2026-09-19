@@ -1,4 +1,6 @@
+import { siteConfig } from "@/config/site";
 import Link from "next/link";
+import Image from "next/image";
 import { Suspense } from "react";
 import { unstable_cache } from "next/cache";
 import { Metadata } from "next";
@@ -13,7 +15,7 @@ export const metadata: Metadata = {
   description:
     "Discover, benchmark, and showcase the world's fastest websites. Submit yours and prove you belong on the leaderboard.",
   alternates: {
-    canonical: "https://thefastestweb.site",
+    canonical: siteConfig.url,
   },
 };
 
@@ -96,8 +98,7 @@ export default async function HomePage() {
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[350px] bg-[radial-gradient(ellipse,rgba(245,158,11,0.08)_0%,transparent_70%)] pointer-events-none" />
         <div className="mb-4 animate-fade-in-up flex justify-center">
           <a href="https://frogdr.com/thefastestweb.site?utm_source=thefastestweb.site" target="_blank" rel="noopener noreferrer">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="https://frogdr.com/thefastestweb.site/badge-white-sm.svg?round=1" alt="Monitor your Domain Rating with FrogDR" width="249" height="36" />
+            <Image unoptimized src="https://frogdr.com/thefastestweb.site/badge-white-sm.svg?round=1" alt="Monitor your Domain Rating with FrogDR" width={249} height={36} />
           </a>
         </div>
         <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-accent-glow border border-[rgba(245,158,11,0.2)] text-[0.72rem] font-semibold text-accent-bright mb-5 font-mono tracking-[0.03em] animate-fade-in-up">
@@ -111,7 +112,7 @@ export default async function HomePage() {
           Your Website?
         </h1>
         <p className="text-base text-text-secondary max-w-[500px] mx-auto mb-6 animate-fade-in-up-2">
-          Submit your site and we'll track your speed score every day, for free. See how you rank against other websites and prove you're fast.
+          Submit your site and we&apos;ll track your speed score every day, for free. See how you rank against other websites and prove you&apos;re fast.
         </p>
         <div className="flex gap-3 justify-center animate-fade-in-up-3 max-[640px]:flex-col max-[640px]:items-center">
           <Link
@@ -146,8 +147,9 @@ export default async function HomePage() {
                 rel="noopener noreferrer"
                 title={`@${handle}`}
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
+                <Image
+                  width={28}
+                  height={28}
                   src={`/avatars/${handle}.${ext}`}
                   alt={handle}
                   className="w-7 h-7 rounded-full border-2 border-bg-deep object-cover hover:scale-110 transition-transform"
@@ -182,33 +184,6 @@ export default async function HomePage() {
         <LeaderboardSection />
       </Suspense>
 
-      {/* Directory badges — not visible to users */}
-      <div style={{ overflow: "hidden", height: 0, width: 0, position: "absolute" }}>
-        <a href="https://verifieddr.com/website/thefastestweb-site" target="_blank"><img src="https://verifieddr.com/badge/thefastestweb-site.svg" alt="Verified DR" width={220} height={68} /></a>
-        <a href="https://startupfa.me/s/thefastestweb?utm_source=thefastestweb.site" target="_blank"><img src="https://startupfa.me/badges/featured/default.webp" alt="Featured on Startup Fame" width={171} height={54} /></a>
-        <a href="https://domainrank.app" target="_blank">Domain Rating</a>
-        <a href="https://gets.tools" target="_blank"><img src="https://gets.tools/badge/badge_dark.svg" alt="Featured on Gets.Tools" width={200} height={54} /></a>
-        <a href="https://bestsky.tools?utm_source=badge" target="_blank"><img src="https://assets.bestsky.tools/badges/featured-light.svg" alt="Featured on BestskyTools" width={150} /></a>
-        <a href="https://www.verifiedtools.info/tools/the-fastest-web" target="_blank" rel="noopener noreferrer"><img src="https://www.verifiedtools.info/badge.png" alt="Verified on Verified Tools" width={200} height={54} /></a>
-        <a href="https://submitmysaas.com" target="_blank" rel="noopener noreferrer"><img src="https://submitmysaas.com/featured-badge.png" alt="Featured on SubmitMySaas" /></a>
-        <a href="https://www.foundrlist.com/product/thefastestweb" target="_blank" rel="noopener noreferrer"><img src="https://www.foundrlist.com/api/badge/thefastestweb" alt="Live on FoundrList" width={160} height={64} /></a>
-        <a href="https://launch-list.org/product/thefastestweb" target="_blank"><img src="https://launch-list.org/badges/svg/launch_list_badge_live.svg" alt="Launch List Badge" /></a>
-        <a href="https://fazier.com/launches/thefastestweb.site" target="_blank"><img src="https://fazier.com/api/v1//public/badges/launch_badges.svg?badge_type=featured&theme=light" alt="Fazier badge" width={250} /></a>
-        <a href="https://turbo0.com/item/thefastestweb" target="_blank" rel="noopener noreferrer"><img src="https://img.turbo0.com/badge-listed-light.svg" alt="Listed on Turbo0" /></a>
-        <a href="https://deeplaunch.io" target="_blank"><img src="https://deeplaunch.io/badge/badge_dark.svg" alt="Featured on DeepLaunch.io" width={200} height={54} /></a>
-        <div data-codemarket-widget="thefastestweb-speed-rankings-for-the-web" data-theme-bg="#ffffff" data-theme-text="slate-600" data-layout="grid" data-show-branding="false"><a href="https://code.market?code.market=verified" title="ai tools code.market"><img src="https://code.market/assets/manage-product/featured-logo-bright.svg" alt="ai tools code.market" /></a></div>
-        <a href="https://findly.tools/thefastestweb?utm_source=thefastestweb" target="_blank" rel="noopener noreferrer"><img src="https://findly.tools/badges/findly-tools-badge-light.svg" alt="Featured on Findly.tools" width={175} height={55} /></a>
-        <a href="https://spotstartups.com" target="_blank"><img src="https://spotstartups.com/badges/spotstartups.com_badge_light.svg" alt="Featured on SpotStartups" width={175} height={55} /></a>
-        <a href="https://theonestartup.com" target="_blank" rel="noopener noreferrer"><img src="https://theonestartup.com/badages-awards.svg" alt="Featured on The One Startup" style={{ height: "54px", width: "auto" }} /></a>
-        <a href="https://stackmention.com" target="_blank"><img src="https://stackmention.com/wp-content/uploads/2025/11/StackMention.com-Logo-1.png" alt="Featured on StackMention" style={{ width: "36px", height: "36px" }} /></a>
-        <a href="https://twelve.tools" target="_blank"><img src="https://twelve.tools/badge1-dark.svg" alt="Featured on Twelve Tools" width={200} height={54} /></a>
-        <a href="https://tooldirs.com" target="_blank"><img src="https://tooldirs.com/badge/badge_dark.svg" alt="Featured on ToolDirs" width={200} height={54} /></a>
-        <a href="https://uno.directory" target="_blank" rel="noopener"><img src="https://uno.directory/uno-directory.svg" alt="Listed on Uno Directory" width={120} height={30} /></a>
-        <a href="https://www.showmysites.com" target="_blank" rel="noopener noreferrer"><img src="https://www.showmysites.com/static/backlink/blue_border.webp" alt="ShowMySites Badge" width={200} height={60} /></a>
-        <a href="https://www.superlaun.ch/products/2015" target="_blank" rel="noopener"><img src="https://www.superlaun.ch/badge.png" alt="Featured on Super Launch" width={300} height={300} /></a>
-        <a href="https://yo.directory/" target="_blank"><img src="https://cdn.prod.website-files.com/65c1546fa73ea974db789e3d/65e1e171f89ebfa7bd0129ac_yodirectory-featured.png" alt="yo.directory" width={150} height={54} /></a>
-        <a href="https://firstlook.tools" target="_blank"><img src="https://firstlook.tools/badge/badge_dark.svg" alt="Featured on First Look" width={200} height={54} /></a>
-      </div>
     </>
   );
 }
