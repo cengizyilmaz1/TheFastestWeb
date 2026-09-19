@@ -45,7 +45,13 @@ export function fixtureSql(): ReturnType<typeof postgres> {
 }
 
 export async function resetIntegrationData(): Promise<void> {
-  await fixtureSql()`TRUNCATE public.job_events, public.background_jobs, public.provider_usage,
+  await fixtureSql()`TRUNCATE public.payment_events, public.payment_ledger, public.subscriptions,
+    public.checkout_orders, public.products, public.entitlements, public.email_deliveries,
+    public.notifications, public.notification_preferences, public.founder_social_links, public.founder_sites,
+    public.founders, public.site_social_links, public.site_categories, public.site_technologies,
+    public.site_claims, public.ranking_snapshots, public.competition_periods, public.site_awards,
+    public.achievements, public.site_screenshots, public.admin_roles, public.audit_logs,
+    public.job_events, public.background_jobs, public.provider_usage,
     public.verified_speed_tests, public.speed_tests, public.payments,
     public.ad_clicks, public.ad_slots, public.speed_checks, public.cron_logs,
     public.request_rate_limits, public.sites, public.users RESTART IDENTITY CASCADE`;

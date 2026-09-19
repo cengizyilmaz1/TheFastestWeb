@@ -1,5 +1,8 @@
 x-job-environment: &job-environment
   NODE_ENV: production
+  SITE_URL: ${SITE_URL:-https://thefastestweb.site}
+  SITE_NAME: ${SITE_NAME:-TheFastestWeb}
+  SITE_EMAIL: ${SITE_EMAIL:-}
   DATABASE_URL: ${DATABASE_URL:?Set the least-privilege application database URL}
   REDIS_URL: ${REDIS_URL:?Set the authenticated private Redis URL}
   QUEUE_PREFIX: ${QUEUE_PREFIX:-tfw}
@@ -12,6 +15,29 @@ x-job-environment: &job-environment
   PSI_REQUESTS_PER_DAY: ${PSI_REQUESTS_PER_DAY:-1000}
   JOB_MAX_ATTEMPTS: ${JOB_MAX_ATTEMPTS:-3}
   WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
+
+x-provider-environment: &provider-environment
+  PAYMENTS_ENABLED: ${PAYMENTS_ENABLED:-false}
+  DODO_ENVIRONMENT: ${DODO_ENVIRONMENT:-test_mode}
+  DODO_API_KEY: ${DODO_API_KEY:-}
+  DODO_WEBHOOK_SECRET: ${DODO_WEBHOOK_SECRET:-}
+  EMAIL_ENABLED: ${EMAIL_ENABLED:-false}
+  M365_TENANT_ID: ${M365_TENANT_ID:-}
+  M365_CLIENT_ID: ${M365_CLIENT_ID:-}
+  M365_CLIENT_SECRET: ${M365_CLIENT_SECRET:-}
+  M365_SENDER: ${M365_SENDER:-}
+  EMAIL_UNSUBSCRIBE_SECRET: ${EMAIL_UNSUBSCRIBE_SECRET:-}
+  STORAGE_ENABLED: ${STORAGE_ENABLED:-false}
+  R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
+  R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+  R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+  R2_BUCKET: ${R2_BUCKET:-}
+  R2_PRIVATE_BUCKET: ${R2_PRIVATE_BUCKET:-}
+  R2_PUBLIC_BASE_URL: ${R2_PUBLIC_BASE_URL:-}
+  SCREENSHOTS_ENABLED: ${SCREENSHOTS_ENABLED:-false}
+  SCREENSHOT_CLIENT_ID: ${SCREENSHOT_CLIENT_ID:-thefastestweb}
+  SCREENSHOT_SERVICE_URL: ${SCREENSHOT_SERVICE_URL:-}
+  SCREENSHOT_SERVICE_TOKEN: ${SCREENSHOT_SERVICE_TOKEN:-}
 
 services:
   postgres:
@@ -59,8 +85,7 @@ services:
       dockerfile: Dockerfile
       target: runner
     environment:
-      <<: *job-environment
-      SITE_URL: ${SITE_URL:-https://thefastestweb.site}
+      <<: [*job-environment, *provider-environment]
       AUTH_SECRET: ${AUTH_SECRET:?Generate a new auth secret}
       AUTH_GOOGLE_ID: ${AUTH_GOOGLE_ID:?Set your Google OAuth client ID}
       AUTH_GOOGLE_SECRET: ${AUTH_GOOGLE_SECRET:?Set your Google OAuth client secret}
@@ -70,7 +95,14 @@ services:
       GOOGLE_PSI_API_KEY_BACKUP: ${GOOGLE_PSI_API_KEY_BACKUP:-}
       CRON_SECRET: ${CRON_SECRET:-}
       UNAVATAR_API_KEY: ${UNAVATAR_API_KEY:-}
-      ENABLE_LEGACY_RESEND: "false"
+      ANALYTICS_ENABLED: ${ANALYTICS_ENABLED:-false}
+      GA_MEASUREMENT_ID: ${GA_MEASUREMENT_ID:-}
+      DATAFAST_WEBSITE_ID: ${DATAFAST_WEBSITE_ID:-}
+      DATAFAST_DOMAIN: ${DATAFAST_DOMAIN:-}
+      DATAFAST_API_KEY: ${DATAFAST_API_KEY:-}
+      SEARCH_CONSOLE_VERIFICATION: ${SEARCH_CONSOLE_VERIFICATION:-}
+      BING_VERIFICATION: ${BING_VERIFICATION:-}
+      INDEXNOW_KEY: ${INDEXNOW_KEY:-}
     expose: ["3000"]
     networks: [default, backend]
     depends_on:
@@ -88,7 +120,7 @@ services:
       dockerfile: Dockerfile
       target: jobs-runner
     environment:
-      <<: *job-environment
+      <<: [*job-environment, *provider-environment]
       WORKER_HEALTH_PORT: ${WORKER_HEALTH_PORT:-3001}
       GOOGLE_PSI_API_KEY: ${GOOGLE_PSI_API_KEY:-}
       GOOGLE_PSI_API_KEY_BACKUP: ${GOOGLE_PSI_API_KEY_BACKUP:-}

@@ -3,12 +3,14 @@ import { z } from "zod";
 /** Reserved names document boundaries; only implemented handlers may receive jobs. */
 export const QUEUE_NAMES = ["performance", "screenshots", "emails", "notifications", "rankings", "badges", "analytics", "maintenance", "webhooks"] as const;
 export type QueueName = typeof QUEUE_NAMES[number];
-export const ACTIVE_QUEUES = ["performance", "maintenance"] as const;
+export const ACTIVE_QUEUES = ["performance", "maintenance", "webhooks", "emails"] as const;
 export type ActiveQueueName = typeof ACTIVE_QUEUES[number];
 
 export const queueJobSchema = z.discriminatedUnion("queue", [
   z.object({ id: z.uuid(), queue: z.literal("performance"), kind: z.enum(["site.performance.daily", "site.performance.manual"]), correlationId: z.uuid().optional() }).strict(),
   z.object({ id: z.uuid(), queue: z.literal("maintenance"), kind: z.literal("maintenance.cleanup"), correlationId: z.uuid().optional() }).strict(),
+  z.object({ id: z.uuid(), queue: z.literal("webhooks"), kind: z.literal("payment.webhook"), correlationId: z.uuid().optional() }).strict(),
+  z.object({ id: z.uuid(), queue: z.literal("emails"), kind: z.literal("email.deliver"), correlationId: z.uuid().optional() }).strict(),
 ]);
 export type QueueJob = z.infer<typeof queueJobSchema>;
 export type QueuePayload = { jobId: string; correlationId: string };

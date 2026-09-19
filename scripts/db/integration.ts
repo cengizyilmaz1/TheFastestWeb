@@ -48,7 +48,7 @@ async function main(): Promise<void> {
       (SELECT count(*) FROM app_meta.schema_migrations)::integer AS migrations,
       (SELECT count(*) FROM pg_class WHERE relnamespace='public'::regnamespace AND relkind='r' AND relrowsecurity)::integer AS rls,
       (SELECT count(*) FROM public.verified_speed_tests)::integer AS verified`;
-    assert.deepEqual({ ...state }, { migrations: 3, rls: 0, verified: 0 });
+    assert.deepEqual({ ...state }, { migrations: 5, rls: 0, verified: 0 });
     console.log("PASS fresh database, concurrent runners, idempotence, and final RLS state");
 
     const restored = await isolated("restored");
@@ -76,13 +76,13 @@ async function main(): Promise<void> {
     const [m1History] = await m1.sql`SELECT to_jsonb(t) AS data FROM public.speed_tests t WHERE id=${speedId}`;
     const upgradeLog: string[] = [];
     await migrateDatabase({ databaseUrl: m1.url, log: (message) => upgradeLog.push(message) });
-    assert.deepEqual(upgradeLog, ["Applied 0002_m2_job_ledger."]);
+    assert.deepEqual(upgradeLog, ["Applied 0002_m2_job_ledger.", "Applied 0003_m3_providers.", "Applied 0004_m5_product_model."]);
     const keptLedger = await m1.sql`SELECT version,checksum,applied_at FROM app_meta.schema_migrations WHERE version < '0002' ORDER BY version`;
-    const [m2History] = await m1.sql`SELECT to_jsonb(t)-'background_job_id' AS data, background_job_id FROM public.speed_tests t WHERE id=${speedId}`;
+    const [m2History] = await m1.sql`SELECT to_jsonb(t)-'background_job_id'-'sample_count'-'metrics_source' AS data, background_job_id FROM public.speed_tests t WHERE id=${speedId}`;
     assert.deepEqual([...keptLedger], [...oldLedger]);
     assert.deepEqual(m2History.data, m1History.data);
     assert.equal(m2History.background_job_id, null);
-    console.log("PASS M1 upgrade appends only M2 and preserves existing ledger timestamps/checksums and history");
+    console.log("PASS M1 upgrade appends pending migrations and preserves existing ledger timestamps/checksums and history");
 
     const jobId = randomUUID();
     const jobKey = `integration:${jobId}`;

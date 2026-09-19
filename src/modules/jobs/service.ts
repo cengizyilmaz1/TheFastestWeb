@@ -11,11 +11,15 @@ import { getCorrelationId, withCorrelationId } from "@/lib/http/correlation";
 import { AppError } from "@/lib/http/errors";
 import { runPageSpeedTest, METHODOLOGY_VERSION, type PSIResult } from "@/lib/pagespeed";
 import { ProviderQuotaError } from "./provider-budget";
+import { processPaymentWebhook } from "@/modules/payments/service";
+import { deliverNotificationEmail } from "@/modules/notifications/service";
 
 const terminal = ["succeeded", "failed", "cancelled"] as const;
 const leaseMs = 180_000;
 const performancePayload = z.object({ siteId: z.uuid(), strategy: z.literal("mobile"), day: z.iso.date() }).strict();
 const maintenancePayload = z.object({ day: z.iso.date() }).strict();
+const webhookPayload = z.object({ eventId: z.uuid() }).strict();
+const emailPayload = z.object({ deliveryId: z.uuid() }).strict();
 type Outcome = { status: "succeeded" | "retry" | "failed" | "cancelled" | "deferred" | "skipped" };
 
 function database() {
@@ -183,6 +187,17 @@ async function saveMeasurement(job: BackgroundJob, url: string, result: PSIResul
 
 async function perform(job: BackgroundJob): Promise<Outcome> {
   validateQueueJob({ id: job.id, queue: job.queue, kind: job.kind });
+  if (job.kind === "payment.webhook" || job.kind === "email.deliver") {
+    const result = job.kind === "payment.webhook"
+      ? await processPaymentWebhook(webhookPayload.parse(job.payload).eventId)
+      : await deliverNotificationEmail(emailPayload.parse(job.payload).deliveryId);
+    return database().transaction(async (tx) => {
+      const [owned] = await tx.select().from(backgroundJobs).where(ownsLease(job)).for("update");
+      if (!owned) return { status: "deferred" };
+      await finish(tx, job, result);
+      return { status: "succeeded" };
+    });
+  }
   if (job.kind === "maintenance.cleanup") {
     maintenancePayload.parse(job.payload);
     return database().transaction(async (tx) => {
@@ -211,7 +226,8 @@ async function perform(job: BackgroundJob): Promise<Outcome> {
 async function recordFailure(job: BackgroundJob, error: unknown): Promise<Outcome> {
   const quota = error instanceof ProviderQuotaError;
   const code = error instanceof AppError ? error.code : error instanceof z.ZodError ? "INVALID_PAYLOAD" : "JOB_FAILED";
-  const permanent = ["URL_BLOCKED", "INVALID_REQUEST", "INVALID_PAYLOAD"].includes(code);
+  const permanent = ["URL_BLOCKED", "INVALID_REQUEST", "INVALID_PAYLOAD"].includes(code)
+    || (error instanceof Error && "retryable" in error && error.retryable === false);
   const retry = quota || (!permanent && job.attempts < job.maxAttempts);
   const status = retry ? "pending" : "failed";
   const delay = quota ? error.retryAfterMs + 1000 : Math.min(60_000 * 2 ** (job.attempts - 1), 3_600_000);

@@ -15,7 +15,7 @@ describe("readiness", () => {
     state.redis.mockReset().mockResolvedValue({ ready: true });
   });
 
-  it("checks M2 schema, role and Redis safety, and prevents caching", async () => {
+  it("checks migrated schema, role and Redis safety, and prevents caching", async () => {
     const response = await GET(new NextRequest("http://localhost/api/ready"), undefined);
     expect(response.status).toBe(200);
     expect(state.execute).toHaveBeenCalledTimes(2);

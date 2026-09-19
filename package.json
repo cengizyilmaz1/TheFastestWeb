@@ -20,8 +20,12 @@
     "queue:admin": "node dist/jobs/queue-admin.cjs"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "3.1136.0",
+    "@aws-sdk/s3-request-presigner": "3.1136.0",
+    "@phosphor-icons/react": "2.1.10",
     "@tailwindcss/typography": "0.5.20",
     "bullmq": "6.3.8",
+    "dodopayments": "2.51.0",
     "dotenv": "18.0.1",
     "drizzle-orm": "0.45.2",
     "gray-matter": "4.0.3",
@@ -38,9 +42,12 @@
     "react-dom": "19.3.0",
     "recharts": "3.10.1",
     "resend": "6.28.1",
+    "sharp": "0.35.4",
+    "standardwebhooks": "1.1.1",
     "zod": "4.6.5"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "@tailwindcss/postcss": "4.3.3",
     "@types/node": "24.13.6",
     "@types/react": "19.3.0",

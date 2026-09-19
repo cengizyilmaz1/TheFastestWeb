@@ -73,8 +73,37 @@ const envSchema = z.object({
   CHROMIUM_EXECUTABLE_PATH: optionalString,
   UNAVATAR_API_KEY: optionalString,
   LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal", "silent"]).default("info"),
-  ENABLE_LEGACY_RESEND: flag,
-  RESEND_API_KEY: optionalString,
+  SITE_NAME: z.string().min(1).max(80).default("TheFastestWeb"),
+  SITE_EMAIL: optionalString.refine((value) => !value || z.email().safeParse(value).success, "Must be an email address"),
+  PAYMENTS_ENABLED: flag,
+  DODO_API_KEY: optionalString,
+  DODO_WEBHOOK_SECRET: optionalString,
+  DODO_ENVIRONMENT: z.enum(["test_mode", "live_mode"]).default("test_mode"),
+  EMAIL_ENABLED: flag,
+  M365_TENANT_ID: optionalString.refine((value) => !value || z.uuid().safeParse(value).success, "Must be a tenant UUID"),
+  M365_CLIENT_ID: optionalString.refine((value) => !value || z.uuid().safeParse(value).success, "Must be an app UUID"),
+  M365_CLIENT_SECRET: optionalString,
+  M365_SENDER: optionalString.refine((value) => !value || z.email().safeParse(value).success, "Must be an email address"),
+  EMAIL_UNSUBSCRIBE_SECRET: optionalString.refine((value) => !value || value.length >= 32, "Must contain at least 32 characters"),
+  STORAGE_ENABLED: flag,
+  R2_ACCOUNT_ID: optionalString.refine((value) => !value || /^[a-f0-9]{32}$/i.test(value), "Must be a Cloudflare account ID"),
+  R2_ACCESS_KEY_ID: optionalString,
+  R2_SECRET_ACCESS_KEY: optionalString,
+  R2_BUCKET: optionalString.refine((value) => !value || /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(value), "Must be a bucket name"),
+  R2_PRIVATE_BUCKET: optionalString.refine((value) => !value || /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(value), "Must be a bucket name"),
+  R2_PUBLIC_BASE_URL: optionalOrigin.refine((value) => !value || value.startsWith("https://"), "Must use HTTPS"),
+  ANALYTICS_ENABLED: flag,
+  GA_MEASUREMENT_ID: optionalString.refine((value) => !value || /^G-[A-Z0-9]{4,20}$/.test(value), "Must be a GA measurement ID"),
+  DATAFAST_WEBSITE_ID: optionalString.refine((value) => !value || /^[a-zA-Z0-9_-]{1,100}$/.test(value), "Invalid website ID"),
+  DATAFAST_DOMAIN: optionalString.refine((value) => !value || /^[a-z0-9][a-z0-9.-]{1,251}[a-z0-9]$/i.test(value), "Must be a hostname"),
+  DATAFAST_API_KEY: optionalString,
+  SCREENSHOTS_ENABLED: flag,
+  SCREENSHOT_CLIENT_ID: z.string().regex(/^[a-z0-9-]{1,40}$/).default("thefastestweb"),
+  SCREENSHOT_SERVICE_URL: optionalOrigin,
+  SCREENSHOT_SERVICE_TOKEN: optionalString.refine((value) => !value || /^[a-f0-9]{64}$/i.test(value), "Must be a 64-character hexadecimal token"),
+  SEARCH_CONSOLE_VERIFICATION: optionalString,
+  BING_VERIFICATION: optionalString,
+  INDEXNOW_KEY: optionalString.refine((value) => !value || /^[a-zA-Z0-9-]{8,128}$/.test(value), "Invalid IndexNow key"),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -114,7 +143,16 @@ export function parseEnv(
       if (!config.AUTH_TRUST_HOST) missing.push("AUTH_TRUST_HOST");
     }
   }
-  if (config.ENABLE_LEGACY_RESEND && !config.RESEND_API_KEY) missing.push("RESEND_API_KEY");
+  const requireFields = (enabled: boolean, keys: (keyof Env)[]) => {
+    if (enabled) for (const key of keys) if (!config[key]) missing.push(key);
+  };
+  requireFields(config.PAYMENTS_ENABLED, ["DODO_API_KEY", "DODO_WEBHOOK_SECRET"]);
+  requireFields(config.EMAIL_ENABLED, ["M365_TENANT_ID", "M365_CLIENT_ID", "M365_CLIENT_SECRET", "M365_SENDER", "EMAIL_UNSUBSCRIBE_SECRET"]);
+  requireFields(config.STORAGE_ENABLED, ["R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_PRIVATE_BUCKET"]);
+  if (config.R2_BUCKET && config.R2_BUCKET === config.R2_PRIVATE_BUCKET) missing.push("R2_PRIVATE_BUCKET");
+  requireFields(config.SCREENSHOTS_ENABLED, ["SCREENSHOT_SERVICE_URL", "SCREENSHOT_SERVICE_TOKEN"]);
+  if (config.ANALYTICS_ENABLED && !config.GA_MEASUREMENT_ID && !config.DATAFAST_WEBSITE_ID) missing.push("GA_MEASUREMENT_ID", "DATAFAST_WEBSITE_ID");
+  if (config.DATAFAST_WEBSITE_ID && !config.DATAFAST_DOMAIN) missing.push("DATAFAST_DOMAIN");
   if (missing.length) throw new EnvironmentError([...new Set(missing)]);
   return Object.freeze(config);
 }

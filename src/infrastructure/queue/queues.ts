@@ -3,7 +3,7 @@ import { Queue } from "bullmq";
 import { getEnv } from "@/config/env";
 import { AppError } from "@/lib/http/errors";
 import { logger } from "@/infrastructure/logging/logger";
-import { QUEUE_NAMES, validateQueueJob, type QueueJob, type QueueName, type QueuePayload } from "./contracts";
+import { ACTIVE_QUEUES, QUEUE_NAMES, validateQueueJob, type QueueJob, type QueueName, type QueuePayload } from "./contracts";
 import { closeRedis, getRedis, waitForRedis, withinRedisDeadline } from "./redis";
 
 const queues = new Map<QueueName, Queue<QueuePayload>>();
@@ -37,7 +37,7 @@ export async function getQueue(name: QueueName): Promise<Queue<QueuePayload>> {
       queue.setGlobalConcurrency(getEnv().WORKER_CONCURRENCY),
       queue.setGlobalRateLimit(getEnv().PSI_REQUESTS_PER_MINUTE, 60_000),
     ]));
-  } else if (name === "maintenance") {
+  } else if (ACTIVE_QUEUES.some((active) => active === name)) {
     await withinRedisDeadline(queue.setGlobalConcurrency(1));
   }
   return queue;

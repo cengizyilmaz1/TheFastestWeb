@@ -48,9 +48,12 @@ describe("runtime environment", () => {
     expect(() => parseEnv({ ...production, ...change }, { requireProductionSecrets: true })).toThrow(EnvironmentError);
   });
 
-  it("does not enable legacy email just because credentials exist", () => {
-    const config = parseEnv({ RESEND_API_KEY: "test-only" });
-    expect(config.ENABLE_LEGACY_RESEND).toBe(false);
+  it("does not enable providers just because credentials exist", () => {
+    const config = parseEnv({ DODO_API_KEY: "synthetic-test-key", M365_CLIENT_SECRET: "synthetic-test-secret" });
+    expect(config.EMAIL_ENABLED).toBe(false);
+    expect(config.PAYMENTS_ENABLED).toBe(false);
+    expect(config.STORAGE_ENABLED).toBe(false);
+    expect(config.ANALYTICS_ENABLED).toBe(false);
   });
 
   it("validates background dependencies without requiring web credentials", () => {
@@ -92,8 +95,17 @@ describe("runtime environment", () => {
     expect(config.JOB_MAX_ATTEMPTS).toBe(3);
   });
 
-  it("requires credentials for explicitly enabled legacy email", () => {
-    expect(() => parseEnv({ ENABLE_LEGACY_RESEND: "true" })).toThrow(EnvironmentError);
+  it.each(["PAYMENTS_ENABLED", "EMAIL_ENABLED", "STORAGE_ENABLED", "ANALYTICS_ENABLED", "SCREENSHOTS_ENABLED"])("requires configuration for enabled %s", (key) => {
+    expect(() => parseEnv({ [key]: "true" })).toThrow(EnvironmentError);
+  });
+  it("rejects a public bucket used for private media", () => {
+    expect(() => parseEnv({ R2_BUCKET: "public-media", R2_PRIVATE_BUCKET: "public-media" })).toThrow(EnvironmentError);
+  });
+  it("rejects provider settings that could become script or endpoint injection", () => {
+    for (const settings of [{ GA_MEASUREMENT_ID: "G-TEST';alert(1)" }, { R2_ACCOUNT_ID: "evil.invalid/path" },
+      { DATAFAST_DOMAIN: "https://example.com" }, { M365_TENANT_ID: "../common" }, { R2_PUBLIC_BASE_URL: "http://example.com" }]) {
+      expect(() => parseEnv(settings)).toThrow(EnvironmentError);
+    }
   });
 
   it("does not include secret values in configuration errors", () => {

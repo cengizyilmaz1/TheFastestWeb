@@ -1,0 +1,50 @@
+# Separate Coolify stack. Provision the dedicated DB/roles and authenticated
+# persistent Redis first; no main application or IndieTools credentials belong here.
+services:
+  screenshot-api:
+    build: { context: ../.., dockerfile: services/screenshot/Dockerfile, target: api }
+    restart: unless-stopped
+    environment: &settings
+      SCREENSHOT_DATABASE_URL: ${SCREENSHOT_DATABASE_URL:?Dedicated app-role database URL required}
+      SCREENSHOT_REDIS_URL: ${SCREENSHOT_REDIS_URL:?Authenticated durable Redis URL required}
+      SCREENSHOT_CLIENTS_JSON: ${SCREENSHOT_CLIENTS_JSON:?Client IDs and token hashes required}
+      SCREENSHOT_QUEUE_PREFIX: ${SCREENSHOT_QUEUE_PREFIX:-central-screenshot}
+      SCREENSHOT_CAPTURE_BACKEND: ${SCREENSHOT_CAPTURE_BACKEND:-remote}
+      SCREENSHOT_RENDERER_URL: ${SCREENSHOT_RENDERER_URL:-}
+      SCREENSHOT_RENDERER_TOKEN: ${SCREENSHOT_RENDERER_TOKEN:-}
+      SCREENSHOT_CONCURRENCY: ${SCREENSHOT_CONCURRENCY:-2}
+      SCREENSHOT_CACHE_HOURS: ${SCREENSHOT_CACHE_HOURS:-6}
+      SCREENSHOT_RETENTION_DAYS: ${SCREENSHOT_RETENTION_DAYS:-7}
+      SCREENSHOT_HISTORY_DAILY_DAYS: ${SCREENSHOT_HISTORY_DAILY_DAYS:-30}
+      SCREENSHOT_HISTORY_WEEKLY_DAYS: ${SCREENSHOT_HISTORY_WEEKLY_DAYS:-180}
+      SCREENSHOT_HISTORY_MONTHLY_DAYS: ${SCREENSHOT_HISTORY_MONTHLY_DAYS:-1095}
+      STORAGE_ENABLED: 'true'
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:?Required}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:?Required}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:?Required}
+      R2_PRIVATE_BUCKET: ${R2_PRIVATE_BUCKET:?Required}
+      R2_BUCKET: ${R2_BUCKET:-}
+      R2_PUBLIC_BASE_URL: ${R2_PUBLIC_BASE_URL:-}
+    expose: ['3100']
+    read_only: true
+    tmpfs: ['/tmp:size=128m,mode=1777']
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: 1
+    stop_grace_period: 40s
+  screenshot-worker:
+    build: { context: ../.., dockerfile: services/screenshot/Dockerfile, target: worker }
+    restart: unless-stopped
+    environment: *settings
+    expose: ['3101']
+    read_only: true
+    tmpfs: ['/tmp:size=512m,mode=1777']
+    pids_limit: 256
+    mem_limit: 2g
+    cpus: 2
+    shm_size: 256m
+    stop_grace_period: 130s
+    # Chromium retains its sandbox; do not add privileged, SYS_ADMIN or --no-sandbox.
+    # The setuid sandbox helper needs Docker's standard non-root runtime settings.

@@ -5,7 +5,8 @@ const sensitiveKeys = /^(?:authorization|cookie|set-cookie|password|secret|token
 const secretEnvironmentKeys = [
   "DATABASE_URL", "REDIS_URL", "REDIS_PASSWORD", "AUTH_SECRET", "NEXTAUTH_SECRET", "AUTH_GOOGLE_SECRET",
   "GOOGLE_PSI_API_KEY", "GOOGLE_PSI_API_KEY_BACKUP", "CRON_SECRET",
-  "UNAVATAR_API_KEY", "RESEND_API_KEY",
+  "UNAVATAR_API_KEY", "DODO_API_KEY", "DODO_WEBHOOK_SECRET", "M365_CLIENT_SECRET",
+  "EMAIL_UNSUBSCRIBE_SECRET", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "DATAFAST_API_KEY", "SCREENSHOT_SERVICE_TOKEN",
 ] as const;
 
 /** Keep diagnostic shape while removing credentials, PII, and raw Error text. */
