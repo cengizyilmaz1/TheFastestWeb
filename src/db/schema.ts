@@ -4,6 +4,7 @@ import {
   text,
   timestamp,
   integer,
+  bigint,
   boolean,
   real,
   jsonb,
@@ -678,6 +679,30 @@ export const redirectRules = pgTable("redirect_rules", {
 }, (t) => [check("redirect_rules_status_valid", sql`${t.statusCode} IN (301,302,307,308)`),
   check("redirect_rules_version_valid", sql`${t.version} >= 1`),
   check("redirect_rules_paths_valid", sql`length(${t.sourcePath}) BETWEEN 1 AND 500 AND length(${t.destinationPath}) BETWEEN 1 AND 500 AND ${t.sourcePath} ~ '^/[^/]*' AND ${t.destinationPath} ~ '^/[^/]*' AND ${t.sourcePath} <> ${t.destinationPath}`)]);
+
+// Compact daily counters contain no visitor identities, request URLs or headers.
+export const redirectRuleDailyStats = pgTable("redirect_rule_daily_stats", {
+  ruleId: uuid("rule_id").notNull().references(() => redirectRules.id, { onDelete: "cascade" }),
+  day: date("day").notNull(),
+  humanRequests: bigint("human_requests", { mode: "number" }).notNull().default(0),
+  botRequests: bigint("bot_requests", { mode: "number" }).notNull().default(0),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [primaryKey({ name: "redirect_rule_daily_stats_pk", columns: [t.ruleId, t.day] }),
+  index("redirect_rule_daily_stats_day_idx").on(t.day),
+  check("redirect_rule_daily_stats_counts_valid", sql`${t.humanRequests} >= 0 AND ${t.botRequests} >= 0`)]);
+
+export const founderRedirectDailyStats = pgTable("founder_redirect_daily_stats", {
+  founderId: uuid("founder_id").notNull().references(() => founders.id, { onDelete: "cascade" }),
+  sourceType: text("source_type").$type<"alias" | "legacy">().notNull(),
+  sourcePath: text("source_path").notNull(),
+  day: date("day").notNull(),
+  humanRequests: bigint("human_requests", { mode: "number" }).notNull().default(0),
+  botRequests: bigint("bot_requests", { mode: "number" }).notNull().default(0),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [primaryKey({ name: "founder_redirect_daily_stats_pk", columns: [t.founderId, t.sourceType, t.sourcePath, t.day] }),
+  index("founder_redirect_daily_stats_day_idx").on(t.day),
+  check("founder_redirect_daily_stats_counts_valid", sql`${t.humanRequests} >= 0 AND ${t.botRequests} >= 0`),
+  check("founder_redirect_daily_stats_source_valid", sql`(${t.sourceType} = 'legacy' AND ${t.sourcePath} = '/profile/[account-id]') OR (${t.sourceType} = 'alias' AND length(${t.sourcePath}) <= 90 AND ${t.sourcePath} ~ '^/founders?/[a-z0-9]+(-[a-z0-9]+)*$')`)]);
 
 export const analyticsEvents = pgTable("analytics_events", {
   id:uuid("id").primaryKey().defaultRandom(),

@@ -70,8 +70,8 @@ try {
               && getComputedStyle(node).opacity !== "0");
           });
         }
-        report.push({ viewport: viewport.width, route, check: "scrolllaunch-badge-visible-natural-size", dimensions,
-          passed: Boolean(visible && dimensions && Math.abs(dimensions.width - 220) <= 1 && Math.abs(dimensions.height - 48) <= 1) });
+        report.push({ viewport: viewport.width, route, check: "scrolllaunch-badge-visible-compact-size", dimensions,
+          passed: Boolean(visible && dimensions && Math.abs(dimensions.width - 176) <= 1 && Math.abs(dimensions.height - 38.4) <= 1) });
       }
       console.log(JSON.stringify({ viewport: entry.viewport, route, status: entry.status, headingCount: entry.headingCount, horizontalOverflow: entry.horizontalOverflow, errors: errors.length, violations: entry.violations.map((issue) => issue.id) }));
       if (["/", "/pricing", "/submit", site].includes(route)) await page.screenshot({ path: resolve(output, `${viewport.width}-${route.replace(/[^a-z0-9]/gi, "_") || "home"}.png`), fullPage: true });

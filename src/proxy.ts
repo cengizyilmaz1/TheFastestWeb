@@ -7,6 +7,7 @@ import { resolveFounderUsername } from "@/modules/founders/usernames";
 import { getFounderPath } from "@/modules/founders/paths";
 import { resolveManagedRedirect } from "@/modules/redirects/resolve";
 import { logger } from "@/infrastructure/logging/logger";
+import { recordRedirectInBackground } from "@/modules/redirects/statistics";
 
 /** Resource handlers perform authorization; the proxy is not a security boundary. */
 export default async function proxy(request: NextRequest, event: NextFetchEvent) {
@@ -16,12 +17,18 @@ export default async function proxy(request: NextRequest, event: NextFetchEvent)
       if (founder) {
         const token = await getToken({ req: request, secret: getEnv().AUTH_SECRET, secureCookie: getEnv().SITE_URL.startsWith("https:") });
         const visible = await resolveFounderUsername(founder[2], typeof token?.dbUserId === "string" ? token.dbUserId : undefined);
-        if (visible && (founder[1] === "founders" || visible.slug !== founder[2])) return NextResponse.redirect(new URL(getFounderPath(visible.slug), getEnv().SITE_URL),
-          { status: 301, headers: { "Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer" } });
+        if (visible && (founder[1] === "founders" || visible.slug !== founder[2])) {
+          if (visible.visibility === "public") recordRedirectInBackground(request, { kind: "founder", founderId: visible.id, sourcePath: request.nextUrl.pathname }, event);
+          return NextResponse.redirect(new URL(getFounderPath(visible.slug), getEnv().SITE_URL),
+            { status: 301, headers: { "Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer" } });
+        }
       } else {
         const redirect = await resolveManagedRedirect(request.nextUrl.pathname);
-        if (redirect) return NextResponse.redirect(new URL(redirect.path, getEnv().SITE_URL), { status: redirect.status,
-          headers: { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" } });
+        if (redirect) {
+          recordRedirectInBackground(request, { kind: "managed", ruleId: redirect.id }, event);
+          return NextResponse.redirect(new URL(redirect.path, getEnv().SITE_URL), { status: redirect.status,
+            headers: { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" } });
+        }
       }
     } catch { logger.warn({ event: "redirect.lookup_failed", code: "DATABASE_UNAVAILABLE" }); }
   }

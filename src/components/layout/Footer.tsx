@@ -20,7 +20,7 @@ export function Footer() {
             <p className="mb-2 text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-text-secondary">Featured on</p>
             <a href="https://www.scrolllaunch.com/products/thefastestweb?ref=badge" target="_blank" rel="noopener" className="inline-flex rounded-lg focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent">
               {/* eslint-disable-next-line @next/next/no-img-element -- Externally hosted badge keeps the provider's canonical URL. */}
-              <img src="https://www.scrolllaunch.com/api/badge/thefastestweb" alt="Featured on ScrollLaunch" width="220" height="48" loading="lazy" />
+              <img src="https://www.scrolllaunch.com/api/badge/thefastestweb" alt="Featured on ScrollLaunch" width="220" height="48" loading="lazy" className="h-auto w-[176px]" />
             </a>
           </div>
         </div>

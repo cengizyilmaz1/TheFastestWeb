@@ -31,6 +31,7 @@ try {
   await sql`INSERT INTO users(id,name,email) VALUES(${collaborator},'Synthetic collaborator','collaborator@example.invalid')`;
   await sql`INSERT INTO users(id,name,email) VALUES(${privateUser},'Private smoke account','private-smoke@example.invalid')`;
   await sql`INSERT INTO admin_roles(user_id,role) VALUES(${user},'admin')`;
+  await sql`INSERT INTO redirect_rules(source_path,destination_path,updated_by) VALUES('/synthetic-old-address','/about',${user})`;
   await sql`INSERT INTO founders(user_id,slug,name,visibility) VALUES(${user},'smoke-owner','Synthetic owner','public'),(${collaborator},'smoke-collaborator','Synthetic collaborator','public')`;
   await sql`INSERT INTO founders(user_id,slug,name,visibility) VALUES(${privateUser},'smoke-private','Private smoke profile','private')`;
   await sql`INSERT INTO founder_sites(founder_id,site_id) SELECT id,${site} FROM founders WHERE user_id=${user}`;

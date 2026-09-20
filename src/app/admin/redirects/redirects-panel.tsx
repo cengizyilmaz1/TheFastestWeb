@@ -1,7 +1,10 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-type Rule = { id: string; sourcePath: string; destinationPath: string; statusCode: number; enabled: boolean; version: number };
+type Rule = { id: string; sourcePath: string; destinationPath: string; statusCode: number; enabled: boolean; version: number;
+  statistics: { total: number; human: number; bot: number; today: number; last30Days: number; lastSeenAt: string | null } };
+const count = new Intl.NumberFormat("en-US");
+const lastSeen = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" });
 export function RedirectsPanel({ rules }: { rules: Rule[] }) {
   const router = useRouter();
   const [editing, setEditing] = useState<Rule | null>(null), [source, setSource] = useState(""), [destination, setDestination] = useState("");
@@ -14,7 +17,7 @@ export function RedirectsPanel({ rules }: { rules: Rule[] }) {
     try {
       const response = await fetch("/api/admin/redirects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ operation, rule, token: preview?.token }) });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error?.message ?? "The redirect could not be saved.");
+      if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "The redirect could not be saved.");
       if (operation === "preview") setPreview({ token: data.token, rule: data.proposed });
       else { edit(null); setMessage("Redirect saved."); router.refresh(); }
     } catch (error) { setMessage(error instanceof Error ? error.message : "The request failed."); setPreview(null); }
@@ -25,8 +28,14 @@ export function RedirectsPanel({ rules }: { rules: Rule[] }) {
     <section className="rounded-[14px] border border-border bg-bg-card">
       <div className="flex items-center justify-between border-b border-border px-5 py-4"><h2 className="font-display font-bold">Managed redirects</h2><button onClick={() => edit(null)} className="text-sm text-accent-bright">New redirect</button></div>
       {rules.length ? <ul className="divide-y divide-border">{rules.map(rule => <li key={rule.id} className="p-4">
-        <button onClick={() => edit(rule)} className="w-full text-left"><span className="block break-all text-sm font-semibold">{rule.sourcePath} → {rule.destinationPath}</span>
+        <button onClick={() => edit(rule)} className="w-full rounded text-left focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent"><span className="block break-all text-sm font-semibold">{rule.sourcePath} → {rule.destinationPath}</span>
           <span className="mt-1 block text-xs text-text-secondary">HTTP {rule.statusCode} · {rule.enabled ? "Enabled" : "Disabled"} · Edit</span></button>
+        <dl className="mt-3 grid grid-cols-2 gap-3 rounded-lg bg-bg-main p-3 text-xs sm:grid-cols-4">
+          {[["All requests", rule.statistics.total], ["Today", rule.statistics.today], ["Last 30 days", rule.statistics.last30Days], ["Detected bots", rule.statistics.bot]].map(([label, value]) => <div key={label}>
+            <dt className="text-text-secondary">{label}</dt><dd className="mt-1 font-mono text-sm font-semibold">{count.format(value as number)}</dd>
+          </div>)}
+        </dl>
+        <p className="mt-2 text-xs text-text-secondary">Last request: {rule.statistics.lastSeenAt ? `${lastSeen.format(new Date(rule.statistics.lastSeenAt))} UTC` : "None recorded"}</p>
       </li>)}</ul> : <p className="p-5 text-sm text-text-secondary">No custom redirects yet.</p>}
     </section>
     <form className="rounded-[14px] border border-border bg-bg-card p-5" onChange={() => setPreview(null)} onSubmit={event => { event.preventDefault(); void send("preview"); }}>
@@ -43,4 +52,3 @@ export function RedirectsPanel({ rules }: { rules: Rule[] }) {
     </form>
   </div>;
 }
-

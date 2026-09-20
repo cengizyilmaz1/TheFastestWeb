@@ -99,6 +99,13 @@ export const publicPages: Record<string, PublicPageContent> = {
         ]
       },
       {
+        "id": "redirect-statistics",
+        "title": "Redirect Statistics",
+        "paragraphs": [
+          "We keep daily totals for managed redirects and old public profile addresses, separating estimated browser and automated requests. These totals contain no visitor identifiers, IP addresses, stored user agents, referrers or query strings. Private profiles, prefetches and requests with Do Not Track or Global Privacy Control enabled are excluded."
+        ]
+      },
+      {
         "id": "third-party-services",
         "title": "Third-Party Services",
         "paragraphs": [],

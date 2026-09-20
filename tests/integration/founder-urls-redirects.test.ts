@@ -85,7 +85,7 @@ describe("administrator redirect management", () => {
     const admin = await user("admin"), input = rule(), preview = await previewRedirect(admin, input);
     const results = await Promise.all([saveRedirect(admin, input, preview.token), saveRedirect(admin, input, preview.token)]);
     expect(results.map(x => x.replayed).sort()).toEqual([false, true]);
-    expect(await resolveManagedRedirect(input.sourcePath)).toEqual({ path: "/about", status: 301 });
+    expect(await resolveManagedRedirect(input.sourcePath)).toEqual({ id: input.id, path: "/about", status: 301 });
     expect((await fixtureSql()`SELECT count(*)::int AS count FROM audit_logs WHERE action='redirect.save'`)[0].count).toBe(1);
     const disabled = { ...input, enabled: false, expectedVersion: 1 };
     await saveRedirect(admin, disabled, (await previewRedirect(admin, disabled)).token);
@@ -103,4 +103,3 @@ describe("administrator redirect management", () => {
     await expect(saveRedirect(admin, a, pa.token+"changed")).rejects.toMatchObject({ status: 400 });
   });
 });
-

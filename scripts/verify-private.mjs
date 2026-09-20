@@ -3,6 +3,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { encode } from "next-auth/jwt";
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 
 const base = new URL(process.env.SMOKE_BASE_URL || "http://127.0.0.1:3200");
 const origin = new URL(process.env.AUTH_URL || process.env.SITE_URL || "https://demo.example.invalid").origin;
@@ -67,6 +68,42 @@ async function legacyProfileDestination(userId) {
 }
 const adminPages = ["/admin", "/admin/users", "/admin/websites", "/admin/ads", "/admin/payments", "/admin/audit", "/admin/redirects"];
 try {
+  // Exercise the real proxy and its background write against isolated data.
+  const browserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140.0.0.0 Safari/537.36";
+  for (const options of [
+    { headers: { "user-agent": browserAgent } },
+    { headers: { "user-agent": "Googlebot/2.1" } },
+    { method: "HEAD", headers: { "user-agent": browserAgent } },
+    { headers: { "user-agent": browserAgent, purpose: "prefetch" } },
+    { headers: { "user-agent": browserAgent, rsc: "1" } },
+    { headers: { "user-agent": browserAgent, dnt: "1" } },
+    { headers: { "user-agent": browserAgent, "sec-gpc": "1" } },
+  ]) {
+    const response = await fetch(new URL("/synthetic-old-address?ignored=private-query", base), {
+      ...options, headers: { ...options.headers, host: new URL(origin).host }, redirect: "manual", signal: AbortSignal.timeout(30_000),
+    });
+    await response.arrayBuffer();
+    assert(response.status === 301 && response.headers.get("location") === `${origin}/about`, "Tracked redirect behavior changed.");
+  }
+  let measured;
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const response = await fetch(new URL("/api/admin/redirects", base), { signal: AbortSignal.timeout(30_000),
+      headers: { cookie: `__Secure-next-auth.session-token=${await sessionFor(ownerId)}` } });
+    assert(response.status === 200 && /no-store/.test(response.headers.get("cache-control") ?? ""), "Redirect statistics must be private and available to administrators.");
+    measured = (await response.json()).rules.find(rule => rule.sourcePath === "/synthetic-old-address")?.statistics;
+    if (measured?.total >= 2) break;
+    await delay(100);
+  }
+  assert(measured?.total === 2 && measured.human === 1 && measured.bot === 1 && measured.today === 2 && measured.last30Days === 2,
+    "Redirect statistics lost requests or counted excluded traffic.");
+  report.push({ interaction: "redirect-request-counts-bot-separation-and-privacy-exclusions", passed: true });
+  for (const userId of [null, founderId]) {
+    const response = await fetch(new URL("/api/admin/redirects", base), { signal: AbortSignal.timeout(30_000),
+      headers: userId ? { cookie: `__Secure-next-auth.session-token=${await sessionFor(userId)}` } : {} });
+    await response.arrayBuffer();
+    assert(response.status === (userId ? 403 : 401), "Redirect statistics were exposed to a non-administrator.");
+  }
+  report.push({ interaction: "redirect-statistics-api-authorization", passed: true });
   const publicProfilePath = await legacyProfileDestination(ownerId);
   const privateProfilePath = await legacyProfileDestination(privateId);
   report.push({ interaction: "authenticated-legacy-profile-301", passed: true });

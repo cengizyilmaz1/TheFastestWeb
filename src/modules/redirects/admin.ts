@@ -7,6 +7,7 @@ import { adminRoles, auditLogs, founders, founderSlugAliases, redirectRules } fr
 import { AppError } from "@/lib/http/errors";
 import type { AdminActor } from "@/modules/admin/access";
 import { redirectInputSchema, redirectsConflict, type RedirectInput } from "./policy";
+import { emptyRedirectStatistics, readRedirectStatistics } from "./statistics";
 type Tx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 function database() { const db = getDb(); if (!db) throw new AppError("DATABASE_UNAVAILABLE", "Redirect administration is temporarily unavailable.", 503); return db; }
 function secret() { const value = getEnv().AUTH_SECRET; if (!value || value.length < 32) throw new AppError("SERVICE_UNAVAILABLE", "Administration is not configured.", 503); return value; }
@@ -43,7 +44,9 @@ export async function listManagedRedirects(actor: AdminActor) {
     const aliases = await tx.select({ oldUsername: founderSlugAliases.slug, username: founders.slug, visibility: founders.visibility })
       .from(founderSlugAliases).innerJoin(founders, eq(founders.id, founderSlugAliases.founderId))
       .where(sql`${founderSlugAliases.slug} <> ${founders.slug}`).orderBy(asc(founderSlugAliases.slug)).limit(200);
-    return { rules, aliases };
+    const metrics = await readRedirectStatistics(tx);
+    return { rules: rules.map(rule => ({ ...rule, statistics: metrics.rules[rule.id] ?? emptyRedirectStatistics() })), aliases,
+      statistics: metrics.statistics, founderStatistics: metrics.founderStatistics };
   });
 }
 export async function previewRedirect(actor: AdminActor, raw: unknown) {
@@ -78,4 +81,3 @@ export async function saveRedirect(actor: AdminActor, raw: unknown, token: strin
     return { saved: true, id: input.id, replayed: false };
   });
 }
-
