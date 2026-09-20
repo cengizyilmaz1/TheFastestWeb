@@ -25,7 +25,7 @@ describe("cookieless analytics and legacy opt-out", () => {
     expect(isAnalyticsPage("/profile/00000000-0000-4000-8000-000000000001", "")).toBe(false);
     expect(isAnalyticsPage("/", "email=private")).toBe(false);
     expect(isAnalyticsPage("/sites/example", "")).toBe(true);
-    for (const path of ["/%70rofile/account", "/prof%69le/account", "/PROFILE/account", "/%2570rofile/account", "/a/../profile/account", "/%2fprofile/account"]) {
+    for (const path of ["/%70rofile/account", "/prof%69le/account", "/PROFILE/account", "/%2570rofile/account", "/a/../profile/account", "/%2fprofile/account", "/founder/private-owner", "/%66ounder/private-owner"]) {
       expect(isAnalyticsPage(path, "")).toBe(false);
     }
   });

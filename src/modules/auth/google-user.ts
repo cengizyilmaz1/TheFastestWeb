@@ -4,6 +4,7 @@ import { getDb } from "@/db";
 import { users } from "@/db/schema";
 import { AppError } from "@/lib/http/errors";
 import { enqueueNotification } from "@/modules/notifications/service";
+import { ensureFounderIdentity } from "@/modules/founders/usernames";
 
 /** Email is accepted only from Google's verified OAuth profile. Never recreate restored IDs. */
 export async function synchronizeGoogleUser(profile: { email: string; name?: string | null; image?: string | null }): Promise<string> {
@@ -17,10 +18,12 @@ export async function synchronizeGoogleUser(profile: { email: string; name?: str
     const [existing] = await tx.select({ id: users.id }).from(users).where(sql`lower(${users.email}) = ${email}`).limit(1);
     if (existing) {
       await tx.update(users).set({ name, avatarUrl }).where(eq(users.id, existing.id));
+      await ensureFounderIdentity(tx, existing.id, profile.name);
       return existing.id;
     }
     const id = randomUUID();
     await tx.insert(users).values({ id, email, name, avatarUrl });
+    await ensureFounderIdentity(tx, id, profile.name);
     await enqueueNotification({ userId: id, type: "welcome", eventKey: `user:${id}:welcome`,
       variables: { name: name.slice(0, 120), actionPath: "/submit" } }, tx);
     return id;

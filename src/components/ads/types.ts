@@ -4,4 +4,4 @@ import type { AdSlot } from "@/db/schema";
 export type PublicAdSlot = Pick<
   AdSlot,
   "id" | "position" | "orderIndex" | "name" | "url" | "tagline" | "faviconUrl"
->;
+> & { ownerPromotion?: boolean };

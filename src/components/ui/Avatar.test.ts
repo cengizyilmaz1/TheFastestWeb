@@ -12,7 +12,7 @@ describe("published founder avatars", () => {
     const html = renderToStaticMarkup(React.createElement(LeaderboardRow, { rank: 1, site: {
       id: "site", slug: "example", name: "Example", url: "https://example.com", description: "Example site",
       category: null, faviconUrl: null, currentScore: 99, ownerId: "owner", ownerName: "Public Founder",
-      ownerAvatarUrl: "https://media.example.com/published.webp", twitterHandle: null,
+      ownerAvatarUrl: "https://media.example.com/published.webp", ownerUsername: "public-founder", twitterHandle: null,
     } }));
     expect(html).toContain('src="https://media.example.com/published.webp"');
     expect(html).toContain('width="24" height="24"');

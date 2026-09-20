@@ -159,9 +159,16 @@ body::before {
 .content-faq details { border-bottom: 1px solid var(--color-border); padding-block: 20px; }
 .content-faq summary { cursor: pointer; font-size: .96rem; font-weight: 600; color: var(--color-text-primary); padding-right: 12px; }
 .content-faq details p { margin-top: 12px; color: var(--content-muted); font-size: .9rem; line-height: 1.8; max-width: 700px; }
-.site-footer { padding: 42px 40px 26px; border-top: 1px solid var(--color-border); color: #b6ad9f; font-family: var(--font-inter), system-ui, sans-serif; }
-.site-footer a { text-decoration: none; transition: color .2s; }
+.site-footer { position: relative; margin-top: 24px; padding: 56px 40px 28px; border-top: 1px solid var(--color-border); background: linear-gradient(180deg, var(--color-bg-main), var(--color-bg-deep) 70%); color: #b6ad9f; font-family: var(--font-inter), system-ui, sans-serif; }
+.site-footer::before { content: ''; position: absolute; top: -1px; left: 50%; width: min(420px, 60%); height: 1px; transform: translateX(-50%); background: linear-gradient(90deg, transparent, var(--color-accent), transparent); opacity: .7; }
+.site-footer a { text-decoration: none; transition: color .2s, border-color .2s, background-color .2s; }
 .site-footer nav a:hover { color: var(--color-accent); }
+.site-footer-cta { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 8px 16px; border: 1px solid var(--color-border-light); border-radius: 999px; color: var(--color-text-primary); font-size: .8rem; font-weight: 600; }
+.site-footer-cta:hover { border-color: var(--color-accent); background: var(--color-accent-glow); color: var(--color-accent-bright); }
+.site-footer a.site-footer-owner { color: var(--color-text-primary); font-weight: 600; text-decoration: underline; text-decoration-color: var(--color-border-light); text-underline-offset: 4px; }
+.site-footer a.site-footer-owner:hover { color: var(--color-accent); text-decoration-color: currentColor; }
+.admin-shell :is(a,button,input,select,textarea,summary):focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
+.admin-nav { overflow-x: auto; scrollbar-width: none; }
 @media (max-width: 760px) {
   .content-page { padding: 40px 22px 64px; }
   .content-header { padding-bottom: 28px; margin-bottom: 28px; }
@@ -171,9 +178,15 @@ body::before {
   .content-card { padding: 24px; }
   .legal-nav { position: static; padding-bottom: 24px; border-bottom: 1px solid var(--color-border); }
   .legal-nav ol { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 0 18px; }
-  .site-footer { padding: 34px 22px 24px; }
+  .site-footer { padding: 40px 22px 24px; }
 }
 }
+/* The administrator panel uses the full width: no sponsor rails, no public footer.
+   Unlayered on purpose, so these win over the layout's utility classes. */
+body:has(.admin-shell) .app-grid { grid-template-columns: minmax(0,1fr); }
+body:has(.admin-shell) .app-grid > aside, body:has(.admin-shell) .site-footer { display: none; }
+body:has(.admin-shell) #main-content { grid-column-start: 1; }
+body:has(.admin-shell) .site-nav { left: 0; right: 0; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
 }

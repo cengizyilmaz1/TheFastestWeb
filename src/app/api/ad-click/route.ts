@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { createHmac } from "node:crypto";
 import { z } from "zod";
 import { and, eq, gt, gte, isNull, or, sql } from "drizzle-orm";
 import { getDb } from "@/db";
@@ -10,17 +9,18 @@ import { AppError } from "@/lib/http/errors";
 import { assertSameOrigin, readJson } from "@/modules/security/request";
 import { enforceRateLimit } from "@/modules/security/rate-limit";
 import { recordAnalyticsEvent } from "@/modules/analytics/events";
+import { clickPseudonym, skipClickObservation } from "@/modules/analytics/click-observation";
 
 export const POST = withApi(async (request) => {
   assertSameOrigin(request);
   const { id } = await readJson(request, z.object({ id: z.number().int().positive() }).strict(), 1024);
+  if (skipClickObservation(request.headers)) return NextResponse.json({ ok: true, ignored: true }, { headers: { "Cache-Control": "no-store" } });
   await enforceRateLimit("ad-click-global", "all", 1000, 3600);
   const db = getDb(), secret = getEnv().AUTH_SECRET;
   if (!db || !secret) throw new AppError("SERVICE_UNAVAILABLE", "Click tracking is temporarily unavailable.", 503);
   // This pseudonym reduces retained data. Forwarded addresses are NOT an auth boundary.
-  const day = new Date().toISOString().slice(0, 10);
-  const ip = (request.headers.get("x-forwarded-for")?.split(",")[0] || "unknown").trim().slice(0, 64);
-  const pseudonym = createHmac("sha256", secret).update(day + "\0" + ip).digest("hex");
+  const pseudonym = clickPseudonym(request.headers, secret);
+  await enforceRateLimit("ad-click-visitor", pseudonym, 60, 3600);
   const deduped = await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${"click:" + id + ":" + pseudonym}, 0))`);
     const [slot] = await tx.select({ id: adSlots.id, position: adSlots.position }).from(adSlots).where(and(eq(adSlots.id, id), eq(adSlots.isActive, true),

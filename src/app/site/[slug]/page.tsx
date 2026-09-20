@@ -6,6 +6,8 @@ import { getDb } from "@/db/index";
 import { founders, sites, speedTests } from "@/db/schema";
 import { FaviconImg } from "@/components/ui/FaviconImg";
 import { Avatar } from "@/components/ui/Avatar";
+import { getFounderPath } from "@/modules/founders/paths";
+import { OutboundLink } from "@/components/ui/OutboundLink";
 import { and, eq, desc, inArray, isNull, sql } from "drizzle-orm";
 import { HistoryChart } from "@/components/site-detail/HistoryChart";
 import { MetricsGrid } from "@/components/site-detail/MetricsGrid";
@@ -26,7 +28,7 @@ const getSiteBySlug = cache(async (slug: string) => {
     const [row] = await db
       .select({ ...publicSiteProjection, tier: sites.tier, trend: sites.trend,
         currentLoadTime: sites.currentLoadTime, currentFcp: sites.currentFcp, currentTti: sites.currentTti,
-        currentSi: sites.currentSi, ownerId: founders.userId, ownerName: founders.name, ownerAvatarUrl: founders.avatarUrl })
+        currentSi: sites.currentSi, ownerId: founders.userId, ownerName: founders.name, ownerAvatarUrl: founders.avatarUrl, ownerUsername: founders.slug })
       .from(sites)
       .leftJoin(founders, and(eq(founders.userId, sites.ownerId), eq(founders.visibility, "public")))
       .where(and(eq(sites.slug, slug), eq(sites.isListed, true), isNull(sites.archivedAt),
@@ -227,14 +229,13 @@ export default async function SiteDetailPage({
                 >
                   Share on X
                 </a>
-                <a
-                  href={`${site.url}${site.url.includes("?") ? "&" : "?"}ref=thefastestweb`}
-                  target="_blank"
+                <OutboundLink
+                  href={site.url} placement="product" trackingId={site.id}
                   rel={site.tier === "pro" ? "noopener noreferrer" : "nofollow noopener noreferrer"}
                   className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-[10px] bg-bg-card border border-border text-text-primary font-semibold text-[0.82rem] cursor-pointer transition-all duration-200 font-body no-underline hover:bg-bg-card-hover hover:border-border-light whitespace-nowrap"
                 >
                   Visit ↗
-                </a>
+                </OutboundLink>
               </div>
             </div>
             <p className="text-text-secondary text-[0.88rem] max-[640px]:text-[0.82rem]">
@@ -270,9 +271,9 @@ export default async function SiteDetailPage({
             Built by
           </div>
           <div className="font-display font-bold text-[1.2rem] leading-tight">
-            {site.ownerId ? (
+            {site.ownerUsername ? (
               <Link
-                href={`/profile/${site.ownerId}`}
+                href={getFounderPath(site.ownerUsername)}
                 className="inline-flex items-center gap-2 no-underline text-inherit hover:text-accent transition-colors"
               >
                 <Avatar name={site.ownerName} src={site.ownerAvatarUrl} size={34} />

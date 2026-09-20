@@ -10,7 +10,7 @@ import { getSiteProfile } from "../../src/modules/sites/profile";
 import { getPublicFounder } from "../../src/modules/founders/service";
 import { sitemapDocument, publicCorpusSummary } from "../../src/modules/seo/sitemaps";
 import { cleanupIntegrationDatabase, fixtureSql, prepareIntegrationDatabase, resetIntegrationData } from "./database";
-import ProfilePage, { generateMetadata as profileMetadata } from "../../src/app/profile/[userId]/page";
+import ProfilePage, { generateMetadata as profileMetadata } from "../../src/app/founder/[username]/page";
 import SitePage, { generateMetadata as siteMetadata } from "../../src/app/site/[slug]/page";
 const {auth}=vi.hoisted(()=>({auth:vi.fn()}));
 vi.mock("../../src/auth",()=>({auth}));
@@ -77,13 +77,14 @@ describe("public data boundaries on PostgreSQL",()=>{
     expect(await getPublicFounder("private-founder")).toBeNull();
     expect((await listFounders()).founders.map(row=>row.slug)).toEqual(["public-founder"]);
     expect((await getSiteProfile("visible"))?.founders).toEqual([{slug:"public-founder",name:"Chosen public name"}]);
-    // Exercise the runtime boundary with a deliberately invalid external section.
-    await expect(sitemapDocument("founders" as Parameters<typeof sitemapDocument>[0],0)).rejects.toMatchObject({code:"NOT_FOUND"});
+    const sitemap = await sitemapDocument("founders",0);
+    expect(sitemap).toContain("/founder/public-founder");
+    expect(sitemap).not.toContain("private-founder");
   });
   it("renders original account-profile markup only after public opt-in and removes it after opt-out",async()=>{
     const visible=await site("public-profile-site"),hidden=await site("private-profile-site","active",false);
     const profileId=randomUUID();
-    const props=()=>({params:Promise.resolve({userId:owner})});
+    const props=()=>({params:Promise.resolve({username:"chosen-profile"})});
     await fixtureSql()`INSERT INTO founders(id,user_id,slug,name,visibility,avatar_url)
       VALUES(${profileId},${owner},'chosen-profile','Chosen display name','private','https://example.com/avatar.png')`;
     for(const id of [visible,hidden])await fixtureSql()`INSERT INTO founder_sites(founder_id,site_id) VALUES(${profileId},${id})`;
@@ -130,7 +131,8 @@ describe("public data boundaries on PostgreSQL",()=>{
   it("allows an unpublished profile only for its authenticated owner without creating public attribution",async()=>{
     await site("owned-public");await site("owned-private","active",false);
     await fixtureSql()`UPDATE users SET avatar_url='https://example.com/private-account-avatar.webp' WHERE id=${owner}`;
-    const props=()=>({params:Promise.resolve({userId:owner})});
+    await fixtureSql()`INSERT INTO founders(user_id,slug,name,visibility) VALUES(${owner},'private-account','Private account name','private')`;
+    const props=()=>({params:Promise.resolve({username:"private-account"})});
     await expect(ProfilePage(props())).rejects.toThrow("NOT_FOUND");
     auth.mockResolvedValue({user:{id:randomUUID()}});
     await expect(ProfilePage(props())).rejects.toThrow("NOT_FOUND");
@@ -141,7 +143,7 @@ describe("public data boundaries on PostgreSQL",()=>{
     expect(markup).not.toContain("/site/owned-private");expect(markup).not.toContain("never-public@example.invalid");
     const metadata=JSON.stringify(await profileMetadata(props()));
     expect(metadata).not.toContain("Private account name");expect(metadata).not.toContain("private-account-avatar.webp");
-    const [state]=await fixtureSql()`SELECT count(*)::int AS count FROM founders`;
+    const [state]=await fixtureSql()`SELECT count(*)::int AS count FROM founders WHERE visibility='public'`;
     expect(state.count).toBe(0);
     auth.mockResolvedValue(null);
     await expect(ProfilePage(props())).rejects.toThrow("NOT_FOUND");

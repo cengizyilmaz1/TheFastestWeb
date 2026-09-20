@@ -9,6 +9,8 @@ import type { AdminActor } from "./access";
 import { approveAdReservation, releaseAdReservation } from "@/modules/payments/ads";
 import { recordAnalyticsEvent } from "@/modules/analytics/events";
 import { enqueueNotification } from "@/modules/notifications/service";
+import { categorySlugs } from "@/modules/catalog/categories";
+import { changeSitePrimaryCategory, readSiteCategoryState } from "./site-category";
 
 type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 const reason = z.string().trim().min(8).max(500);
@@ -24,6 +26,7 @@ export const productInputSchema = z.object({ id: z.uuid(), key: z.string().regex
 export const adminActionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("site.lifecycle"), siteId: z.uuid(), lifecycle: z.enum(["active", "suspended", "archived"]), reason }).strict(),
   z.object({ action: z.literal("site.monitoring"), siteId: z.uuid(), paused: z.boolean(), reason }).strict(),
+  z.object({ action: z.literal("site.category"), siteId: z.uuid(), categorySlug: z.enum(categorySlugs), reason }).strict(),
   z.object({ action: z.literal("claim.reject"), claimId: z.uuid(), reason }).strict(),
   z.object({ action: z.literal("claim.transfer"), claimId: z.uuid(), reason }).strict(),
   z.object({ action: z.literal("job.retry"), jobId: z.uuid(), reason }).strict(),
@@ -59,7 +62,8 @@ async function authorize(tx: Transaction, actor: AdminActor, action?: AdminActio
     throw new AppError("FORBIDDEN", "Your role does not allow this administrative action.", 403);
   }
 }
-async function beforeState(tx: Transaction, action: AdminAction) {
+async function beforeState(tx: Transaction, action: AdminAction): Promise<Record<string, unknown> | null> {
+  if (action.action === "site.category") return readSiteCategoryState(tx, action.siteId, action.categorySlug);
   const identity = target(action);
   let rows;
   if (identity.type === "site") rows = await tx.execute(sql`SELECT id,lifecycle,is_listed,monitoring_paused,archived_at FROM sites WHERE id=${identity.id} FOR UPDATE`);
@@ -134,6 +138,8 @@ export async function executeAdminAction(actor: AdminActor, raw: unknown, token:
       }
     } else if (action.action === "site.monitoring") {
       await tx.update(sites).set({ monitoringPaused: action.paused }).where(eq(sites.id, action.siteId));
+    } else if (action.action === "site.category") {
+      await changeSitePrimaryCategory(tx, action.siteId, action.categorySlug);
     } else if (action.action === "claim.reject") {
       if (before?.status !== "pending") throw new AppError("CONFLICT", "Only a pending claim can be rejected.", 409);
       await tx.update(siteClaims).set({ status: "rejected" }).where(eq(siteClaims.id, action.claimId));

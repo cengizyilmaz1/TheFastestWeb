@@ -27,6 +27,7 @@ export const analyticsEventSchema = z.discriminatedUnion("name", [
   event("share_card_generated", z.object({ awardId: z.uuid() }).strict()),
   // This is an unverified interaction count, never proof of a human or a billable click.
   event("ad_clicked", z.object({ placement: z.enum(["left", "right"]) }).strict()),
+  event("site_clicked", z.object({ placement: z.literal("product") }).strict()),
   event("checkout_started", purchase),
   event("payment_completed", purchase),
   event("subscription_changed", z.object({ status: z.enum(["pending", "active", "on_hold", "paused", "cancelled", "failed", "expired", "past_due"]) }).strict()),
@@ -48,7 +49,7 @@ export async function getAnalyticsSummary() {
   if (!db) throw new AppError("DATABASE_UNAVAILABLE", "Application events are temporarily unavailable.", 503);
   const rows = await db.execute<{ name: string; day: string; count: number; trust: string }>(sql`
     SELECT name,to_char(occurred_at AT TIME ZONE 'UTC','YYYY-MM-DD') AS day,count(*)::int AS count,
-      CASE WHEN name='ad_clicked' THEN 'unverified_interaction' ELSE 'server_business_event' END AS trust
+      CASE WHEN name IN ('ad_clicked','site_clicked') THEN 'unverified_interaction' ELSE 'server_business_event' END AS trust
     FROM analytics_events WHERE occurred_at>=now()-interval '30 days'
     GROUP BY name,day ORDER BY day DESC,name LIMIT 480`);
   return rows.map((row) => ({ ...row }));

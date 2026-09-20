@@ -20,10 +20,16 @@ describe("additive IndieTools reference-data migration", () => {
 
   it("preserves old IDs, assignments, history and an operator's inactive category on upgrade and replay", async () => {
     const sql = fixtureSql();
-    // Reconstruct the valid pre-0008 reference-data state only inside this
-    // newly generated tfw_test_ database. The schema is unchanged by 0008.
+    // Reconstruct the valid pre-0008 state only inside this disposable database,
+    // including schema additions made by subsequent migrations.
+    const baseline = JSON.parse(await readFile(new URL("../../src/db/migrations/meta/0008_indietools_categories.json", import.meta.url), "utf8"));
+    const check = baseline.relations.find((row: { name: string }) => row.name === "analytics_events")
+      .constraints.find((row: { name: string }) => row.name === "analytics_events_name_valid").definition;
+    await sql`DROP TABLE public.founder_slug_aliases, public.redirect_rules`;
+    await sql`ALTER TABLE public.analytics_events DROP CONSTRAINT analytics_events_name_valid`;
+    await sql.unsafe(`ALTER TABLE public.analytics_events ADD CONSTRAINT analytics_events_name_valid ${check}`);
     await sql`DELETE FROM public.categories WHERE slug IN ${sql([...indieCategorySlugs])}`;
-    await sql`DELETE FROM app_meta.schema_migrations WHERE version='0008_indietools_categories'`;
+    await sql`DELETE FROM app_meta.schema_migrations WHERE version>='0008'`;
     const owner = randomUUID(), site = randomUUID(), customCategory = randomUUID();
     await sql`INSERT INTO public.users(id,email,name) VALUES(${owner},'category-fixture@example.invalid','Category fixture')`;
     await sql`INSERT INTO public.sites(id,slug,name,url,normalized_url,description,owner_id,owner_name,category,is_listed,lifecycle)
@@ -44,7 +50,7 @@ describe("additive IndieTools reference-data migration", () => {
     ownerUrl.pathname = `/${name}`;
     const messages: string[] = [];
     await migrateDatabase({ databaseUrl: ownerUrl.toString(), log: (message) => messages.push(message) });
-    expect(messages).toEqual(["Applied 0008_indietools_categories."]);
+    expect(messages).toEqual(["Applied 0008_indietools_categories.", "Applied 0009_founder_urls_redirects.", "Applied 0010_outbound_clicks."]);
     const after = await sql`SELECT
       (SELECT jsonb_agg(to_jsonb(c) ORDER BY c.id) FROM public.categories c WHERE c.slug NOT IN ${sql([...indieCategorySlugs].filter((slug) => slug !== "ai"))}) AS categories,
       (SELECT jsonb_agg(to_jsonb(s) ORDER BY s.id) FROM public.sites s) AS sites,

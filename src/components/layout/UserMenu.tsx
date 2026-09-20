@@ -6,6 +6,7 @@ import { signOut } from "next-auth/react";
 
 interface UserMenuProps {
   userId: string;
+  profileHref?: string;
   name: string;
   avatarUrl: string | null;
   twitterHandle: string | null;
@@ -13,7 +14,7 @@ interface UserMenuProps {
   canManagePayments?: boolean;
 }
 
-export function UserMenu({ userId, name, avatarUrl, twitterHandle, isPro, canManagePayments = false }: UserMenuProps) {
+export function UserMenu({ userId, profileHref, name, avatarUrl, twitterHandle, isPro, canManagePayments = false }: UserMenuProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -73,7 +74,7 @@ export function UserMenu({ userId, name, avatarUrl, twitterHandle, isPro, canMan
       {open && (
         <div className="absolute right-0 top-[calc(100%+6px)] w-[180px] bg-bg-main border border-border rounded-[10px] shadow-[0_8px_30px_rgba(0,0,0,0.4)] overflow-hidden z-50 animate-fade-in-up">
           <Link
-            href={`/profile/${userId}`}
+            href={profileHref ?? `/profile/${userId}`}
             onClick={() => setOpen(false)}
             className="flex items-center gap-2.5 px-3.5 py-2.5 text-[0.82rem] text-text-secondary no-underline hover:bg-bg-card hover:text-text-primary transition-colors"
           >
@@ -88,9 +89,9 @@ export function UserMenu({ userId, name, avatarUrl, twitterHandle, isPro, canMan
             className="flex items-center gap-2.5 px-3.5 py-2.5 text-[0.82rem] text-text-secondary no-underline hover:bg-bg-card hover:text-text-primary transition-colors"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="text-text-muted" aria-hidden="true">
-              <rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 10h18M7 15h3" />
+              <rect x="3" y="3" width="7.5" height="7.5" rx="1.5" /><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5" /><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5" /><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5" />
             </svg>
-            Payment admin
+            Admin panel
           </Link>}
           <div className="h-px bg-border" />
           <button

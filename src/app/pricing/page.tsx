@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { ArrowUpRight } from "@phosphor-icons/react/dist/ssr";
 import { pageMetadata } from "@/lib/seo/metadata";
 import { safeJsonLd } from "@/lib/seo/json-ld";
 import { webPageSchema } from "@/lib/seo/structured-data";
@@ -28,10 +27,6 @@ export default async function PricingPage() {
     <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd({ "@context": "https://schema.org", "@type": "FAQPage", mainEntity: questions.map(item => ({ "@type": "Question", name: item.question, acceptedAnswer: { "@type": "Answer", text: item.answer } })) }) }} />
     <PageHeading eyebrow="Plans for independent builders" title={page.title} description={page.description} />
     <PricingTiers isPro={isPro} />
-    <section className="content-section content-divider flex flex-wrap items-center justify-between gap-6">
-      <div className="max-w-[510px]"><p className="content-eyebrow mb-3">Looking for visibility?</p><h2 className="font-display text-2xl font-semibold tracking-tight">A space for your product. $19/month.</h2><p className="mt-3 text-sm leading-7 text-text-secondary">One sponsored desktop sidebar placement, separate from organic rankings. Subject to inventory, listing ownership and creative approval.</p></div>
-      <Link href="/advertise" className="content-action-secondary">Explore advertising <ArrowUpRight size={17} aria-hidden="true" /></Link>
-    </section>
     <section className="content-section content-faq" aria-labelledby="pricing-questions"><SectionHeading title={<span id="pricing-questions">Before you choose.</span>} />{questions.map(item => <details key={item.question}><summary>{item.question}</summary><p>{item.answer}</p></details>)}</section>
     <div className="content-section flex flex-wrap gap-x-6 gap-y-3 text-sm"><a href={`mailto:${siteConfig.email}`} className="content-link">Ask a question</a><Link href="/terms" className="content-link">Read the terms</Link><MarkdownLink path="/pricing" /></div>
   </PageShell>;

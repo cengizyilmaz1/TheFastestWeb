@@ -660,6 +660,25 @@ export const achievements = pgTable("achievements", {
   active: boolean("active").default(true).notNull(),
 });
 
+/** All canonical and former names stay reserved to their original founder. */
+export const founderSlugAliases = pgTable("founder_slug_aliases", {
+  slug: text("slug").primaryKey(),
+  founderId: uuid("founder_id").notNull().references(() => founders.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [index("founder_slug_aliases_founder_idx").on(t.founderId),
+  check("founder_slug_aliases_slug_valid", sql`length(${t.slug}) BETWEEN 2 AND 80 AND ${t.slug} ~ '^[a-z0-9]+(-[a-z0-9]+)*$'`)]);
+
+export const redirectRules = pgTable("redirect_rules", {
+  id: uuid("id").primaryKey().defaultRandom(), sourcePath: text("source_path").notNull().unique(),
+  destinationPath: text("destination_path").notNull(), statusCode: integer("status_code").notNull().default(301),
+  enabled: boolean("enabled").notNull().default(true), version: integer("version").notNull().default(1),
+  updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [check("redirect_rules_status_valid", sql`${t.statusCode} IN (301,302,307,308)`),
+  check("redirect_rules_version_valid", sql`${t.version} >= 1`),
+  check("redirect_rules_paths_valid", sql`length(${t.sourcePath}) BETWEEN 1 AND 500 AND length(${t.destinationPath}) BETWEEN 1 AND 500 AND ${t.sourcePath} ~ '^/[^/]*' AND ${t.destinationPath} ~ '^/[^/]*' AND ${t.sourcePath} <> ${t.destinationPath}`)]);
+
 export const analyticsEvents = pgTable("analytics_events", {
   id:uuid("id").primaryKey().defaultRandom(),
   eventKey:text("event_key").unique().notNull(),
@@ -669,7 +688,7 @@ export const analyticsEvents = pgTable("analytics_events", {
   properties:jsonb("properties").$type<Record<string,unknown>>().default({}).notNull(),
 },(t)=>[
   index("analytics_events_name_occurred_idx").on(t.name,t.occurredAt.desc()),
-  check("analytics_events_name_valid",sql`${t.name} IN ('site_submitted','site_claimed','speed_test_started','speed_test_completed','speed_test_failed','badge_verified','badge_awarded','weekly_entered','weekly_won','share_card_generated','ad_clicked','checkout_started','payment_completed','subscription_changed','ad_approved','ranking_finalized')`),
+  check("analytics_events_name_valid",sql`${t.name} IN ('site_submitted','site_claimed','speed_test_started','speed_test_completed','speed_test_failed','badge_verified','badge_awarded','weekly_entered','weekly_won','share_card_generated','ad_clicked','site_clicked','checkout_started','payment_completed','subscription_changed','ad_approved','ranking_finalized')`),
   check("analytics_events_properties_object",sql`jsonb_typeof(${t.properties})='object'`),
 ]);
 

@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { LegacyLeaderboardSite } from "@/modules/sites/legacy-view";
 import { FaviconImg } from "@/components/ui/FaviconImg";
 import { Avatar } from "@/components/ui/Avatar";
+import { getFounderPath } from "@/modules/founders/paths";
 
 interface LeaderboardRowProps {
   site: LegacyLeaderboardSite;
@@ -72,9 +73,9 @@ export function LeaderboardRow({ site, rank }: LeaderboardRowProps) {
         </Link>
       </td>
       <td className="py-3 px-3.5 max-w-[160px]">
-        {site.ownerId ? (
+        {site.ownerUsername ? (
           <Link
-            href={`/profile/${site.ownerId}`}
+            href={getFounderPath(site.ownerUsername)}
             className="flex items-center gap-2 text-text-secondary text-[0.82rem] no-underline hover:text-text-primary transition-colors"
             onClick={(e) => e.stopPropagation()}
           >

@@ -26,7 +26,7 @@ describe("bounded advertisement click observations", () => {
     const events = await fixtureSql()`SELECT name,properties FROM analytics_events`;
     expect(events).toHaveLength(1);
     expect(events[0]).toEqual({ name: "ad_clicked", properties: { placement: "left" } });
-    expect(rateLimit).toHaveBeenCalledTimes(6);
+    expect(rateLimit).toHaveBeenCalledTimes(12);
   });
   it.each(["inactive", "pending", "expired"])("rejects %s advertisements without creating click facts", async (state) => {
     const id = await slot();
@@ -42,5 +42,12 @@ describe("bounded advertisement click observations", () => {
     expect((await POST(request(id, "https://unrelated.example"), undefined)).status).toBe(403);
     expect(rateLimit).not.toHaveBeenCalled();
     expect(await fixtureSql()`SELECT id FROM analytics_events`).toHaveLength(0);
+  });
+  it("ignores declared crawlers without storing observations", async () => {
+    const id = await slot(), req = request(id);
+    req.headers.set("user-agent", "GPTBot/1.3");
+    expect((await POST(req, undefined)).status).toBe(200);
+    expect(rateLimit).not.toHaveBeenCalled();
+    expect(await fixtureSql()`SELECT id FROM ad_clicks`).toHaveLength(0);
   });
 });

@@ -5,6 +5,7 @@ import { countries, founders, founderSites, founderSocialLinks, sites, users } f
 import { AppError } from "@/lib/http/errors";
 import { normalizePublicUrl } from "@/lib/security/public-url";
 import { readFounderInsights } from "./insights";
+import { lockFounderNames, reserveFounderName } from "./usernames";
 
 const publicUrl = z.string().max(4096).transform((value, ctx) => {
   try { return normalizePublicUrl(value); }
@@ -31,10 +32,13 @@ function database() {
 export async function saveFounderProfile(userId: string, raw: unknown) {
   const input = founderProfileSchema.parse(raw);
   return database().transaction(async (tx) => {
+    await lockFounderNames(tx);
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${"founder-user:" + userId},0))`);
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${"founder-slug:" + input.slug},0))`);
     const [user] = await tx.select({ id: users.id }).from(users).where(eq(users.id, userId));
     if (!user) throw new AppError("UNAUTHORIZED", "Please sign in again.", 401);
+    const [current] = await tx.select().from(founders).where(eq(founders.userId, userId));
+    if (current && current.slug !== input.slug) throw new AppError("CONFLICT", "Change your username through profile settings first.", 409);
     const [sameSlug] = await tx.select({ userId: founders.userId }).from(founders).where(eq(founders.slug, input.slug));
     if (sameSlug && sameSlug.userId !== userId) throw new AppError("CONFLICT", "This profile URL is already in use.", 409);
     if (input.countryCode) {
@@ -45,6 +49,7 @@ export async function saveFounderProfile(userId: string, raw: unknown) {
     const [founder] = await tx.insert(founders).values({ ...profile, userId }).onConflictDoUpdate({
       target: founders.userId, set: { ...profile, updatedAt: sql`now()` },
     }).returning();
+    await reserveFounderName(tx, founder.id, founder.slug);
     await tx.delete(founderSocialLinks).where(eq(founderSocialLinks.founderId, founder.id));
     if (socialLinks.length) await tx.insert(founderSocialLinks).values(socialLinks.map((link) => ({ founderId: founder.id, ...link })));
     return founder;

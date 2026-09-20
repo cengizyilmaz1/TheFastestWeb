@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { productPrice } from "@/components/pricing/checkout-client";
 import { confirmCatalogAction, loadPaymentCatalog, previewCatalogAction, type CatalogAction,
   type CatalogMode, type CatalogPreview, type PaymentCatalog, type PaymentPlan } from "./catalog-client";
-import { AdOperationsPanel } from "./ad-operations-panel";
 
 const field = "w-full rounded-[10px] border border-border bg-bg-card px-3 py-2.5 text-[0.85rem] text-text-primary outline-none focus:border-accent disabled:opacity-60";
 const secondary = "rounded-[10px] border border-border bg-bg-card px-4 py-2.5 text-[0.82rem] font-semibold text-text-primary hover:border-border-light disabled:cursor-not-allowed disabled:opacity-50";
@@ -82,10 +81,10 @@ export function PaymentCatalogPanel() {
     } finally { setReview(null); setBusy(false); }
   }
 
-  return <div className="mx-auto max-w-[1000px] px-5 py-[40px] pb-[60px]">
-    <div className="mb-7 flex flex-wrap items-start justify-between gap-4">
-      <div><h1 className="font-display text-[1.9rem] font-[800] tracking-[-0.02em]">Payment administration</h1>
-        <p className="mt-2 max-w-[600px] text-[0.88rem] leading-relaxed text-text-secondary">Review the original packages and sync their Dodo products. Every change requires a preview and confirmation.</p></div>
+  return <section aria-labelledby="payment-catalog-title" className="mt-8">
+    <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
+      <div><h2 id="payment-catalog-title" className="font-display text-[1.35rem] font-[800] tracking-[-0.02em]">Dodo product catalog</h2>
+        <p className="mt-2 max-w-[600px] text-[0.82rem] leading-relaxed text-text-secondary">Review the original packages and sync their Dodo products. Every change requires a preview and confirmation.</p></div>
       <button type="button" className={secondary} disabled={loading || busy} onClick={refresh}>{loading ? "Loading…" : "Refresh status"}</button>
     </div>
 
@@ -105,7 +104,7 @@ export function PaymentCatalogPanel() {
         {catalog.products.map((product) => <button type="button" key={product.key} aria-pressed={key === product.key} disabled={busy || Boolean(review)}
           onClick={() => { setKey(product.key); setMode(product.providerProductId ? "verify" : "create"); setProviderId(""); setStatus(""); }}
           className={`rounded-[14px] border bg-bg-card p-5 text-left transition-colors disabled:cursor-not-allowed ${key === product.key ? "border-accent" : "border-border hover:border-border-light"}`}>
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><h2 className="font-display text-[1.1rem] font-[800]">{product.title}</h2>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><h3 className="font-display text-[1.1rem] font-[800]">{product.title}</h3>
             <span className={`text-[0.72rem] font-semibold ${product.syncStatus === "synced" ? "text-green" : "text-orange"}`}>{statusLabels[product.syncStatus]}</span></div>
           <p className="font-mono text-[1.25rem] font-bold">{terms(product)}</p>
           <p className="mt-2 text-[0.78rem] text-text-secondary">{product.requiresSite ? "Applies to an owned website" : "Applies to the account"} · {product.active ? "Active" : "Inactive"}</p>
@@ -116,7 +115,7 @@ export function PaymentCatalogPanel() {
       </div>
 
       {selected && <section aria-labelledby="catalog-sync-title" className="rounded-[14px] border border-border bg-bg-main p-5 max-[640px]:p-4">
-        <h2 id="catalog-sync-title" className="font-display text-[1.15rem] font-[800]">Sync {selected.title}</h2>
+        <h3 id="catalog-sync-title" className="font-display text-[1.15rem] font-[800]">Sync {selected.title}</h3>
         <div className="mt-4 grid gap-4 min-[640px]:grid-cols-2">
           <label className="text-[0.8rem] font-semibold text-text-secondary">Action
             <select className={`${field} mt-1.5`} value={mode} disabled={busy || Boolean(review)} onChange={(event) => setMode(event.target.value as CatalogMode)}>
@@ -136,7 +135,7 @@ export function PaymentCatalogPanel() {
         {createBlocked && !selected.providerProductId && <p className="mt-3 text-[0.8rem] leading-relaxed text-orange">A previous sync needs verification. Link the existing Dodo product after checking it in Dodo before attempting another create.</p>}
 
         {review && <div className="mt-5 rounded-[10px] border border-accent/40 bg-accent/5 p-4" aria-label="Sync preview">
-          <h3 className="font-semibold text-[0.9rem]">Review before confirming</h3>
+          <h4 className="font-semibold text-[0.9rem]">Review before confirming</h4>
           <dl className="mt-3 grid grid-cols-[100px_1fr] gap-x-3 gap-y-2 text-[0.8rem] max-[400px]:grid-cols-1">
             <dt className="text-text-secondary">Environment</dt><dd>{review.preview.proposed.environment === "live_mode" ? "Live Dodo account" : "Test Dodo account"}</dd>
             <dt className="text-text-secondary">Action</dt><dd>{actions[review.action.mode].label}</dd>
@@ -153,6 +152,5 @@ export function PaymentCatalogPanel() {
         {!review && <button type="button" className={`${primary} mt-5`} disabled={busy || loading || !canReview} onClick={preview}>{busy ? "Preparing preview…" : "Preview product sync"}</button>}
       </section>}
     </>}
-    <AdOperationsPanel />
-  </div>;
+  </section>;
 }

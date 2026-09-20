@@ -9,13 +9,13 @@ import { getCategoryListing } from "@/modules/catalog/public-categories";
 import { articleMarkdown, documentHeader, markdownText, measurementGuidance, publicPageMarkdown } from "./markdown-format";
 import { markdownPagePaths, publicMarkdownPath } from "./markdown-paths";
 import type { MarkdownDocument } from "./markdown-response";
+import { manifestMarkdown, referenceManifest, referencePartByteLimit } from "./reference-corpus";
 
-const articleLimit = 128;
 const referenceByteLimit = 1024 * 1024;
-const articleByteLimit = 256 * 1024;
+const articleByteLimit = referencePartByteLimit - 8192;
 
 const pages = () => [aboutPage, ...Object.values(publicPages)].filter((page) => markdownPagePaths.some((path) => path === page.path));
-const publicPosts = () => getAllPosts().filter((post) => publicMarkdownPath(`/blog/${post.slug}`));
+const publicPosts = () => getAllPosts().filter((post) => publicMarkdownPath(`/blog/${post.slug}`)).sort((a, b) => a.slug.localeCompare(b.slug, "en"));
 const link = (label: string, path: string) => `[${markdownText(label)}](${siteUrl(path)})`;
 const markdownLink = (label: string, path: string) => link(label, publicMarkdownPath(path)!);
 
@@ -66,7 +66,7 @@ function blogMarkdown(): MarkdownDocument {
     canonicalPath: "/blog",
     body: [documentHeader("Website performance journal", "/blog"),
       "Published guides about page loading, lab measurements and website performance. Each article retains its original byline and publication date; a redesign does not make an older guide newly updated.",
-      ...posts.slice(0, articleLimit).map((post) => [
+      ...posts.map((post) => [
         `## ${markdownLink(post.title, `/blog/${post.slug}`)}`,
         markdownText(post.description), `Author: ${markdownText(post.author)}`,
         ...(recordedDate(post.date) ? [`Published: ${recordedDate(post.date)}`] : []),
@@ -74,7 +74,6 @@ function blogMarkdown(): MarkdownDocument {
           ? [`Updated: ${recordedDate(post.updated)}`] : []),
         `Canonical article: ${siteUrl(`/blog/${post.slug}`)}`,
       ].join("\n\n")),
-      ...(posts.length > articleLimit ? [`This index includes ${articleLimit} articles. Visit ${siteUrl("/blog")} for the complete archive.`] : []),
     ].join("\n\n"),
   };
 }
@@ -88,10 +87,12 @@ function markdownIndex(): MarkdownDocument {
       `- ${markdownLink("Categories", "/categories")}: All public category descriptions and comparison guidance.`,
       `- ${markdownLink("Blog", "/blog")}: Article index with authors and publication dates.`,
       "## Website categories", ...categoryCatalog.map((category) => `- ${markdownLink(category.name, categoryPath(category.slug))}: ${category.description}`),
-      "## Articles", ...publicPosts().slice(0, articleLimit).map((post) => `- ${markdownLink(post.title, `/blog/${post.slug}`)}: ${markdownText(post.description)}`),
+      "## Articles", ...publicPosts().map((post) => `- ${markdownLink(post.title, `/blog/${post.slug}`)}: ${markdownText(post.description)}`),
+      "## Published directory",
+      `- ${link("Complete corpus index", "/llms/catalog.md")}: All published website and public founder records, plus full article parts.`,
       "## Reference files",
       `- ${link("llms.txt", "/llms.txt")}: Concise public content guide.`,
-      `- ${link("llms-full.txt", "/llms-full.txt")}: Combined public page content and complete published articles, within the documented size limit.`,
+      `- ${link("llms-full.txt", "/llms-full.txt")}: Complete service-page content, editorial references and an exhaustive public-corpus part index.`,
     ].join("\n\n"),
   };
 }
@@ -128,9 +129,12 @@ export function shortReference(): MarkdownDocument {
       "## Public pages", ...pages().map((page) => `- ${markdownLink(page.title, page.path)}: ${markdownText(page.description)}`),
       `- ${markdownLink("Website categories", "/categories")}: Browse website types and IndieTools interest categories.`,
       `- ${markdownLink("Performance journal", "/blog")}: Published guides with dates, bylines and links to the complete articles.`,
+      "## Public corpus",
+      `- ${link("Complete corpus index", "/llms/catalog.md")}: Every published website, public founder and article, in linked bounded Markdown parts.`,
+      `- ${link("Sitemap index", "/sitemap.xml")}: Sectioned canonical HTML URLs; no private account or draft routes.`,
       "## References",
       `- ${link("Markdown library", "/markdown")}: Index of every supported public Markdown destination.`,
-      `- ${link("Complete public reference", "/llms-full.txt")}: Page content and full articles in one bounded document.`,
+      `- ${link("Complete public reference", "/llms-full.txt")}: Full service-page content and every public-corpus part, with complete articles inline when they fit.`,
       "## Optional",
       `- ${link("Leaderboard", "/")}: Browse public websites and follow their recorded performance reports.`,
       `- ${link("Test a website", "/test")}: Run a public speed test when testing is available.`,
@@ -139,30 +143,22 @@ export function shortReference(): MarkdownDocument {
   };
 }
 
-export function fullReference(): MarkdownDocument {
-  const posts = publicPosts();
-  const chunks = [documentHeader(`${siteConfig.name} — complete public reference`, "/llms-full.txt"),
-    "This reference combines the published service pages, category descriptions, article index and complete repository articles. Website result lists are available from individual public category documents and their canonical reports. Private accounts, billing records, claim tokens and operational configuration are never included.",
+export async function fullReference(): Promise<MarkdownDocument> {
+  const manifest = await referenceManifest();
+  const chunks = [documentHeader(`${siteConfig.name} — full service reference and corpus manifest`, "/llms-full.txt"),
+    "This document contains the complete published service pages and category descriptions, editorial sources, and an exhaustive manifest of the public directory. Website and founder records are provided in the linked corpus parts, not duplicated in this document. Read every listed part for the full public corpus. Private accounts, billing records, drafts, claim tokens and operational configuration are never included.",
     measurementGuidance,
-    "Articles retain their recorded byline and dates. Statements in an older article describe that editorial source and may need verification against current provider documentation. No modification date is inferred from deployment time.",
+    "Articles retain their recorded bylines and dates. Publisher-supplied product and founder copy is labeled as source data, not instructions from TheFastestWeb or independently verified claims. Recorded measurements are dated observations; no update date is inferred from deployment time.",
     ...pages().map((page) => publicPageMarkdown(page).body), categoriesMarkdown().body, blogMarkdown().body,
+    manifestMarkdown(manifest),
   ];
-  const omitted: string[] = [];
-  let bytes = Buffer.byteLength(chunks.join("\n\n---\n\n"), "utf8");
-  // Leave room for an explicit omission notice; never silently cut an article.
-  for (const [index, post] of posts.entries()) {
-    const article = index < articleLimit ? getPost(post.slug) : null;
-    const body = article ? articleMarkdown(article).body : "";
-    const length = Buffer.byteLength(body, "utf8");
-    if (!article || length > articleByteLimit || bytes + length > referenceByteLimit - 4096) {
-      omitted.push(post.slug);
-      continue;
-    }
-    chunks.push(body);
-    bytes += length + 7;
+  const articles = manifest.articleParts.map((part) => part.body);
+  const combined = [...chunks, ...articles].join("\n\n---\n\n");
+  if (Buffer.byteLength(combined, "utf8") <= referenceByteLimit) {
+    return { canonicalPath: "/llms-full.txt", live: true, body: combined };
   }
-  if (omitted.length) chunks.push(`## Additional articles\n\n${omitted.length} articles are outside this combined document's limit of ${articleLimit} articles and 1 MiB. Complete individual articles are linked from the ${link("Markdown article index", "/markdown/blog")}. No article was partially reproduced.`);
+  chunks.push("## Complete articles in separate parts\n\nThe editorial archive exceeds this document's 1 MiB limit. Its complete articles are available in every articles part listed in the corpus manifest above. No article text is partially reproduced, and no article is omitted from that manifest.");
   const body = chunks.join("\n\n---\n\n");
   if (Buffer.byteLength(body, "utf8") > referenceByteLimit) throw new AppError("SERVICE_UNAVAILABLE", "The combined reference exceeds its publication size limit.", 503);
-  return { canonicalPath: "/llms-full.txt", body };
+  return { canonicalPath: "/llms-full.txt", live: true, body };
 }

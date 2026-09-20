@@ -97,8 +97,8 @@ export function AdOperationsPanel() {
     finally { setReview(null); setBusy(false); setCreativeReviewed(false); }
   }
 
-  return <section aria-labelledby="ad-operations-title" className="mt-10 border-t border-border pt-8">
-    <div className="mb-5 flex flex-wrap items-center justify-between gap-3"><div><h2 id="ad-operations-title" className="font-display text-[1.35rem] font-[800]">Advertisement placements</h2>
+  return <section aria-labelledby="ad-operations-title" className="mt-8">
+    <div className="mb-5 flex flex-wrap items-center justify-between gap-3"><div><h2 id="ad-operations-title" className="font-display text-[1.35rem] font-[800]">Placements and creative review</h2>
       <p className="mt-2 max-w-[650px] text-[0.82rem] leading-relaxed text-text-secondary">Configure available sidebar positions, then review paid creative before publishing it. Existing purchases keep their reserved position.</p></div>
       <button type="button" className={secondary} disabled={busy || loading} onClick={refresh}>{loading ? "Loading…" : "Refresh placements"}</button></div>
     {error && <p role="alert" className="mb-4 text-[0.82rem] text-red">{error}</p>}

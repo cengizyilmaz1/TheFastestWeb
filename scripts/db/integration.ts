@@ -48,7 +48,7 @@ async function main(): Promise<void> {
       (SELECT count(*) FROM app_meta.schema_migrations)::integer AS migrations,
       (SELECT count(*) FROM pg_class WHERE relnamespace='public'::regnamespace AND relkind='r' AND relrowsecurity)::integer AS rls,
       (SELECT count(*) FROM public.verified_speed_tests)::integer AS verified`;
-    assert.deepEqual({ ...state }, { migrations: 9, rls: 0, verified: 0 });
+    assert.deepEqual({ ...state }, { migrations: 11, rls: 0, verified: 0 });
     console.log("PASS fresh database, concurrent runners, idempotence, and final RLS state");
 
     const restored = await isolated("restored");
@@ -85,7 +85,7 @@ async function main(): Promise<void> {
     const [m1History] = await m1.sql`SELECT to_jsonb(t) AS data FROM public.speed_tests t WHERE id=${speedId}`;
     const upgradeLog: string[] = [];
     await migrateDatabase({ databaseUrl: m1.url, log: (message) => upgradeLog.push(message) });
-    assert.deepEqual(upgradeLog, ["Applied 0002_m2_job_ledger.", "Applied 0003_m3_providers.", "Applied 0004_m5_product_model.","Applied 0005_ad_inventory.","Applied 0006_domain_analytics.","Applied 0007_founder_invitations.","Applied 0008_indietools_categories."]);
+    assert.deepEqual(upgradeLog, ["Applied 0002_m2_job_ledger.", "Applied 0003_m3_providers.", "Applied 0004_m5_product_model.","Applied 0005_ad_inventory.","Applied 0006_domain_analytics.","Applied 0007_founder_invitations.","Applied 0008_indietools_categories.","Applied 0009_founder_urls_redirects.","Applied 0010_outbound_clicks."]);
     const keptLedger = await m1.sql`SELECT version,checksum,applied_at FROM app_meta.schema_migrations WHERE version < '0002' ORDER BY version`;
     const [m2History] = await m1.sql`SELECT to_jsonb(t)-'background_job_id'-'sample_count'-'metrics_source' AS data, background_job_id FROM public.speed_tests t WHERE id=${speedId}`;
     assert.deepEqual([...keptLedger], [...oldLedger]);

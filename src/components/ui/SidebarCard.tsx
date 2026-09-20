@@ -1,25 +1,19 @@
 "use client";
 
 import type { PublicAdSlot } from "@/components/ads/types";
+import { OutboundLink } from "@/components/ui/OutboundLink";
 
 interface SidebarCardProps {
   slot: PublicAdSlot;
 }
 
 export function SidebarCard({ slot }: SidebarCardProps) {
-  function handleClick() {
-    navigator.sendBeacon(
-      "/api/ad-click",
-      JSON.stringify({ id: slot.id })
-    );
-  }
-
   return (
-    <a
+    <OutboundLink
       href={slot.url}
-      target="_blank"
-      rel="sponsored noopener noreferrer"
-      onClick={handleClick}
+      placement="sidebar"
+      trackingId={slot.id}
+      rel={slot.ownerPromotion ? "noopener noreferrer" : "sponsored noopener noreferrer"}
       className="bg-bg-card border border-border rounded-[10px] px-2.5 py-2.5 text-center cursor-pointer transition-all duration-250 no-underline flex flex-col items-center justify-center flex-1 min-h-0 hover:bg-bg-card-hover hover:border-border-light hover:-translate-y-0.5"
     >
       <div className="[perspective:400px] shrink-0 mb-1.5">
@@ -42,6 +36,6 @@ export function SidebarCard({ slot }: SidebarCardProps) {
       <div className="text-[0.62rem] text-text-muted leading-[1.3] line-clamp-2">
         {slot.tagline}
       </div>
-    </a>
+    </OutboundLink>
   );
 }

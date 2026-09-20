@@ -10,6 +10,7 @@ export const legacyLeaderboardProjection = {
   ownerId: sql<string | null>`(select f.user_id from founders f where f.user_id = ${sites.ownerId} and f.visibility = 'public' limit 1)`,
   ownerName: sql<string>`coalesce((select f.name from founders f where f.user_id = ${sites.ownerId} and f.visibility = 'public' limit 1), '')`,
   ownerAvatarUrl: sql<string | null>`(select f.avatar_url from founders f where f.user_id = ${sites.ownerId} and f.visibility = 'public' limit 1)`,
+  ownerUsername: sql<string | null>`(select f.slug from founders f where f.user_id = ${sites.ownerId} and f.visibility = 'public' limit 1)`,
   twitterHandle: sql<string | null>`null::text`,
 };
 
@@ -27,5 +28,5 @@ export type LegacyLeaderboardSite = {
   category: string | null; faviconUrl: string | null;
   currentScore: number; currentLoadTime?: string | null; trend?: number | null;
   lastTestedAt?: Date | string | null;
-  ownerId?: string | null; ownerName?: string; ownerAvatarUrl?: string | null; twitterHandle?: string | null;
+  ownerId?: string | null; ownerName?: string; ownerAvatarUrl?: string | null; ownerUsername?: string | null; twitterHandle?: string | null;
 };

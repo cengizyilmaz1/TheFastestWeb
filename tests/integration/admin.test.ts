@@ -19,6 +19,35 @@ async function site() {
   return id;
 }
 describe("administrator authorization and audited changes", () => {
+  it("changes the normalized primary category, preserves secondary taxonomy and audits the exact change", async () => {
+    const actor = await user("admin"), siteId = await site();
+    await fixtureSql()`INSERT INTO site_categories(site_id,category_id,is_primary) SELECT ${siteId},id,slug='other' FROM categories WHERE slug IN ('other','tool')`;
+    const action = { action: "site.category", siteId, categorySlug: "developer-tools", reason: "Development utilities are this product's primary purpose" };
+    const preview = await previewAdminAction(actor, action);
+    expect((await fixtureSql()`SELECT c.slug FROM site_categories sc JOIN categories c ON c.id=sc.category_id WHERE sc.site_id=${siteId} AND sc.is_primary`)[0].slug).toBe("other");
+    await executeAdminAction(actor, action, preview.token);
+    const rows = await fixtureSql()`SELECT c.slug,sc.is_primary FROM site_categories sc JOIN categories c ON c.id=sc.category_id WHERE sc.site_id=${siteId} ORDER BY c.slug`;
+    expect(rows).toEqual([{ slug: "developer-tools", is_primary: true }, { slug: "tool", is_primary: false }]);
+    expect((await fixtureSql()`SELECT category,lifecycle FROM sites WHERE id=${siteId}`)[0]).toMatchObject({ category: "other", lifecycle: "submitted" });
+    const [audit] = await fixtureSql()`SELECT action,payload FROM audit_logs`;
+    expect(audit.action).toBe("site.category");
+    expect(audit.payload.before.categories).toContainEqual(expect.objectContaining({ slug: "other", isPrimary: true }));
+    expect(audit.payload.after.categories).toContainEqual(expect.objectContaining({ slug: "developer-tools", isPrimary: true }));
+    await expect(executeAdminAction(actor, action, preview.token)).rejects.toMatchObject({ status: 409 });
+  });
+  it("rejects a category preview when taxonomy or catalog availability changes", async () => {
+    const actor = await user("admin"), siteId = await site();
+    const action = { action: "site.category", siteId, categorySlug: "seo", reason: "Search engine optimization product" };
+    const preview = await previewAdminAction(actor, action);
+    await fixtureSql()`INSERT INTO site_categories(site_id,category_id,is_primary) SELECT ${siteId},id,true FROM categories WHERE slug='tool'`;
+    await expect(executeAdminAction(actor, action, preview.token)).rejects.toMatchObject({ status: 409 });
+    const next = await previewAdminAction(actor, action);
+    await fixtureSql()`UPDATE categories SET active=false WHERE slug='seo'`;
+    await expect(executeAdminAction(actor, action, next.token)).rejects.toMatchObject({ status: 400 });
+    await expect(previewAdminAction(actor, { ...action, categorySlug: "unknown" })).rejects.toThrow();
+    expect((await fixtureSql()`SELECT count(*)::int AS count FROM audit_logs`)[0].count).toBe(0);
+    await fixtureSql()`UPDATE categories SET active=true WHERE slug='seo'`;
+  });
   it("does not accept a caller-provided admin role without a DB grant", async () => {
     const actor = await user();
     await expect(getAdminReport(actor, "users")).rejects.toMatchObject({ status: 403 });

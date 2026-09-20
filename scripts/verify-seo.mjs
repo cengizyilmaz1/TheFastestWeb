@@ -65,7 +65,42 @@ record("/privacy (preferences)", { status: preferences.response.status === 200, 
 const robots = await fetch(new URL("/robots.txt", base)).then((response) => response.text());
 const sitemap = await fetch(new URL("/sitemap.xml", base)).then((response) => response.text());
 record("indexing-controls", demo ? { robots: /^Disallow: \/\s*$/m.test(robots), sitemap: sitemap.includes("<sitemapindex") && !sitemap.includes("<loc>") }
-  : { robots: robots.includes(`Sitemap: ${canonicalOrigin}/sitemap.xml`), sitemap: sitemap.includes("/sitemaps/pages/0.xml") && !/\/sitemaps\/(founders|technologies|countries|weekly|monthly)\//.test(sitemap) });
+  : { robots: robots.includes(`Sitemap: ${canonicalOrigin}/sitemap.xml`), sitemap: sitemap.includes("/sitemaps/pages/0.xml") && !/\/sitemaps\/(technologies|countries|weekly|monthly)\//.test(sitemap) });
+const indexedUrls = new Set();
+for (const match of sitemap.matchAll(/<loc>(.*?)<\/loc>/g)) {
+  const child = new URL(match[1]);
+  if (child.origin !== canonicalOrigin || !/^\/sitemaps\/(pages|sites|blog|categories|founders)\/(0|[1-9]\d*)\.xml$/.test(child.pathname)) {
+    record("sitemap-child", { canonicalChild: false }); continue;
+  }
+  const response = await fetch(new URL(child.pathname, base), { signal: AbortSignal.timeout(45_000) });
+  const xml = await response.text(), entries = [...xml.matchAll(/<loc>(.*?)<\/loc>/g)].map((entry) => entry[1]);
+  const unique = entries.every((entry) => !indexedUrls.has(entry)) && new Set(entries).size === entries.length;
+  entries.forEach((entry) => indexedUrls.add(entry));
+  record(child.pathname, { status: response.status === 200, xml: xml.includes('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'),
+    bounded: entries.length > 0 && entries.length <= 200, unique,
+    canonicalPublic: entries.every((entry) => new URL(entry).origin === canonicalOrigin && !/^\/(profile|api|auth|admin)(\/|$)/.test(new URL(entry).pathname)),
+  });
+}
+for (const path of ["/llms.txt", "/llms-full.txt", "/llms/catalog.md"]) {
+  const response = await fetch(new URL(path, base), { signal: AbortSignal.timeout(45_000) });
+  const body = await response.text();
+  record(path, { status: response.status === 200, markdown: response.headers.get("content-type")?.startsWith("text/markdown"),
+    canonicalLinks: body.includes(canonicalOrigin), noindex: response.headers.get("x-robots-tag")?.includes("noindex"),
+    completeManifest: path === "/llms.txt" ? body.includes("/llms/catalog.md") : body.includes("Complete corpus manifest"),
+  });
+  if (path !== "/llms/catalog.md") continue;
+  const parts = [...body.matchAll(/\]\((https?:\/\/[^\s)]+\/llms\/(sites|articles|founders)\/(?:0|[1-9]\d*)\.md)\)/g)];
+  for (const [, absolute, section] of parts) {
+    const part = new URL(absolute);
+    if (part.origin !== canonicalOrigin) { record("corpus-part", { canonical: false }); continue; }
+    const result = await fetch(new URL(part.pathname, base), { signal: AbortSignal.timeout(45_000) });
+    const text = await result.text();
+    const count = section === "sites" ? (text.match(/Canonical report:/g) || []).length
+      : section === "founders" ? (text.match(/Canonical profile:/g) || []).length : (text.match(/Canonical source: https?:\/\/[^\s]+\/blog\//g) || []).length;
+    record(part.pathname, { status: result.status === 200, bounded: count > 0 && count <= 200,
+      uncached: result.headers.get("cache-control") === "no-store", indexLink: text.includes("/llms/catalog.md") });
+  }
+}
 await mkdir("test-results", { recursive: true });
 await writeFile("test-results/seo-smoke.json", JSON.stringify(report, null, 2));
 console.log(JSON.stringify({ checks: report.length, failures: report.filter((entry) => !entry.passed), report: "test-results/seo-smoke.json" }));

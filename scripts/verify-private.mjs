@@ -54,11 +54,12 @@ async function api(userId, method = "GET", body, requestOrigin = origin) {
   return { status: response.status, cache: response.headers.get("cache-control"), body: await response.json() };
 }
 function assert(condition, message) { if (!condition) throw new Error(message); }
+const adminPages = ["/admin", "/admin/users", "/admin/websites", "/admin/ads", "/admin/payments", "/admin/audit", "/admin/redirects"];
 try {
   for (const width of [1440, 390]) {
     const ctx = await context(ownerId, width), page = await ctx.newPage(), errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
-    for (const [label, path] of [["submit", "/submit"], ["public-owner-profile", `/profile/${ownerId}`], ["admin-payments", "/admin"]]) {
+    for (const [label, path] of [["submit", "/submit"], ["public-owner-profile", `/profile/${ownerId}`], ...adminPages.map((path) => [`admin${path.slice(6).replace("/", "-")}`, path])]) {
       errors.length = 0;
       const response = await page.goto(origin + path, { waitUntil: "networkidle", timeout: 45_000 });
       assert(response?.status() === 200, "An authenticated original page did not load.");
@@ -91,10 +92,19 @@ try {
 
   // Restored profile pages still respect opt-in visibility and exclude private
   // account fields, independently of the browser's authenticated navigation.
-  for (const [id, expected] of [[ownerId, 200], [privateId, 404]]) {
+  for (const [id, expected] of [[ownerId, 301], [privateId, 404]]) {
     const response = await fetch(new URL(`/profile/${id}`, base), { redirect: "manual", signal: AbortSignal.timeout(30_000) });
     const html = await response.text();
     assert(response.status === expected, "Profile publication boundary changed.");
+    if (expected === 301) {
+      const destination = new URL(response.headers.get("location"));
+      assert(destination.origin === origin && /^\/founder\/[a-z0-9-]+$/.test(destination.pathname), "Legacy profile did not point to its canonical username.");
+      const canonical = await fetch(new URL(destination.pathname, base), { redirect: "manual", signal: AbortSignal.timeout(30_000) });
+      assert(canonical.status === 200, "Canonical public founder page did not load.");
+      const publicHtml = await canonical.text();
+      for (const email of ["smoke@example.invalid", "collaborator@example.invalid", "private-smoke@example.invalid"])
+        assert(!publicHtml.includes(email), "A canonical founder page exposed an account email.");
+    }
     for (const email of ["smoke@example.invalid", "collaborator@example.invalid", "private-smoke@example.invalid"])
       assert(!html.includes(email), "An anonymous profile response exposed an account email.");
   }
@@ -104,11 +114,12 @@ try {
   await otherProfile.arrayBuffer();
   assert(otherProfile.status === 404, "An account could read another account's private profile.");
   report.push({ interaction: "private-profile-account-isolation", passed: true });
-  for (const userId of [null, founderId]) {
-    const response = await fetch(new URL("/admin", base), { redirect: "manual", signal: AbortSignal.timeout(30_000),
+  for (const userId of [null, founderId]) for (const path of adminPages) {
+    const response = await fetch(new URL(path, base), { redirect: "manual", signal: AbortSignal.timeout(30_000),
       headers: userId ? { cookie: `__Secure-next-auth.session-token=${await sessionFor(userId)}` } : {} });
     await response.arrayBuffer();
-    assert(response.status === 404, "A non-administrator could open the payment catalog panel.");
+    assert(response.status === 404, `A non-administrator could open ${path}.`);
+    assert(/no-store|no-cache/.test(response.headers.get("cache-control") ?? ""), `${path} allowed caching.`);
   }
   report.push({ interaction: "admin-panel-authorization", passed: true });
 

@@ -27,7 +27,7 @@ export function isAnalyticsPage(pathname: string, search: string): boolean {
     const decoded = decodeURIComponent(pathname).replace(/\\/g, "/").replace(/\/{2,}/g, "/");
     if (search || /[%?#@\u0000-\u001f]/.test(decoded)) return false;
     const normalized = new URL(decoded, "https://analytics.invalid").pathname;
-    return !/^\/(api|admin|dashboard|profile|unsubscribe|auth|login|sign-in)(\/|$)/i.test(normalized);
+    return !/^\/(api|admin|dashboard|profile|founder|unsubscribe|auth|login|sign-in)(\/|$)/i.test(normalized);
   } catch { return false; }
 }
 /** The same-origin authenticated checkout endpoint accepts the current tab's

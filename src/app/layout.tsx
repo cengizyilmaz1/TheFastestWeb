@@ -7,8 +7,9 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { Footer } from "@/components/layout/Footer";
 import { getCurrentUser } from "@/lib/auth";
 import { getDb } from "@/db/index";
-import { adSlots, adminRoles } from "@/db/schema";
-import { eq, and, or, isNull, gt } from "drizzle-orm";
+import { adminRoles } from "@/db/schema";
+import { eq, and } from "drizzle-orm";
+import { getPublicAdSlots } from "@/modules/ads/public";
 import { siteConfig } from "@/config/site";
 import { safeJsonLd } from "@/lib/seo/json-ld";
 import { pageMetadata, SITE_DESCRIPTION } from "@/lib/seo/metadata";
@@ -69,27 +70,7 @@ export default async function RootLayout({
   const [adminGrant] = user && db ? await db.select({ role: adminRoles.role }).from(adminRoles)
     .where(and(eq(adminRoles.userId, user.id), eq(adminRoles.role, "admin"))).limit(1) : [];
 
-  // Fetch active ad slots
-  const activeAdSlots = db
-    ? await db
-        .select({
-          id: adSlots.id,
-          position: adSlots.position,
-          orderIndex: adSlots.orderIndex,
-          name: adSlots.name,
-          url: adSlots.url,
-          tagline: adSlots.tagline,
-          faviconUrl: adSlots.faviconUrl,
-        })
-        .from(adSlots)
-        .where(
-          and(
-            eq(adSlots.isActive, true),
-            eq(adSlots.status, "active"),
-            or(isNull(adSlots.expiresAt), gt(adSlots.expiresAt, new Date()))
-          )
-        )
-    : [];
+  const activeAdSlots = await getPublicAdSlots();
 
   return (
     <html lang="en">
@@ -106,7 +87,7 @@ export default async function RootLayout({
           <NavigationProgress />
         </Suspense>
         <Nav user={user} canManagePayments={adminGrant?.role === "admin"} />
-        <div className="grid grid-cols-[190px_1fr_190px] min-h-screen max-[1100px]:grid-cols-[1fr]">
+        <div className="app-grid grid grid-cols-[190px_1fr_190px] min-h-screen max-[1100px]:grid-cols-[1fr]">
           <Sidebar position="left" count={5} adSlots={activeAdSlots} />
           <main id="main-content" className="col-start-2 min-w-0 pt-[60px] max-[1100px]:col-start-1">
             {children}

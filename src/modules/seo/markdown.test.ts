@@ -9,11 +9,13 @@ import type { Post } from "@/lib/blog";
 import { fullReference, getMarkdownDocument } from "./markdown";
 import { publicPageMarkdown } from "./markdown-format";
 
-const { getAllPosts, getPost, getCategoryListing } = vi.hoisted(() => ({
-  getAllPosts: vi.fn(), getPost: vi.fn(), getCategoryListing: vi.fn(),
+const { getAllPosts, getPost, getCategoryListing, countSites, countFounders } = vi.hoisted(() => ({
+  getAllPosts: vi.fn(), getPost: vi.fn(), getCategoryListing: vi.fn(), countSites: vi.fn(), countFounders: vi.fn(),
 }));
 vi.mock("@/lib/blog", () => ({ getAllPosts, getPost }));
 vi.mock("@/modules/catalog/public-categories", () => ({ getCategoryListing }));
+vi.mock("./public-corpus", async (original) => ({ ...await original<object>(), countPublicSites: countSites }));
+vi.mock("@/modules/founders/discovery", () => ({ countPublicFounders: countFounders, listPublicFounderDiscovery: vi.fn() }));
 
 const article: Post = {
   slug: "published-guide", title: "A practical performance guide", description: "A published description.",
@@ -29,6 +31,7 @@ beforeEach(() => {
   getAllPosts.mockReturnValue([article]);
   getPost.mockImplementation((slug: string) => slug === article.slug ? article : null);
   getCategoryListing.mockResolvedValue({ available: true, total: 0, pages: 0, sites: [] });
+  countSites.mockResolvedValue(201); countFounders.mockResolvedValue(0);
 });
 afterEach(() => { vi.unstubAllEnvs(); vi.clearAllMocks(); });
 
@@ -67,7 +70,7 @@ describe("the public Markdown boundary", () => {
       expect(await response.text()).not.toContain("private-value");
     }
     expect(llmsRoute(request("/llms.txt?token=private-value")).status).toBe(400);
-    expect(fullRoute(request("/llms-full.txt?url=http://localhost")).status).toBe(400);
+    expect((await fullRoute(request("/llms-full.txt?url=http://localhost"))).status).toBe(400);
     expect(getPost).not.toHaveBeenCalled();
     expect(getCategoryListing).not.toHaveBeenCalled();
   });
@@ -128,7 +131,7 @@ describe("the public Markdown boundary", () => {
 
   it("keeps both references and every demo representation out of the search index", async () => {
     vi.stubEnv("DEPLOYMENT_MODE", "demo");
-    for (const response of [llmsRoute(), fullRoute(), await route(["about"]), await route([])]) {
+    for (const response of [llmsRoute(), await fullRoute(), await route(["about"]), await route([])]) {
       expect(response.status).toBe(200);
       expect(response.headers.get("x-robots-tag")).toBe("noindex, nofollow");
     }
@@ -138,7 +141,7 @@ describe("the public Markdown boundary", () => {
 describe("LLM reference completeness", () => {
   it("uses the concise file as a navigation guide and includes complete content in the full file", async () => {
     const short = await llmsRoute().text();
-    const full = await fullRoute().text();
+    const full = await (await fullRoute()).text();
     expect(short).toMatch(/^# TheFastestWeb\n\n> /);
     expect(short).toContain("https://example.invalid/markdown/about");
     expect(short).toContain("https://example.invalid/markdown/blog");
@@ -147,15 +150,26 @@ describe("LLM reference completeness", () => {
     expect(full).toContain("Author: Original Writer");
     for (const page of [aboutPage, ...Object.values(publicPages)]) expect(full).toContain(publicPageMarkdown(page).body);
     expect(full).not.toMatch(/\/admin|\/api\/payments|\/profile\//);
+    expect(full).toContain("/llms/sites/0.md");
+    expect(full).toContain("/llms/sites/1.md");
+    expect(full).toContain("not duplicated in this document");
   });
 
-  it("keeps the combined reference bounded and reports omitted whole articles explicitly", () => {
-    const large = { ...article, content: "a".repeat(256 * 1024) };
-    getPost.mockReturnValue(large);
-    const reference = fullReference();
-    expect(reference.body).toContain("1 articles are outside this combined document");
-    expect(reference.body).toContain("No article was partially reproduced");
-    expect(reference.body).not.toContain(large.content);
+  it("keeps the full reference bounded and links every complete article part for a larger archive", async () => {
+    const large = [{ ...article, slug: "first-guide", content: "a".repeat(600 * 1024) }, { ...article, slug: "second-guide", content: "b".repeat(600 * 1024) }];
+    getAllPosts.mockReturnValue(large);
+    getPost.mockImplementation((slug: string) => large.find((post) => post.slug === slug));
+    const reference = await fullReference();
+    expect(reference.body).toContain("Complete articles in separate parts");
+    expect(reference.body).toContain("/llms/articles/0.md");
+    expect(reference.body).toContain("/llms/articles/1.md");
+    expect(reference.body).not.toContain(large[0].content);
     expect(Buffer.byteLength(reference.body)).toBeLessThanOrEqual(1024 * 1024);
+  });
+  it("does not present a database outage as an empty complete corpus", async () => {
+    countSites.mockRejectedValue(new Error("postgres://private:secret@internal"));
+    const response = await fullRoute();
+    expect(response.status).toBe(503); expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(await response.text()).not.toMatch(/private|secret|postgres|internal|records: 0/);
   });
 });

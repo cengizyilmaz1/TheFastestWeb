@@ -136,13 +136,6 @@ export const publicPages: Record<string, PublicPageContent> = {
         ]
       },
       {
-        "id": "cookies",
-        "title": "Cookies",
-        "paragraphs": [
-          "Auth.js uses essential session and security cookies for sign-in. DataFast does not set analytics cookies. Its visitor and session identifiers are held in tab session storage; its event queue can temporarily use browser storage for delivery retries. The current-tab identifier can accompany an initial checkout for up to 24 hours. We honor Do Not Track, Global Privacy Control and previously saved analytics opt-outs, and remove accessible legacy analytics cookies. You can disable browser measurement using Do Not Track or Global Privacy Control. Server crawler measurement does not set browser cookies."
-        ]
-      },
-      {
         "id": "contact",
         "title": "Contact",
         "paragraphs": [

@@ -3,7 +3,7 @@ import { cache } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getDb } from "@/db";
-import { founders, sites, speedTests, users } from "@/db/schema";
+import { sites, speedTests, users } from "@/db/schema";
 import { auth } from "@/auth";
 import { FaviconImg } from "@/components/ui/FaviconImg";
 import { Avatar } from "@/components/ui/Avatar";
@@ -12,23 +12,22 @@ import { z } from "zod";
 import { getPublicFounder } from "@/modules/founders/service";
 import { publicSiteProjection, publiclyActive } from "@/modules/sites/directory";
 import { pageMetadata } from "@/lib/seo/metadata";
+import { resolveFounderUsername } from "@/modules/founders/usernames";
+import { getFounderPath } from "@/modules/founders/paths";
+import { UsernameEditor } from "@/components/founders/UsernameEditor";
 
 // A privacy change must take effect without a stale cached public profile.
 export const dynamic = "force-dynamic";
 
 interface Props {
-  params: Promise<{ userId: string }>;
+  params: Promise<{ username: string }>;
 }
 
-const readPublicProfile = cache(async (userId: string) => {
-  if (!z.uuid().safeParse(userId).success) return null;
+const readPublicProfile = cache(async (username: string) => {
   const db = getDb();
   if (!db) return null;
-  const [visible] = await db.select({ slug: founders.slug }).from(founders)
-    .where(and(eq(founders.userId, userId), eq(founders.visibility, "public"))).limit(1);
-  if (!visible) return null;
   // Reuse the explicit public projection; private account fields never enter the view.
-  const profile = await getPublicFounder(visible.slug);
+  const profile = await getPublicFounder(username);
   if (!profile) return null;
   const siteIds = profile.sites.map((site) => site.id);
   const userSites = siteIds.length ? await db.select({ ...publicSiteProjection, currentLoadTime: sites.currentLoadTime })
@@ -46,15 +45,19 @@ const readPublicProfile = cache(async (userId: string) => {
   return { user: { name: profile.name, avatarUrl: profile.avatarUrl, twitterHandle, isPro: false }, userSites };
 });
 
-const readProfile = cache(async (userId: string) => {
-  if (!z.uuid().safeParse(userId).success) return null;
-  const published = await readPublicProfile(userId);
-  if (published) return { ...published, isPrivate: false };
+const readProfile = cache(async (username: string) => {
+  if (!z.string().min(2).max(80).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).safeParse(username).success) return null;
+  const session = await auth();
+  const identity = await resolveFounderUsername(username, session?.user?.id);
+  if (!identity || identity.slug !== username) return null;
+  const isOwner = Boolean(identity.userId && session?.user?.id === identity.userId);
+  const published = identity.visibility === "public" ? await readPublicProfile(username) : null;
+  if (published) return { ...published, isPrivate: false, isOwner, username };
 
   // "My Profile" also works before publication. This fallback belongs exclusively
   // to the signed-in account and never creates or publishes a founder record.
-  const session = await auth();
-  if (session?.user?.id !== userId) return null;
+  const userId = identity.userId;
+  if (!isOwner || !userId) return null;
   const db = getDb();
   if (!db) return null;
   const [user] = await db.select({ name: users.name, avatarUrl: users.avatarUrl,
@@ -63,15 +66,15 @@ const readProfile = cache(async (userId: string) => {
   const userSites = await db.select({ ...publicSiteProjection, currentLoadTime: sites.currentLoadTime })
     .from(sites).where(and(eq(sites.ownerId, userId), publiclyActive()))
     .orderBy(desc(sites.currentScore)).limit(100);
-  return { user, userSites, isPrivate: true };
+  return { user, userSites, isPrivate: true, isOwner, username };
 });
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { userId } = await params;
-  const data = await readProfile(userId);
+  const { username } = await params;
+  const data = await readProfile(username);
   if (!data) notFound();
   if (data.isPrivate) return pageMetadata({ title: "My profile", description: "Your private account profile and submitted public websites.",
-    path: `/profile/${userId}`, index: false, follow: false });
+    path: getFounderPath(username), index: false, follow: false });
   const { user, userSites } = data;
   const siteCount = userSites.length;
   const bestScore = siteCount > 0 ? Math.max(...userSites.map((s) => s.currentScore)) : null;
@@ -80,14 +83,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const title = `${user.name}${handle} — ${siteCount} public site${siteCount !== 1 ? "s" : ""}`;
   const description = `${user.name} has ${siteCount} public website${siteCount !== 1 ? "s" : ""} on TheFastestWeb.${bestScore !== null ? ` Best recorded score: ${bestScore}/100.` : ""}`;
 
-  return pageMetadata({ title, description, path: `/profile/${userId}`, index: false, follow: false });
+  return pageMetadata({ title, description, path: getFounderPath(username) });
 }
 
 export default async function ProfilePage({ params }: Props) {
-  const { userId } = await params;
-  const data = await readProfile(userId);
+  const { username } = await params;
+  const data = await readProfile(username);
   if (!data) notFound();
-  const { user, userSites, isPrivate } = data;
+  const { user, userSites, isPrivate, isOwner } = data;
   const db = getDb();
 
   // Compute aggregate stats
@@ -124,6 +127,8 @@ export default async function ProfilePage({ params }: Props) {
         <p className="font-semibold text-text-primary">Only you can see this profile.</p>
         <p className="mt-1">Your account details are private. Published websites below remain visible in the directory.</p>
       </div>}
+
+      {isOwner && <UsernameEditor username={username} />}
 
       {/* Profile header */}
       <div className="flex items-center gap-4 mb-6">
