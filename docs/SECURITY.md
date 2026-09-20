@@ -29,7 +29,7 @@ Founder profiles are opt-in. Public directory/profile/sitemap/award responses ex
 
 Cross-account founder attribution requires a seven-day invitation from the current site owner and acceptance by the invited profile's account. Acceptance rechecks ownership, profile visibility and expiry in one transaction; it never transfers site ownership. Owners may remove links and founders may detach themselves. Replaying an accepted invitation cannot restore a removed link. Management views mask another account's private profile name and URL; no automatic invitation email is sent. See [FOUNDER-COLLABORATIONS.md](FOUNDER-COLLABORATIONS.md).
 
-Graph delivery uses scoped application credentials and distinguishes accepted from delivered. Uncertain outcomes are not blindly resent. R2 uses separate private/public buckets and authenticated private reads. Screenshots render in a separate sandboxed service, validate redirects/subresources and retain private captures until explicit public approval. Analytics scripts require consent and remain excluded from private routes; GPC/DNT deny collection.
+Graph delivery uses scoped application credentials and distinguishes accepted from delivered. Uncertain outcomes are not blindly resent. R2 uses separate private/public buckets and authenticated private reads. Screenshots render in a separate sandboxed service, validate redirects/subresources and retain private captures until explicit public approval. DataFast browser measurement uses cookieless mode and remains excluded from private routes; GPC/DNT and prior opt-outs deny collection. Google Analytics is not loaded. Essential authentication cookies remain.
 
 ## Secrets and accounts
 

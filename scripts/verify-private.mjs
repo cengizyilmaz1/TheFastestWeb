@@ -71,6 +71,22 @@ try {
       console.log(JSON.stringify({ width, page: label, mainCount: entry.mainCount, headingCount: entry.headingCount, overflow: entry.overflow, errors: errors.length, violations: entry.violations.map((issue) => issue.id) }));
     }
     await ctx.close();
+
+    const privateContext = await context(privateId, width), privatePage = await privateContext.newPage();
+    const privateErrors = [];
+    privatePage.on("pageerror", (error) => privateErrors.push(error.message));
+    await privatePage.goto(origin + "/", { waitUntil: "networkidle", timeout: 45_000 });
+    // Exercise the actual account-menu destination with an unpublished profile.
+    const response = await privatePage.goto(origin + `/profile/${privateId}`, { waitUntil: "networkidle", timeout: 45_000 });
+    assert(response?.status() === 200, "My Profile returned an error for its authenticated owner.");
+    assert(await privatePage.getByText("Only you can see this profile.", { exact: true }).isVisible(), "Private profile notice is absent.");
+    assert((await privatePage.locator('meta[name="robots"]').getAttribute("content"))?.includes("noindex"), "Private profile was indexable.");
+    const privateAxe = await new AxeBuilder({ page: privatePage }).withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze();
+    report.push({ width, page: "private-my-profile", mainCount: await privatePage.locator("main").count(), headingCount: await privatePage.locator("h1").count(),
+      overflow: await privatePage.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), errors: privateErrors,
+      violations: privateAxe.violations.map((issue) => ({ id: issue.id, impact: issue.impact })) });
+    await privatePage.screenshot({ path: resolve(output, `${width}-private-my-profile.png`), fullPage: true });
+    await privateContext.close();
   }
 
   // Restored profile pages still respect opt-in visibility and exclude private
@@ -83,6 +99,11 @@ try {
       assert(!html.includes(email), "An anonymous profile response exposed an account email.");
   }
   report.push({ interaction: "profile-visibility-and-account-privacy", passed: true });
+  const otherProfile = await fetch(new URL(`/profile/${privateId}`, base), { redirect: "manual", signal: AbortSignal.timeout(30_000),
+    headers: { cookie: `__Secure-next-auth.session-token=${await sessionFor(ownerId)}` } });
+  await otherProfile.arrayBuffer();
+  assert(otherProfile.status === 404, "An account could read another account's private profile.");
+  report.push({ interaction: "private-profile-account-isolation", passed: true });
   for (const userId of [null, founderId]) {
     const response = await fetch(new URL("/admin", base), { redirect: "manual", signal: AbortSignal.timeout(30_000),
       headers: userId ? { cookie: `__Secure-next-auth.session-token=${await sessionFor(userId)}` } : {} });

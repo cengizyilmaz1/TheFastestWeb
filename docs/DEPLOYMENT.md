@@ -3,7 +3,7 @@
 For the current managed Resources and optional production routing overlay, follow [runtime/PRODUCTION.md](../runtime/PRODUCTION.md). The combined stack instructions below also document the alternative standalone installation; they are not evidence that the current production release has completed.
 
 The stack contains web, PostgreSQL, Redis, a worker and a dispatcher with explicitly
-enabled scheduled generation. Dodo, Microsoft Graph, R2, consent analytics and the isolated screenshot
+enabled scheduled generation. Dodo, Microsoft Graph, R2, cookieless analytics and the isolated screenshot
 service are implemented behind explicit configuration gates. Passing health checks
 does not certify provider credentials or delivery. See [PROVIDERS.md](PROVIDERS.md).
 

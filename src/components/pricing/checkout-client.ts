@@ -1,3 +1,5 @@
+import { checkoutAnalyticsHeaders } from "@/infrastructure/analytics/datafast-browser";
+
 export type CatalogProduct = {
   key: string; title: string; kind: string; requiresSite: boolean;
   amountCents: number; currency: string; billingInterval: "one_time" | "month" | "year";
@@ -39,7 +41,7 @@ async function checkout(product: CatalogProduct, siteId?: string, adInventoryId?
     sessionStorage.setItem(storageKey, idempotencyKey);
   }
   const result = await read<{ orderId: string; url: string }>(await fetch("/api/payments/checkout", {
-    method: "POST", headers: { "Content-Type": "application/json" },
+    method: "POST", headers: { "Content-Type": "application/json", ...checkoutAnalyticsHeaders() },
     body: JSON.stringify({ productKey: product.key, siteId, adInventoryId, idempotencyKey }),
     signal: AbortSignal.timeout(30_000),
   }));

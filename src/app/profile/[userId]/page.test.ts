@@ -1,8 +1,9 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
-const { select, publicFounder } = vi.hoisted(() => ({ select: vi.fn(), publicFounder: vi.fn() }));
+const { select, publicFounder, auth } = vi.hoisted(() => ({ select: vi.fn(), publicFounder: vi.fn(), auth: vi.fn() }));
 vi.mock("@/db", () => ({ getDb: () => ({ select }) }));
+vi.mock("@/auth", () => ({ auth }));
 vi.mock("@/modules/founders/service", () => ({ getPublicFounder: publicFounder }));
 vi.mock("next/navigation", () => ({ notFound: () => { throw new Error("NOT_FOUND"); } }));
 import Page, { generateMetadata } from "./page";
@@ -19,6 +20,7 @@ beforeEach(() => {
   vi.stubGlobal("React", React);
   profileLookup([]);
   publicFounder.mockResolvedValue(null);
+  auth.mockResolvedValue(null);
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 describe("original profile page privacy", () => {
@@ -54,5 +56,28 @@ describe("original profile page privacy", () => {
     await expect(Page({ params: Promise.resolve({ userId: "invalid" }) })).rejects.toThrow("NOT_FOUND");
     await expect(generateMetadata({ params: Promise.resolve({ userId: "invalid" }) })).rejects.toThrow("NOT_FOUND");
     expect(select).not.toHaveBeenCalled();
+  });
+  it("lets the signed-in owner open My Profile without publishing account details", async () => {
+    auth.mockResolvedValue({ user: { id } });
+    select.mockImplementation((fields: Record<string, unknown>) => ({ from: () => ({ where: () => ({
+      limit: async () => "avatarUrl" in fields ? [{ name: "Private account name", avatarUrl: "https://example.com/private-avatar.webp", twitterHandle: null, isPro: false }] : [],
+      orderBy: () => ({ limit: async () => [] }),
+    }) }) }));
+    const markup = renderToStaticMarkup(await Page(props()));
+    expect(markup).toContain("Private account name");
+    expect(markup).toContain("Only you can see this profile.");
+    expect(markup).toContain('src="https://example.com/private-avatar.webp"');
+    const metadata = await generateMetadata(props());
+    expect(metadata.title).toEqual({ absolute: "My profile | TheFastestWeb" });
+    expect(metadata.robots).toEqual({ index: false, follow: false });
+    expect(JSON.stringify(metadata)).not.toContain("Private account name");
+    expect(JSON.stringify(metadata)).not.toContain("private-avatar.webp");
+    expect(publicFounder).not.toHaveBeenCalled();
+  });
+  it("keeps another account's unpublished profile unavailable to a signed-in visitor", async () => {
+    auth.mockResolvedValue({ user: { id: "10000000-0000-4000-8000-000000000002" } });
+    await expect(Page(props())).rejects.toThrow("NOT_FOUND");
+    expect(select).toHaveBeenCalledTimes(1);
+    expect(publicFounder).not.toHaveBeenCalled();
   });
 });

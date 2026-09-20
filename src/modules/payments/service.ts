@@ -13,13 +13,15 @@ import { enqueueNotification } from "@/modules/notifications/service";
 import { listAvailableAdInventory, reconcileAdPayment, reconcileAdSubscription, releaseFailedAdCreation, reserveAdInventory } from "./ads";
 import { recordAnalyticsEvent } from "@/modules/analytics/events";
 import { verifiedCatalogPredicate } from "./catalog-verification";
+import { isPaymentAttributionEligible, type CheckoutAnalytics } from "@/infrastructure/analytics/consent";
 
 type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 const snapshotSchema = z.object({ providerProductId: z.string().min(1).max(200), title: z.string().max(200),
   kind: z.enum(["pro_listing", "featured_listing", "sidebar_ad", "sponsorship"]),
   amountCents: z.number().int().nonnegative(), currency: z.string().regex(/^[A-Z]{3}$/),
   billingInterval: z.enum(["one_time", "month", "year"]), entitlementDays: z.number().int().positive().nullable(),
-  requiresSite: z.boolean(), scope: z.enum(["account", "site"]).optional(), analyticsConsent: z.boolean().optional(), analyticsVisitorId: z.uuid().optional() });
+  requiresSite: z.boolean(), scope: z.enum(["account", "site"]).optional(), analyticsConsent: z.boolean().optional(),
+  analyticsMode: z.literal("cookieless").optional(), analyticsEligible: z.boolean().optional(), analyticsVisitorId: z.uuid().optional() });
 type Snapshot = z.infer<typeof snapshotSchema>;
 const kinds = { pro_listing: "PRO", featured_listing: "FEATURED", sidebar_ad: "AD_SLOT", sponsorship: "SPONSORSHIP" } as const;
 
@@ -49,7 +51,7 @@ export async function listProducts() {
 
 /** The caller supplies only a catalog key and owned site, never a price or provider ID. */
 export async function createCheckout(input: { userId: string; productKey: string; siteId?: string; idempotencyKey: string;
-  analytics?: { consent: boolean; visitorId?: string }; adInventoryId?: string }) {
+  analytics?: CheckoutAnalytics; adInventoryId?: string }) {
   enabled();
   const db = database();
   const prepared = await db.transaction(async (tx) => {
@@ -85,8 +87,12 @@ export async function createCheckout(input: { userId: string; productKey: string
       }
       return { order: open, create: false, user };
     }
-    const snapshot = snapshotSchema.parse({ ...product, scope: input.siteId ? "site" : "account", analyticsConsent: getEnv().ANALYTICS_ENABLED && input.analytics?.consent === true,
-      ...(input.analytics?.consent && input.analytics.visitorId ? { analyticsVisitorId: input.analytics.visitorId } : {}) });
+    const analyticsEligible = getEnv().ANALYTICS_ENABLED && (input.analytics?.consent === true
+      || input.analytics?.mode === "cookieless" && input.analytics.eligible === true);
+    const snapshot = snapshotSchema.parse({ ...product, scope: input.siteId ? "site" : "account",
+      analyticsConsent: getEnv().ANALYTICS_ENABLED && input.analytics?.consent === true,
+      ...(input.analytics?.mode === "cookieless" ? { analyticsMode: "cookieless", analyticsEligible } : {}),
+      ...(analyticsEligible && input.analytics?.visitorId ? { analyticsVisitorId: input.analytics.visitorId } : {}) });
     const [order] = await tx.insert(checkoutOrders).values({ userId: input.userId, siteId: input.siteId,
       productId: product.id, idempotencyKey: key, status: "creating", productSnapshot: snapshot }).returning();
     if (product.kind === "sidebar_ad") await reserveAdInventory(tx, { inventoryId: input.adInventoryId!, orderId: order.id, userId: input.userId, siteId: input.siteId! });
@@ -222,7 +228,7 @@ export async function processPaymentWebhook(eventId: string): Promise<{ status: 
           properties: { kind: snapshot.kind, currency: savedPayment.currency, billingInterval: snapshot.billingInterval } }, tx);
         if (safeStatus === "succeeded" || safeStatus === "failed") await enqueueNotification({ userId: order.userId,
           eventKey: `payment:${savedPayment.id}:${safeStatus}`, type: safeStatus === "succeeded" ? "payment_success" : "payment_failed", variables: {} }, tx);
-        if (safeStatus === "succeeded" && snapshot.analyticsConsent && snapshot.analyticsVisitorId && getEnv().ANALYTICS_ENABLED && getEnv().DATAFAST_API_KEY
+        if (safeStatus === "succeeded" && isPaymentAttributionEligible(snapshot) && getEnv().ANALYTICS_ENABLED && getEnv().DATAFAST_API_KEY
           && (!subscription || payment.checkout_session_id === order.providerCheckoutId)
           && Date.now() - order.createdAt.getTime() < 86_400_000) {
           const [analyticsJob] = await tx.insert(backgroundJobs).values({ queue: "analytics", kind: "analytics.payment", jobKey: `analytics:payment:${savedPayment.id}`,

@@ -18,7 +18,7 @@ The demo has separate acceptance conditions from a paid production service. Befo
 - Configure Dodo test mode, products and exact prices/currencies/intervals. Verify signed-event replay, payment, refund, subscription transitions and separate account/site entitlements. Test ad capacity contention, indefinite uncertain holds, moderated creative approval and purchased duration. Follow [PAYMENTS.md](PAYMENTS.md).
 - Scope Graph application `Mail.Send` to the sender mailbox, confirm recipient delivery and unsubscribe/preferences behavior. HTTP 202 does not prove delivery. Follow [EMAIL.md](EMAIL.md).
 - Configure separate public/private R2 buckets, scoped credentials, lifecycle and public cache domains. Verify authenticated private objects, public screenshots, capture retention and private-site behavior.
-- Activate analytics after verifying consent, GPC/DNT, private-route exclusion and idempotent revenue events. Configure Search Console/Bing verification for the final domain.
+- Activate analytics after verifying cookieless mode, prior opt-outs, GPC/DNT, private-route exclusion and idempotent revenue events. Configure Search Console/Bing verification for the final domain.
 - Stop the old scheduler first. Set `SCHEDULER_ENABLED=true` to enable scheduled generation. The dispatcher still runs with this flag false, allowing manual work without automatic monitoring. Verify one daily job per site/device, provider budgets, closed snapshots and notification deduplication.
 - Set `DEPLOYMENT_MODE=production` when its required configuration is valid. Recheck canonical URLs, robots, sitemap children and owner contact details in legal pages.
 

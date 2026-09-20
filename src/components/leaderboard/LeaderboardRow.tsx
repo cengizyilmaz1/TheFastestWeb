@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useSyncExternalStore } from "react";
 import type { LegacyLeaderboardSite } from "@/modules/sites/legacy-view";
 import { FaviconImg } from "@/components/ui/FaviconImg";
+import { Avatar } from "@/components/ui/Avatar";
 
 interface LeaderboardRowProps {
   site: LegacyLeaderboardSite;
@@ -11,8 +11,6 @@ interface LeaderboardRowProps {
 }
 
 export function LeaderboardRow({ site, rank }: LeaderboardRowProps) {
-  const mounted = useSyncExternalStore(() => () => {}, () => true, () => false);
-
   let rankDisplay: React.ReactNode = rank;
   let topClass = "";
 
@@ -80,34 +78,13 @@ export function LeaderboardRow({ site, rank }: LeaderboardRowProps) {
             className="flex items-center gap-2 text-text-secondary text-[0.82rem] no-underline hover:text-text-primary transition-colors"
             onClick={(e) => e.stopPropagation()}
           >
-            {site.twitterHandle && mounted ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={`/api/avatar/${site.twitterHandle.replace("@", "")}`}
-                alt={site.ownerName}
-                className="w-6 h-6 rounded-full shrink-0 object-cover"
-                loading="lazy"
-                fetchPriority="low"
-              />
-            ) : (
-              <div className="w-6 h-6 rounded-full bg-bg-elevated flex items-center justify-center text-[10px] font-bold text-text-muted shrink-0">
-                {(site.ownerName || "")
-                  .split(" ")
-                  .map((n) => n[0])
-                  .join("")}
-              </div>
-            )}
+            <Avatar name={site.ownerName || ""} src={site.ownerAvatarUrl} />
             <span className="whitespace-nowrap overflow-hidden text-ellipsis">{site.ownerName}</span>
           </Link>
         ) : (
           <div className="flex items-center gap-2 text-text-secondary text-[0.82rem]">
-            <div className="w-6 h-6 rounded-full bg-bg-elevated flex items-center justify-center text-[10px] font-bold text-text-muted shrink-0">
-              {(site.ownerName || "")
-                .split(" ")
-                .map((n) => n[0])
-                .join("")}
-            </div>
-            <span className="whitespace-nowrap overflow-hidden text-ellipsis">{site.ownerName}</span>
+            <Avatar name={site.ownerName || ""} />
+            <span className="whitespace-nowrap overflow-hidden text-ellipsis">{site.ownerName || "Not shared"}</span>
           </div>
         )}
       </td>

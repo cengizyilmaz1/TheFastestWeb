@@ -109,7 +109,7 @@ export const publicPages: Record<string, PublicPageContent> = {
           "Self-hosted infrastructure: application hosting, PostgreSQL storage, and Redis queues managed through Coolify.",
           "Microsoft 365: transactional email delivery through Microsoft Graph when email is enabled.",
           "Cloudflare R2: storage for generated website screenshots when screenshot storage is enabled.",
-          "Optional visitor analytics: Google Analytics or the DataFast browser SDK may be enabled with your analytics consent. They measure public page visits; private account pages and URL query strings are excluded. DataFast receives a pseudonymous visitor ID and, for eligible purchases, the confirmed payment amount, currency and transaction ID. We do not send your account name or email for payment attribution.",
+          "Visitor analytics: DataFast measures public page visits in cookieless mode. It uses a pseudonymous identifier derived by the provider from signals including IP address, browser information, domain and a daily rotating salt. Private account pages, query strings and sensitive referrers are excluded. Eligible initial purchases can be linked to the current visit using their confirmed amount, currency and transaction ID; no account name or email is sent for attribution. Longer-term and cross-day attribution is limited. Google Analytics is not loaded.",
           "Crawler analytics: When enabled, the separate DataFast server integration observes requests identified as AI or search crawlers. It sends the public page path and crawler user agent, and may send the crawler IP when our trusted proxy is configured for IP verification. It excludes private routes, query strings, cookies and authorization headers. Crawler classifications are estimates, not proof that a visitor is human."
         ]
       },
@@ -139,7 +139,7 @@ export const publicPages: Record<string, PublicPageContent> = {
         "id": "cookies",
         "title": "Cookies",
         "paragraphs": [
-          "Auth.js uses essential session and security cookies for sign-in. Optional browser analytics load only after consent when analytics is enabled and respect Do Not Track and Global Privacy Control. DataFast uses visitor/session cookies and browser storage for its event queue. You can change your preference using the analytics controls shown on the site; disabling analytics clears accessible tracker cookies and queued browser data. Server crawler measurement does not set analytics cookies."
+          "Auth.js uses essential session and security cookies for sign-in. DataFast does not set analytics cookies. Its visitor and session identifiers are held in tab session storage; its event queue can temporarily use browser storage for delivery retries. The current-tab identifier can accompany an initial checkout for up to 24 hours. We honor Do Not Track, Global Privacy Control and previously saved analytics opt-outs, and remove accessible legacy analytics cookies. You can disable browser measurement using Do Not Track or Global Privacy Control. Server crawler measurement does not set browser cookies."
         ]
       },
       {

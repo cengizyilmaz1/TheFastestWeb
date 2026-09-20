@@ -150,7 +150,28 @@ describe("durable Dodo transactions", () => {
     expect(JSON.parse(request.mock.calls[0][1].body)).toMatchObject({ amount: 20.9, currency: "USD", transaction_id: "dodo:pay_synthetic" });
     expect(request.mock.calls[0][1].body).not.toMatch(/email|customer|name/);
   });
-  it("does not create analytics jobs without consent", async () => {
+  it("attributes a confirmed cookieless checkout without fabricating cookie consent", async () => {
+    config.ANALYTICS_ENABLED = true; config.DATAFAST_API_KEY = "df_synthetic";
+    const data = await setup();
+    const visitorId = "00000000-0000-4000-8000-000000000009";
+    const checkout = await createCheckout({ ...data, productKey: "pro", idempotencyKey: randomUUID(),
+      analytics: { consent: false, mode: "cookieless", eligible: true, visitorId } });
+    const [order] = await fixtureSql()`SELECT product_snapshot FROM checkout_orders WHERE id=${checkout.orderId}`;
+    expect(order.product_snapshot).toMatchObject({ analyticsConsent: false, analyticsMode: "cookieless", analyticsEligible: true, analyticsVisitorId: visitorId });
+    provider.getPayment.mockResolvedValue(payment(checkout.orderId));
+    await processPaymentWebhook(await event());
+    const [job] = await fixtureSql()`SELECT payload FROM background_jobs WHERE kind='analytics.payment'`;
+    expect(job).toBeTruthy();
+    const request = vi.fn().mockResolvedValue(new Response(JSON.stringify({ transaction_id: "dodo:pay_synthetic" })));
+    vi.stubGlobal("fetch", request);
+    expect(await processPaymentAnalytics(job.payload.paymentId)).toEqual({ status: "recorded" });
+    expect(JSON.parse(request.mock.calls[0][1].body)).toMatchObject({ datafast_visitor_id: visitorId, transaction_id: "dodo:pay_synthetic" });
+    // Revocation after queuing must also stop the durable worker.
+    await fixtureSql()`UPDATE checkout_orders SET product_snapshot=jsonb_set(product_snapshot,'{analyticsEligible}','false'::jsonb) WHERE id=${checkout.orderId}`;
+    expect(await processPaymentAnalytics(job.payload.paymentId)).toEqual({ status: "skipped" });
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+  it("does not create analytics jobs without eligible attribution", async () => {
     config.ANALYTICS_ENABLED = true; config.DATAFAST_API_KEY = "df_synthetic";
     const data = await order(); provider.getPayment.mockResolvedValue(payment(data.orderId));
     await processPaymentWebhook(await event());

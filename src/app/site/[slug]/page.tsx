@@ -5,6 +5,7 @@ import { cache } from "react";
 import { getDb } from "@/db/index";
 import { founders, sites, speedTests } from "@/db/schema";
 import { FaviconImg } from "@/components/ui/FaviconImg";
+import { Avatar } from "@/components/ui/Avatar";
 import { and, eq, desc, inArray, isNull, sql } from "drizzle-orm";
 import { HistoryChart } from "@/components/site-detail/HistoryChart";
 import { MetricsGrid } from "@/components/site-detail/MetricsGrid";
@@ -25,7 +26,7 @@ const getSiteBySlug = cache(async (slug: string) => {
     const [row] = await db
       .select({ ...publicSiteProjection, tier: sites.tier, trend: sites.trend,
         currentLoadTime: sites.currentLoadTime, currentFcp: sites.currentFcp, currentTti: sites.currentTti,
-        currentSi: sites.currentSi, ownerId: founders.userId, ownerName: founders.name })
+        currentSi: sites.currentSi, ownerId: founders.userId, ownerName: founders.name, ownerAvatarUrl: founders.avatarUrl })
       .from(sites)
       .leftJoin(founders, and(eq(founders.userId, sites.ownerId), eq(founders.visibility, "public")))
       .where(and(eq(sites.slug, slug), eq(sites.isListed, true), isNull(sites.archivedAt),
@@ -274,32 +275,12 @@ export default async function SiteDetailPage({
                 href={`/profile/${site.ownerId}`}
                 className="inline-flex items-center gap-2 no-underline text-inherit hover:text-accent transition-colors"
               >
-                {site.twitterHandle ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={`/api/avatar/${site.twitterHandle.replace("@", "")}`}
-                    alt={site.ownerName}
-                    className="w-[34px] h-[34px] rounded-full object-cover"
-                    loading="lazy"
-                  />
-                ) : (
-                  <span className="w-[34px] h-[34px] rounded-full bg-bg-elevated flex items-center justify-center text-[11px] font-bold text-text-muted">
-                    {site.ownerName
-                      .split(" ")
-                      .map((n) => n[0])
-                      .join("")}
-                  </span>
-                )}
+                <Avatar name={site.ownerName} src={site.ownerAvatarUrl} size={34} />
                 {site.ownerName}
               </Link>
             ) : (
               <span className="inline-flex items-center gap-2">
-                <span className="w-[34px] h-[34px] rounded-full bg-bg-elevated flex items-center justify-center text-[11px] font-bold text-text-muted">
-                  {site.ownerName
-                    .split(" ")
-                    .map((n) => n[0])
-                    .join("")}
-                </span>
+                <Avatar name={site.ownerName} size={34} />
                 {site.ownerName}
               </span>
             )}

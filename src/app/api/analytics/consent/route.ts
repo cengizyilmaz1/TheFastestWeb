@@ -15,7 +15,7 @@ export const POST = withApi(async (request) => {
   if (!granted && session?.user?.id) {
     const db = getDb();
     if (!db) throw new AppError("DATABASE_UNAVAILABLE", "The account consent setting could not be saved. Please retry.", 503);
-    await db.update(checkoutOrders).set({ productSnapshot: sql`jsonb_set(${checkoutOrders.productSnapshot} - 'analyticsVisitorId','{analyticsConsent}','false'::jsonb)`, updatedAt: sql`now()` })
+    await db.update(checkoutOrders).set({ productSnapshot: sql`jsonb_set(jsonb_set(${checkoutOrders.productSnapshot} - 'analyticsVisitorId','{analyticsConsent}','false'::jsonb),'{analyticsEligible}','false'::jsonb)`, updatedAt: sql`now()` })
       .where(eq(checkoutOrders.userId, session.user.id));
   }
   // Grants apply only to future checkout snapshots. Never backfill old purchases.

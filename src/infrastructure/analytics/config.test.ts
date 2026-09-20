@@ -10,7 +10,7 @@ describe("public analytics configuration", () => {
   beforeEach(() => { env.ANALYTICS_ENABLED = true; });
   it("publishes only the canonical origin and public provider identifiers", () => {
     expect(getPublicAnalyticsConfig()).toEqual({ enabled: true, siteOrigin: "https://example.test",
-      gaId: "G-SYNTHETIC", datafastWebsiteId: "dfid_synthetic", datafastDomain: "example.test" });
+      datafastWebsiteId: "dfid_synthetic", datafastDomain: "example.test" });
   });
   it("omits all provider configuration when measurement is disabled", () => {
     env.ANALYTICS_ENABLED = false;

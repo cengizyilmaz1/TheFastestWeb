@@ -18,7 +18,7 @@ src/modules/awards, badges     Eligibility, achievements, verification and share
 src/modules/compare            Public-only, same-device/method comparisons
 src/modules/payments           Dodo ledger, checkout, scoped entitlements and ad reservations
 src/modules/notifications      In-app events, category preferences and queued Graph delivery
-src/modules/analytics          Typed internal events and consented revenue processing
+src/modules/analytics          Typed internal events and eligible revenue attribution
 src/modules/admin             Explicit roles, audited preview/confirm operations and reports
 src/modules/dashboard         Owner-scoped read models
 src/modules/catalog, seo       Product taxonomy, public discovery and indexability policy
@@ -73,7 +73,7 @@ Welcome, publication, claims, monitoring, competition, badge and payment events 
 
 Graph uses app-only Microsoft 365 credentials and scoped mailbox access. Provider acceptance is not confirmed delivery; an uncertain send is recorded for reconciliation instead of risking duplicate email. Signed unsubscribe links and category preferences apply independently of the in-app notification record.
 
-GA/DataFast browser scripts require both configured provider identifiers and explicit consent. Private application paths and arbitrary query values are excluded. DataFast revenue processing requires a confirmed payment and eligible server-captured consent; provider traffic hints are not verified human/bot classifications. Separate typed, deduplicated internal domain events record product actions without client-controlled event insertion or raw personal data. Neither analytics stream controls entitlement or ranking.
+DataFast uses native cookieless tracking with configured provider identifiers; Google Analytics is not loaded. Private application paths and arbitrary query values are excluded, and GPC/DNT plus prior opt-outs are honored. DataFast revenue processing requires a confirmed payment and an eligible current-tab checkout snapshot (or legacy explicit consent); provider traffic hints are not verified human/bot classifications. Separate typed, deduplicated internal domain events record product actions without client-controlled event insertion or raw personal data. Neither analytics stream controls entitlement or ranking.
 
 `PAYMENTS_ENABLED`, `EMAIL_ENABLED`, `STORAGE_ENABLED`, `SCREENSHOTS_ENABLED` and `ANALYTICS_ENABLED` default false. Missing enabled-provider configuration fails startup. Demo mode rejects payments, email, analytics and scheduled generation and applies indexing guards. Local transport tests do not substitute for new-owner account credentials, OAuth callback configuration, provider sandbox tests or a production cutover. See [PROVIDERS.md](PROVIDERS.md) and [RUNBOOK.md](RUNBOOK.md).
 

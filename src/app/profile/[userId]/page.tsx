@@ -3,8 +3,10 @@ import { cache } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getDb } from "@/db";
-import { founders, sites, speedTests } from "@/db/schema";
+import { founders, sites, speedTests, users } from "@/db/schema";
+import { auth } from "@/auth";
 import { FaviconImg } from "@/components/ui/FaviconImg";
+import { Avatar } from "@/components/ui/Avatar";
 import { and, eq, desc, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getPublicFounder } from "@/modules/founders/service";
@@ -44,10 +46,32 @@ const readPublicProfile = cache(async (userId: string) => {
   return { user: { name: profile.name, avatarUrl: profile.avatarUrl, twitterHandle, isPro: false }, userSites };
 });
 
+const readProfile = cache(async (userId: string) => {
+  if (!z.uuid().safeParse(userId).success) return null;
+  const published = await readPublicProfile(userId);
+  if (published) return { ...published, isPrivate: false };
+
+  // "My Profile" also works before publication. This fallback belongs exclusively
+  // to the signed-in account and never creates or publishes a founder record.
+  const session = await auth();
+  if (session?.user?.id !== userId) return null;
+  const db = getDb();
+  if (!db) return null;
+  const [user] = await db.select({ name: users.name, avatarUrl: users.avatarUrl,
+    twitterHandle: users.twitterHandle, isPro: users.isPro }).from(users).where(eq(users.id, userId)).limit(1);
+  if (!user) return null;
+  const userSites = await db.select({ ...publicSiteProjection, currentLoadTime: sites.currentLoadTime })
+    .from(sites).where(and(eq(sites.ownerId, userId), publiclyActive()))
+    .orderBy(desc(sites.currentScore)).limit(100);
+  return { user, userSites, isPrivate: true };
+});
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { userId } = await params;
-  const data = await readPublicProfile(userId);
+  const data = await readProfile(userId);
   if (!data) notFound();
+  if (data.isPrivate) return pageMetadata({ title: "My profile", description: "Your private account profile and submitted public websites.",
+    path: `/profile/${userId}`, index: false, follow: false });
   const { user, userSites } = data;
   const siteCount = userSites.length;
   const bestScore = siteCount > 0 ? Math.max(...userSites.map((s) => s.currentScore)) : null;
@@ -61,9 +85,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function ProfilePage({ params }: Props) {
   const { userId } = await params;
-  const data = await readPublicProfile(userId);
+  const data = await readProfile(userId);
   if (!data) notFound();
-  const { user, userSites } = data;
+  const { user, userSites, isPrivate } = data;
   const db = getDb();
 
   // Compute aggregate stats
@@ -96,19 +120,16 @@ export default async function ProfilePage({ params }: Props) {
         <span className="text-text-primary">{user.name}</span>
       </div>
 
+      {isPrivate && <div className="mb-6 rounded-[10px] border border-border bg-bg-card px-4 py-3 text-sm text-text-secondary">
+        <p className="font-semibold text-text-primary">Only you can see this profile.</p>
+        <p className="mt-1">Your account details are private. Published websites below remain visible in the directory.</p>
+      </div>}
+
       {/* Profile header */}
       <div className="flex items-center gap-4 mb-6">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={
-            user.twitterHandle
-              ? `/api/avatar/${user.twitterHandle.replace("@", "")}`
-              : user.avatarUrl || ""
-          }
-          alt={user.name}
-          className="w-[72px] h-[72px] rounded-full border-2 border-border object-cover"
-          referrerPolicy="no-referrer"
-        />
+        <Avatar name={user.name} src={user.avatarUrl}
+          fallbackSrc={user.twitterHandle ? `/api/avatar/${user.twitterHandle.replace("@", "")}` : null}
+          size={72} className="border-2 border-border text-xl" />
         <div className="flex-1">
           <div className="flex items-center gap-2.5">
             <h1 className="font-display font-[800] text-[1.6rem] tracking-[-0.02em]">

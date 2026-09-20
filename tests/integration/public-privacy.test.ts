@@ -106,22 +106,45 @@ describe("public data boundaries on PostgreSQL",()=>{
     await site("legacy-public");await site("legacy-private","active",false);
     await site("legacy-pending","pending");await site("legacy-archived","active",true,true);
     const profileId=randomUUID();
-    await fixtureSql()`INSERT INTO founders(id,user_id,slug,name,visibility)
-      VALUES(${profileId},${owner},'legacy-owner','Chosen public founder','private')`;
+    await fixtureSql()`INSERT INTO founders(id,user_id,slug,name,visibility,avatar_url)
+      VALUES(${profileId},${owner},'legacy-owner','Chosen public founder','private','https://example.com/chosen-public-avatar.webp')`;
     const db=getDb();if(!db)throw new Error("Missing integration database");
     const listing=()=>db.select(legacyLeaderboardProjection).from(sites).where(publiclyActive());
     const hiddenIdentity=await listing();
     expect(hiddenIdentity.map(row=>row.slug)).toEqual(["legacy-public"]);
-    expect(hiddenIdentity[0]).toMatchObject({ownerId:null,ownerName:"",twitterHandle:null});
+    expect(hiddenIdentity[0]).toMatchObject({ownerId:null,ownerName:"",ownerAvatarUrl:null,twitterHandle:null});
     expect(hiddenIdentity[0]).not.toHaveProperty("email");
-    for(const value of [owner,"never-public@example.invalid","Private account name","Chosen public founder"])
+    for(const value of [owner,"never-public@example.invalid","Private account name","Chosen public founder","chosen-public-avatar.webp"])
       expect(JSON.stringify(hiddenIdentity)).not.toContain(value);
     await fixtureSql()`UPDATE founders SET visibility='public' WHERE id=${profileId}`;
     const publicIdentity=await listing();
     expect(publicIdentity.map(row=>row.slug)).toEqual(["legacy-public"]);
-    expect(publicIdentity[0]).toMatchObject({ownerId:owner,ownerName:"Chosen public founder",twitterHandle:null});
+    expect(publicIdentity[0]).toMatchObject({ownerId:owner,ownerName:"Chosen public founder",ownerAvatarUrl:"https://example.com/chosen-public-avatar.webp",twitterHandle:null});
     expect(publicIdentity[0]).not.toHaveProperty("email");
     expect(JSON.stringify(publicIdentity)).not.toContain("Private account name");
+    const markup=renderToStaticMarkup(await SitePage({params:Promise.resolve({slug:"legacy-public"})}));
+    expect(markup).toContain('src="https://example.com/chosen-public-avatar.webp"');
+    await fixtureSql()`UPDATE founders SET visibility='private' WHERE id=${profileId}`;
+    expect((await listing())[0]).toMatchObject({ownerId:null,ownerName:"",ownerAvatarUrl:null});
+  });
+  it("allows an unpublished profile only for its authenticated owner without creating public attribution",async()=>{
+    await site("owned-public");await site("owned-private","active",false);
+    await fixtureSql()`UPDATE users SET avatar_url='https://example.com/private-account-avatar.webp' WHERE id=${owner}`;
+    const props=()=>({params:Promise.resolve({userId:owner})});
+    await expect(ProfilePage(props())).rejects.toThrow("NOT_FOUND");
+    auth.mockResolvedValue({user:{id:randomUUID()}});
+    await expect(ProfilePage(props())).rejects.toThrow("NOT_FOUND");
+    auth.mockResolvedValue({user:{id:owner}});
+    const markup=renderToStaticMarkup(await ProfilePage(props()));
+    expect(markup).toContain("Private account name");expect(markup).toContain("Only you can see this profile.");
+    expect(markup).toContain("private-account-avatar.webp");expect(markup).toContain("/site/owned-public");
+    expect(markup).not.toContain("/site/owned-private");expect(markup).not.toContain("never-public@example.invalid");
+    const metadata=JSON.stringify(await profileMetadata(props()));
+    expect(metadata).not.toContain("Private account name");expect(metadata).not.toContain("private-account-avatar.webp");
+    const [state]=await fixtureSql()`SELECT count(*)::int AS count FROM founders`;
+    expect(state.count).toBe(0);
+    auth.mockResolvedValue(null);
+    await expect(ProfilePage(props())).rejects.toThrow("NOT_FOUND");
   });
   it("keeps private reports and account attribution out of original public site pages and metadata",async()=>{
     await site("public-report");await site("private-report","active",false);await site("archived-report","active",true,true);

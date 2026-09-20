@@ -3,6 +3,7 @@ import { getEnv } from "@/config/env";
 import { getDb } from "@/db";
 import { checkoutOrders, providerPayments } from "@/db/schema";
 import { AppError } from "@/lib/http/errors";
+import { isPaymentAttributionEligible } from "./consent";
 
 export function minorToMajor(amount: number, currency: string): number {
   if (!Number.isSafeInteger(amount) || amount < 0 || !/^[A-Z]{3}$/.test(currency)) throw new AppError("INVALID_REQUEST", "Invalid analytics amount.", 400);
@@ -42,7 +43,7 @@ export async function processPaymentAnalytics(paymentId: string): Promise<{ stat
   if (!db) throw new AppError("DATABASE_UNAVAILABLE", "Analytics attribution is temporarily unavailable.", 503);
   const [row] = await db.select({ payment: providerPayments, snapshot: checkoutOrders.productSnapshot, orderCreatedAt: checkoutOrders.createdAt })
     .from(providerPayments).innerJoin(checkoutOrders, eq(checkoutOrders.id, providerPayments.orderId)).where(eq(providerPayments.id, paymentId));
-  if (!row || row.payment.status !== "succeeded" || row.snapshot.analyticsConsent !== true || Date.now() - row.orderCreatedAt.getTime() >= 86_400_000
+  if (!row || row.payment.status !== "succeeded" || !isPaymentAttributionEligible(row.snapshot) || Date.now() - row.orderCreatedAt.getTime() >= 86_400_000
     || typeof row.snapshot.analyticsVisitorId !== "string" || !/^[a-f0-9-]{36}$/i.test(row.snapshot.analyticsVisitorId)) return { status: "skipped" };
   return recordDataFastPayment({ transactionId: `dodo:${row.payment.providerPaymentId}`, amountCents: row.payment.amountCents,
     currency: row.payment.currency, visitorId: row.snapshot.analyticsVisitorId, timestamp: row.payment.occurredAt });
