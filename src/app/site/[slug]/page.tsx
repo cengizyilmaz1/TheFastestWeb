@@ -17,6 +17,7 @@ import { pageMetadata, siteUrl } from "@/lib/seo/metadata";
 import { webPageSchema } from "@/lib/seo/structured-data";
 import { logger } from "@/infrastructure/logging/logger";
 import { getLatestPublicScreenshot } from "@/modules/screenshots/public-view";
+import { siteVisitLinkRel } from "@/modules/sites/link-policy";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,8 @@ const getSiteBySlug = cache(async (slug: string) => {
   try {
     const [row] = await db
       .select({ ...publicSiteProjection, tier: sites.tier, trend: sites.trend,
+        ownerIsAdmin: sql<boolean>`EXISTS (SELECT 1 FROM admin_roles a
+          WHERE a.user_id=${sql.identifier("sites")}.${sql.identifier("owner_id")} AND a.role='admin')`,
         currentLoadTime: sites.currentLoadTime, currentFcp: sites.currentFcp, currentTti: sites.currentTti,
         currentSi: sites.currentSi, ownerId: founders.userId, ownerName: founders.name, ownerAvatarUrl: founders.avatarUrl, ownerUsername: founders.slug })
       .from(sites)
@@ -231,7 +234,7 @@ export default async function SiteDetailPage({
                 </a>
                 <OutboundLink
                   href={site.url} placement="product" trackingId={site.id}
-                  rel={site.tier === "pro" ? "noopener noreferrer" : "nofollow noopener noreferrer"}
+                  rel={siteVisitLinkRel(site)}
                   className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-[10px] bg-bg-card border border-border text-text-primary font-semibold text-[0.82rem] cursor-pointer transition-all duration-200 font-body no-underline hover:bg-bg-card-hover hover:border-border-light whitespace-nowrap"
                 >
                   Visit ↗

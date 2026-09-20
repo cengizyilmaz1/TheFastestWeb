@@ -54,12 +54,26 @@ async function api(userId, method = "GET", body, requestOrigin = origin) {
   return { status: response.status, cache: response.headers.get("cache-control"), body: await response.json() };
 }
 function assert(condition, message) { if (!condition) throw new Error(message); }
+async function legacyProfileDestination(userId) {
+  const response = await fetch(new URL(`/profile/${userId}`, base), { redirect: "manual", signal: AbortSignal.timeout(30_000),
+    headers: { cookie: `__Secure-next-auth.session-token=${await sessionFor(userId)}` } });
+  await response.arrayBuffer();
+  assert(response.status === 301 && /no-store/.test(response.headers.get("cache-control") ?? ""), "Legacy My Profile must return a private, uncached 301.");
+  const destination = new URL(response.headers.get("location"));
+  assert(destination.origin === origin && /^\/founder\/[a-z0-9-]+$/.test(destination.pathname), "Legacy My Profile must point to a canonical founder username.");
+  // Keep browser navigation inside the intercepted synthetic origin. Chromium
+  // can bypass route interception when following a fulfilled HTTP redirect.
+  return destination.pathname;
+}
 const adminPages = ["/admin", "/admin/users", "/admin/websites", "/admin/ads", "/admin/payments", "/admin/audit", "/admin/redirects"];
 try {
+  const publicProfilePath = await legacyProfileDestination(ownerId);
+  const privateProfilePath = await legacyProfileDestination(privateId);
+  report.push({ interaction: "authenticated-legacy-profile-301", passed: true });
   for (const width of [1440, 390]) {
     const ctx = await context(ownerId, width), page = await ctx.newPage(), errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
-    for (const [label, path] of [["submit", "/submit"], ["public-owner-profile", `/profile/${ownerId}`], ...adminPages.map((path) => [`admin${path.slice(6).replace("/", "-")}`, path])]) {
+    for (const [label, path] of [["submit", "/submit"], ["public-owner-profile", publicProfilePath], ...adminPages.map((path) => [`admin${path.slice(6).replace("/", "-")}`, path])]) {
       errors.length = 0;
       const response = await page.goto(origin + path, { waitUntil: "networkidle", timeout: 45_000 });
       assert(response?.status() === 200, "An authenticated original page did not load.");
@@ -77,8 +91,8 @@ try {
     const privateErrors = [];
     privatePage.on("pageerror", (error) => privateErrors.push(error.message));
     await privatePage.goto(origin + "/", { waitUntil: "networkidle", timeout: 45_000 });
-    // Exercise the actual account-menu destination with an unpublished profile.
-    const response = await privatePage.goto(origin + `/profile/${privateId}`, { waitUntil: "networkidle", timeout: 45_000 });
+    // The real legacy destination was verified above with this owner's session.
+    const response = await privatePage.goto(origin + privateProfilePath, { waitUntil: "networkidle", timeout: 45_000 });
     assert(response?.status() === 200, "My Profile returned an error for its authenticated owner.");
     assert(await privatePage.getByText("Only you can see this profile.", { exact: true }).isVisible(), "Private profile notice is absent.");
     assert((await privatePage.locator('meta[name="robots"]').getAttribute("content"))?.includes("noindex"), "Private profile was indexable.");
