@@ -4,6 +4,7 @@ import { encode } from "next-auth/jwt";
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { request as httpRequest } from "node:http";
 
 const base = new URL(process.env.SMOKE_BASE_URL || "http://127.0.0.1:3200");
 const origin = new URL(process.env.AUTH_URL || process.env.SITE_URL || "https://demo.example.invalid").origin;
@@ -55,6 +56,22 @@ async function api(userId, method = "GET", body, requestOrigin = origin) {
   return { status: response.status, cache: response.headers.get("cache-control"), body: await response.json() };
 }
 function assert(condition, message) { if (!condition) throw new Error(message); }
+function trackedRedirect(options) {
+  // Node's fetch replaces a supplied Host header. Native HTTP preserves the
+  // synthetic canonical host while transporting only to the guarded loopback URL.
+  return new Promise((resolve, reject) => {
+    const request = httpRequest(new URL("/synthetic-old-address?ignored=private-query", base), {
+      ...options, headers: { ...options.headers, host: new URL(origin).host }, timeout: 30_000,
+    }, response => {
+      response.resume();
+      response.on("end", () => resolve({ status: response.statusCode, location: response.headers.location }));
+      response.on("error", reject);
+    });
+    request.on("error", reject);
+    request.on("timeout", () => request.destroy(new Error("Synthetic redirect timed out.")));
+    request.end();
+  });
+}
 async function legacyProfileDestination(userId) {
   const response = await fetch(new URL(`/profile/${userId}`, base), { redirect: "manual", signal: AbortSignal.timeout(30_000),
     headers: { cookie: `__Secure-next-auth.session-token=${await sessionFor(userId)}` } });
@@ -79,11 +96,8 @@ try {
     { headers: { "user-agent": browserAgent, dnt: "1" } },
     { headers: { "user-agent": browserAgent, "sec-gpc": "1" } },
   ]) {
-    const response = await fetch(new URL("/synthetic-old-address?ignored=private-query", base), {
-      ...options, headers: { ...options.headers, host: new URL(origin).host }, redirect: "manual", signal: AbortSignal.timeout(30_000),
-    });
-    await response.arrayBuffer();
-    assert(response.status === 301 && response.headers.get("location") === `${origin}/about`, "Tracked redirect behavior changed.");
+    const response = await trackedRedirect(options);
+    assert(response.status === 301 && response.location === `${origin}/about`, "Tracked redirect behavior changed.");
   }
   let measured;
   for (let attempt = 0; attempt < 20; attempt++) {
@@ -94,6 +108,7 @@ try {
     if (measured?.total >= 2) break;
     await delay(100);
   }
+  console.log(JSON.stringify({ check: "synthetic-redirect-statistics", measured }));
   assert(measured?.total === 2 && measured.human === 1 && measured.bot === 1 && measured.today === 2 && measured.last30Days === 2,
     "Redirect statistics lost requests or counted excluded traffic.");
   report.push({ interaction: "redirect-request-counts-bot-separation-and-privacy-exclusions", passed: true });
