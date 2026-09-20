@@ -93,6 +93,8 @@ try {
     { method: "HEAD", headers: { "user-agent": browserAgent } },
     { headers: { "user-agent": browserAgent, purpose: "prefetch" } },
     { headers: { "user-agent": browserAgent, rsc: "1" } },
+    { headers: { "user-agent": browserAgent, "next-router-prefetch": "1" } },
+    { headers: { "user-agent": browserAgent, "next-router-segment-prefetch": "/about" } },
     { headers: { "user-agent": browserAgent, dnt: "1" } },
     { headers: { "user-agent": browserAgent, "sec-gpc": "1" } },
   ]) {
