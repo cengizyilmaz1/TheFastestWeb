@@ -27,7 +27,7 @@ export default async function RedirectsPage() {
     </div>
     <RedirectsPanel rules={data.rules.map(rule => ({ id: rule.id, sourcePath: rule.sourcePath, destinationPath: rule.destinationPath,
       statusCode: rule.statusCode, enabled: rule.enabled, version: rule.version, statistics: rule.statistics }))} />
-    <Panel title="Founder redirect activity" description="Recorded requests to previous public profile addresses. Account IDs are never included in the report." className="mt-5">
+    <Panel title="Founder redirect activity" description="Recorded requests to previous public profile addresses. Legacy /profile/ addresses are masked." className="mt-5">
       {data.founderStatistics.length ? <TableFrame label="Founder redirect request statistics">
         <table className="w-full border-collapse">
           <thead><tr>{["Previous address → current profile", "All requests", "Today", "Last 30 days", "Detected bots", "Last request (UTC)"].map(label => <th scope="col" key={label} className={th}>{label}</th>)}</tr></thead>
