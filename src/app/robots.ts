@@ -9,7 +9,9 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: "*",
       allow: "/",
-      disallow: ["/api/", "/auth/", "/admin", "/profile/", "/email-preview", "/badge-preview", "/links"],
+      // Crawlers must reach legacy profile URLs to observe their canonical 301.
+      // The route itself returns 404 for private or missing profiles.
+      disallow: ["/api/", "/auth/", "/admin", "/email-preview", "/badge-preview", "/links"],
     },
     sitemap: `${siteConfig.url}/sitemap.xml`,
   };
