@@ -15,12 +15,13 @@ describe("redirect request eligibility and privacy", () => {
   it.each(["HEAD", "POST", "OPTIONS"])("excludes %s requests", method => {
     expect(classifyRedirectRequest(request({}, method))).toBeNull();
   });
-  it.each([
+  const excludedHeaders: Record<string, string>[] = [
     { dnt: "1" }, { "sec-gpc": "1" }, { cookie: "session=secret; tfw_analytics_v1=denied" },
     { rsc: "1" }, { "next-router-prefetch": "1" }, { "next-router-segment-prefetch": "/x" },
     { purpose: "prefetch" }, { "sec-purpose": "prefetch;prerender" },
     { "sec-fetch-dest": "image" }, { "sec-fetch-dest": "empty" },
-  ])("excludes automatic navigation and opt-out headers %j", headers => {
+  ];
+  it.each(excludedHeaders)("excludes automatic navigation and opt-out headers %j", headers => {
     expect(classifyRedirectRequest(request(headers))).toBeNull();
   });
   it.each(["Googlebot/2.1", "GPTBot/1.0", "curl/8.0", "Wget/1.0", "python-requests/2", "node", "HeadlessChrome/145", "", "x".repeat(1025)])("classifies detected automation separately (%s)", agent => {
