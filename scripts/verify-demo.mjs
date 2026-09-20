@@ -17,7 +17,9 @@ await check("/robots.txt", 200, (_, body) => /^Disallow: \/\s*$/m.test(body));
 await check("/sitemap.xml", 200, (_, body) => body.includes("<sitemapindex") && !body.includes("<loc>"));
 await check("/api/auth/providers", 200, (_, body) => Object.keys(JSON.parse(body)).length === 0);
 await check("/api/founders/collaborations", 401);
-await check("/admin", 404);
+await check("/admin", 404); // The admin panel remains inaccessible anonymously.
+for (const path of ["/explore", "/leaderboard", "/founders", "/compare", "/methodology", "/dashboard", "/claim", "/unsubscribe"]) await check(path, 404);
+for (const path of ["/about", "/test", "/pricing", "/leaderboard/90-plus", "/fastest/saas"]) await check(path, 200);
 const insecure = new URL(origin); insecure.protocol = "http:";
 const redirect = await fetch(insecure, { redirect: "manual", signal: AbortSignal.timeout(15000) });
 checks.push({ path: "HTTP → HTTPS", status: redirect.status, passed: [301, 308].includes(redirect.status) && redirect.headers.get("location") === origin.href });

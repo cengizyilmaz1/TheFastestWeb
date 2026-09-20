@@ -1,70 +1,128 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
-import { ArrowDownIcon, ArrowUpIcon } from "@phosphor-icons/react";
-import { Site } from "@/db/schema";
-import { ScoreTicks, scoreTone } from "@/components/ui/ScoreTicks";
+import { useSyncExternalStore } from "react";
+import type { LegacyLeaderboardSite } from "@/modules/sites/legacy-view";
+import { FaviconImg } from "@/components/ui/FaviconImg";
 
 interface LeaderboardRowProps {
-  site: Site;
+  site: LegacyLeaderboardSite;
   rank: number;
 }
 
-const monogram = (name: string) => (name.trim().match(/[\p{L}\p{N}]/u)?.[0] ?? "·").toUpperCase();
-const initials = (name: string) => name.split(" ").map((part) => part[0]).join("").slice(0, 2);
-
-function OwnerMark({ site }: { site: Site }) {
-  if (site.twitterHandle) {
-    return <Image unoptimized width={24} height={24} src={`/api/avatar/${site.twitterHandle.replace("@", "")}`} alt={site.ownerName} className="h-6 w-6 shrink-0 rounded-full object-cover" loading="lazy" fetchPriority="low" />;
-  }
-  return <span aria-hidden className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-bg-card text-[10px] font-bold text-text-secondary shadow-[inset_0_0_0_1px_var(--line)]">{initials(site.ownerName)}</span>;
-}
-
 export function LeaderboardRow({ site, rank }: LeaderboardRowProps) {
-  const position = String(rank).padStart(2, "0");
-  const trend = site.trend ?? 0;
-  const TrendIcon = trend >= 0 ? ArrowUpIcon : ArrowDownIcon;
+  const mounted = useSyncExternalStore(() => () => {}, () => true, () => false);
+
+  let rankDisplay: React.ReactNode = rank;
+  let topClass = "";
+
+  if (rank === 1) {
+    rankDisplay = <span className="text-[1.1rem]">🥇</span>;
+    topClass = "bg-[rgba(245,158,11,0.04)] hover:!bg-[rgba(245,158,11,0.08)]";
+  } else if (rank === 2) {
+    rankDisplay = <span className="text-[1.1rem]">🥈</span>;
+    topClass = "bg-[rgba(192,192,192,0.03)]";
+  } else if (rank === 3) {
+    rankDisplay = <span className="text-[1.1rem]">🥉</span>;
+    topClass = "bg-[rgba(205,127,50,0.03)]";
+  }
+
+  const scoreClass =
+    site.currentScore >= 97
+      ? "text-green"
+      : site.currentScore >= 94
+        ? "text-accent-bright"
+        : "text-orange";
+
+  const trend = site.trend;
+  const trendClass = trend == null ? "text-text-muted" : trend >= 0 ? "text-green" : "text-red";
+  const trendArrow = trend != null && trend >= 0 ? "↑" : "↓";
 
   return (
-    <tr className="group border-b border-border transition-colors hover:bg-bg-main">
-      <td className="py-4 pr-3">
-        {rank === 1 ? <span className="stat-value inline-flex h-8 min-w-8 items-center justify-center rounded-lg bg-brand px-1.5 text-[13px] font-semibold text-on-brand">{position}</span>
-          : rank <= 3 ? <span className="stat-value inline-flex h-8 min-w-8 items-center justify-center rounded-lg bg-bg-card px-1.5 text-[13px] font-semibold text-text-primary shadow-[inset_0_0_0_1px_var(--line-strong)]">{position}</span>
-            : <span className="stat-value text-xs text-text-muted">{position}</span>}
+    <tr
+      className={`border-b border-[rgba(61,53,41,0.4)] cursor-pointer transition-colors duration-150 hover:bg-bg-card last:border-b-0 ${topClass}`}
+    >
+      <td className="py-3 px-3.5 pl-5 font-mono font-bold text-[0.82rem] text-text-muted">
+        {rankDisplay}
       </td>
-      <td className="py-4 pr-4">
-        <Link href={`/site/${site.slug}`} className="flex min-w-0 items-center gap-3 no-underline">
-          <span aria-hidden className="monogram transition-colors group-hover:bg-brand group-hover:text-on-brand">{monogram(site.name)}</span>
-          <span className="min-w-0">
-            <span className="flex items-center gap-2">
-              <span className={"truncate font-semibold text-text-primary " + (rank <= 3 ? "text-base" : "text-[15px]")}>{site.name}</span>
-              {site.category && site.category !== "other" && <span className="hidden shrink-0 rounded-full bg-bg-card px-2 py-0.5 text-xs font-medium text-text-secondary sm:inline">{site.category}</span>}
-            </span>
-            <span className="mt-0.5 block truncate text-[13px] text-text-muted">{site.description}</span>
-          </span>
+      <td className="py-3 px-3.5">
+        <Link
+          href={`/site/${site.slug}`}
+          className="flex items-center gap-2.5 no-underline text-inherit"
+        >
+          <div className="w-[34px] h-[34px] rounded-lg flex items-center justify-center font-[800] text-[13px] font-display shrink-0 overflow-hidden bg-bg-elevated">
+            <FaviconImg
+              url={site.url}
+              src={site.faviconUrl || undefined}
+              alt={site.name}
+              className="w-full h-full object-contain p-1"
+            />
+          </div>
+          <div className="min-w-0">
+            <div className="font-bold text-[0.88rem] text-text-primary flex items-center gap-2">
+              {site.name}
+              {site.category && site.category !== "other" && (
+                <span className="text-[0.6rem] font-semibold text-text-muted bg-bg-elevated px-1.5 py-0.5 rounded uppercase tracking-wide">
+                  {site.category.replaceAll("-", " ")}
+                </span>
+              )}
+            </div>
+            <div className="text-[0.75rem] text-text-muted whitespace-nowrap overflow-hidden text-ellipsis max-w-[240px]">
+              {site.description}
+            </div>
+          </div>
         </Link>
       </td>
-      <td className="hidden py-4 pr-4 md:table-cell">
+      <td className="py-3 px-3.5 max-w-[160px]">
         {site.ownerId ? (
-          <Link href={`/profile/${site.ownerId}`} className="flex min-h-11 min-w-0 items-center gap-2 text-sm text-text-secondary no-underline transition-colors hover:text-text-primary" onClick={(e) => e.stopPropagation()}>
-            <OwnerMark site={site} />
-            <span className="truncate">{site.ownerName}</span>
+          <Link
+            href={`/profile/${site.ownerId}`}
+            className="flex items-center gap-2 text-text-secondary text-[0.82rem] no-underline hover:text-text-primary transition-colors"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {site.twitterHandle && mounted ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={`/api/avatar/${site.twitterHandle.replace("@", "")}`}
+                alt={site.ownerName}
+                className="w-6 h-6 rounded-full shrink-0 object-cover"
+                loading="lazy"
+                fetchPriority="low"
+              />
+            ) : (
+              <div className="w-6 h-6 rounded-full bg-bg-elevated flex items-center justify-center text-[10px] font-bold text-text-muted shrink-0">
+                {(site.ownerName || "")
+                  .split(" ")
+                  .map((n) => n[0])
+                  .join("")}
+              </div>
+            )}
+            <span className="whitespace-nowrap overflow-hidden text-ellipsis">{site.ownerName}</span>
           </Link>
         ) : (
-          <span className="flex min-w-0 items-center gap-2 text-sm text-text-secondary">
-            <OwnerMark site={{ ...site, twitterHandle: null }} />
-            <span className="truncate">{site.ownerName}</span>
-          </span>
+          <div className="flex items-center gap-2 text-text-secondary text-[0.82rem]">
+            <div className="w-6 h-6 rounded-full bg-bg-elevated flex items-center justify-center text-[10px] font-bold text-text-muted shrink-0">
+              {(site.ownerName || "")
+                .split(" ")
+                .map((n) => n[0])
+                .join("")}
+            </div>
+            <span className="whitespace-nowrap overflow-hidden text-ellipsis">{site.ownerName}</span>
+          </div>
         )}
       </td>
-      <td className="hidden px-4 py-4 xl:table-cell"><ScoreTicks score={site.currentScore} /></td>
-      <td className={"stat-value py-4 text-right font-medium leading-none " + (rank <= 3 ? "text-[28px] " : "text-2xl ") + scoreTone(site.currentScore)}>{site.currentScore}</td>
-      <td className="stat-value hidden py-4 pl-4 text-right text-xs text-text-secondary sm:table-cell">{site.currentLoadTime || "—"}</td>
-      <td className="hidden py-4 pl-4 text-right sm:table-cell">
-        <span className={"stat-value inline-flex items-center gap-1 text-[13px] font-medium " + (trend >= 0 ? "text-green" : "text-red")}>
-          <TrendIcon size={13} weight="bold" aria-hidden /><span className="sr-only">{trend >= 0 ? "Up" : "Down"} </span>{Math.abs(trend)}%
-        </span>
+      <td className={`py-3 px-3.5 font-mono font-bold text-[0.95rem] ${scoreClass}`}>
+        {site.currentScore}
+      </td>
+      <td className="py-3 px-3.5 font-mono font-medium text-[0.82rem] text-text-secondary">
+        {site.currentLoadTime || "—"}
+      </td>
+      <td className="py-3 px-3.5">
+        <div
+          className={`font-mono font-semibold text-[0.8rem] flex items-center gap-[3px] ${trendClass}`}
+        >
+          {trend == null ? "—" : `${trendArrow} ${Math.abs(trend)}%`}
+        </div>
       </td>
     </tr>
   );

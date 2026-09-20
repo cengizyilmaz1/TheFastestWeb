@@ -93,10 +93,26 @@ describe("durable central screenshot jobs", () => {
     expect((await repository.find(config.clients[1].id, receipt.id))?.status).toBe("expired");
     const objects = await owner`SELECT * FROM screenshot_objects`; expect(objects).toHaveLength(0);
   });
+  it("publishes only WebP while keeping the original private and deleting from the correct buckets", async () => {
+    const receipt = await repository.create(config.clients[0], prepareCapture({ url: request.url, visibility: "public" }), randomUUID());
+    await createCaptureProcessor(config, repository, async () => images, storage)(receipt.id);
+    const ready = repository.present((await repository.find(config.clients[0].id, receipt.id))!);
+    expect(ready.status).toBe("ready");
+    expect(ready.result?.original).toMatchObject({ visibility: "private", contentType: "image/jpeg" });
+    expect(ready.result?.original.publicUrl).toBeUndefined();
+    expect(ready.result?.optimized).toMatchObject({ visibility: "public", contentType: "image/webp" });
+    expect(ready.result?.optimized.publicUrl).toMatch(/^https:\/\/media\.example\.com\/thefastestweb\/sites\/screenshots\/desktop\//);
+    expect(storage.put).toHaveBeenCalledWith(expect.objectContaining({ contentType: "image/jpeg", visibility: "private" }));
+    expect(storage.put).toHaveBeenCalledWith(expect.objectContaining({ contentType: "image/webp", visibility: "public" }));
+    await owner`UPDATE screenshot_captures SET expires_at=now()-interval '1 second' WHERE id=${receipt.id}`;
+    await cleanExpiredCaptures(repository, storage);
+    expect(storage.remove).toHaveBeenCalledWith(ready.result!.original.objectKey, "private");
+    expect(storage.remove).toHaveBeenCalledWith(ready.result!.optimized.objectKey, "public");
+  });
   it("retains deletion failures for retry and reclaims crashed partial uploads", async () => {
     const receipt = await repository.create(config.clients[0], request, randomUUID());
     const claimed = (await repository.claim(receipt.id))!;
-    await repository.stageObjects(claimed, ["thefastestweb/orphan.jpg"]);
+    await repository.stageObjects(claimed, [{ objectKey: "thefastestweb/orphan.jpg", visibility: "private" }]);
     await owner`UPDATE screenshot_objects SET created_at=now()-interval '11 minutes'`;
     await owner`UPDATE screenshot_captures SET lease_until=now()-interval '1 second',expires_at=now()-interval '1 second' WHERE id=${receipt.id}`;
     const failedStorage = { ...storage, remove: vi.fn(async () => { throw new Error("Synthetic outage"); }) };

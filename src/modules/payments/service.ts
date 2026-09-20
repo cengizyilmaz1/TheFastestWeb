@@ -10,8 +10,9 @@ import type { VerifiedPaymentEvent } from "@/infrastructure/payments/webhook";
 import { getCorrelationId } from "@/lib/http/correlation";
 import { AppError } from "@/lib/http/errors";
 import { enqueueNotification } from "@/modules/notifications/service";
-import { listAvailableAdInventory, reconcileAdPayment, releaseFailedAdCreation, reserveAdInventory } from "./ads";
+import { listAvailableAdInventory, reconcileAdPayment, reconcileAdSubscription, releaseFailedAdCreation, reserveAdInventory } from "./ads";
 import { recordAnalyticsEvent } from "@/modules/analytics/events";
+import { verifiedCatalogPredicate } from "./catalog-verification";
 
 type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 const snapshotSchema = z.object({ providerProductId: z.string().min(1).max(200), title: z.string().max(200),
@@ -40,7 +41,7 @@ export async function listProducts() {
   const catalog = await database().select({ key: products.key, title: products.title, kind: products.kind,
     amountCents: products.amountCents, currency: products.currency, billingInterval: products.billingInterval,
     entitlementDays: products.entitlementDays, requiresSite: products.requiresSite })
-    .from(products).where(and(eq(products.active, true), sql`${products.providerProductId} IS NOT NULL`));
+    .from(products).where(and(eq(products.active, true), sql`${products.providerProductId} IS NOT NULL`, verifiedCatalogPredicate()));
   const available = catalog.some((product) => product.kind === "sidebar_ad") ? await listAvailableAdInventory() : [];
   return catalog.filter((product) => (product.kind !== "sidebar_ad" || available.length > 0)
     && (!["featured_listing", "sponsorship"].includes(product.kind) || product.requiresSite));
@@ -55,11 +56,12 @@ export async function createCheckout(input: { userId: string; productKey: string
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`checkout:${input.userId}:${input.productKey}:${input.siteId ?? "account"}`}, 0))`);
     const [user] = await tx.select().from(users).where(eq(users.id, input.userId));
     if (!user) throw new AppError("UNAUTHORIZED", "Sign in to purchase a product.", 401);
-    const [product] = await tx.select().from(products).where(and(eq(products.key, input.productKey), eq(products.active, true)));
+    const [product] = await tx.select().from(products).where(and(eq(products.key, input.productKey), eq(products.active, true), verifiedCatalogPredicate()));
     if (!product?.providerProductId) throw new AppError("NOT_FOUND", "This product is not available.", 404);
     if (["featured_listing", "sponsorship"].includes(product.kind) && !product.requiresSite) throw new AppError("CONFLICT", "This placement product requires a website-bound catalog configuration.", 409);
-    if (product.kind === "sidebar_ad" && (!input.adInventoryId || !input.siteId || product.billingInterval !== "one_time" || !product.entitlementDays || !product.requiresSite)) {
-      throw new AppError("INVALID_REQUEST", "Choose an available placement for this fixed-duration ad product.", 400);
+    if (product.kind === "sidebar_ad" && (!input.adInventoryId || !input.siteId || !product.requiresSite
+      || !(product.billingInterval === "month" && product.entitlementDays === null || product.billingInterval === "one_time" && product.entitlementDays))) {
+      throw new AppError("INVALID_REQUEST", "Choose an available placement for this ad product.", 400);
     }
     if (product.kind !== "sidebar_ad" && input.adInventoryId) throw new AppError("INVALID_REQUEST", "This product does not use ad inventory.", 400);
     if (product.requiresSite && !input.siteId) throw new AppError("INVALID_REQUEST", "Choose an owned website for this product.", 400);
@@ -149,7 +151,7 @@ async function grant(tx: Transaction, order: Order, snapshot: Snapshot, sourceId
   await tx.insert(entitlements).values({ userId: order.userId, siteId: order.siteId, kind: kinds[snapshot.kind],
     source: "dodo", sourceId, status, startsAt: start, endsAt: end })
     .onConflictDoUpdate({ target: [entitlements.source, entitlements.sourceId, entitlements.kind], set: {
-      status, endsAt: snapshot.kind === "sidebar_ad" ? sql`CASE WHEN ${entitlements.adSlotId} IS NOT NULL THEN ${entitlements.endsAt} ELSE ${end}::timestamptz END` : end, updatedAt: sql`now()`,
+      status, endsAt: snapshot.kind === "sidebar_ad" && snapshot.billingInterval === "one_time" ? sql`CASE WHEN ${entitlements.adSlotId} IS NOT NULL THEN ${entitlements.endsAt} ELSE ${end}::timestamptz END` : end, updatedAt: sql`now()`,
     } });
 }
 function validDate(value: string): Date {
@@ -187,12 +189,21 @@ export async function processPaymentWebhook(eventId: string): Promise<{ status: 
     const snapshot = parsed.data;
     if (subscription && (subscription.product_id !== snapshot.providerProductId || subscription.quantity !== 1
       || subscription.metadata.order_id !== order.id || snapshot.billingInterval === "one_time")) throw new PaymentBindingError();
+    if (subscription && snapshot.kind === "sidebar_ad" && (subscription.currency !== snapshot.currency
+      || subscription.recurring_pre_tax_amount !== snapshot.amountCents || subscription.payment_frequency_count !== 1
+      || subscription.payment_frequency_interval !== "Month" || subscription.on_demand || subscription.trial_period_days)) throw new PaymentBindingError();
     if (payment) {
       if (payment.payment_id !== paymentId || payment.is_update_payment_method) throw new PaymentBindingError();
       if (!subscription && (payment.metadata.order_id !== order.id || payment.product_cart?.length !== 1
         || payment.product_cart[0].product_id !== snapshot.providerProductId || payment.product_cart[0].quantity !== 1)) throw new PaymentBindingError();
       if (order.providerCheckoutId && payment.checkout_session_id && order.providerCheckoutId !== payment.checkout_session_id && !subscription) throw new PaymentBindingError();
       if (!Number.isSafeInteger(payment.total_amount) || payment.total_amount < 0 || !/^[A-Z]{3}$/.test(payment.currency)) throw new PaymentBindingError();
+      if (subscription && snapshot.kind === "sidebar_ad") {
+        // Keep provider charge creation separate from mutable webhook ordering.
+        // This proof comes from the authenticated provider GET, never the webhook body.
+        await tx.update(paymentEvents).set({ orderId: order.id, normalizedPayload: { ...event.normalizedPayload,
+          verifiedPaymentId: payment.payment_id, verifiedChargeCreatedAt: validDate(payment.created_at).toISOString() } }).where(eq(paymentEvents.id, event.id));
+      }
       const [old] = await tx.select().from(providerPayments).where(eq(providerPayments.providerPaymentId, payment.payment_id));
       if (!old || old.occurredAt <= event.occurredAt) {
         const reversed = payment.refund_status === "full";
@@ -229,23 +240,39 @@ export async function processPaymentWebhook(eventId: string): Promise<{ status: 
     }
     if (subscription) {
       const [old] = await tx.select().from(subscriptions).where(eq(subscriptions.providerSubscriptionId, subscription.subscription_id));
-      if (!old || old.providerUpdatedAt <= event.occurredAt) {
-        const end = validDate(subscription.next_billing_date);
-        const [latestPayment] = await tx.select({ status: providerPayments.status }).from(providerPayments)
-          .where(eq(providerPayments.providerSubscriptionId, subscription.subscription_id)).orderBy(desc(providerPayments.occurredAt)).limit(1);
+      const mayUpdateSubscription = !old || old.providerUpdatedAt <= event.occurredAt;
+      const end = mayUpdateSubscription ? validDate(subscription.next_billing_date) : old.currentPeriodEnd;
+      if (!end) throw new PaymentBindingError();
+      const currentStatus = mayUpdateSubscription ? subscription.status : old.status;
+      const [latestPayment] = await tx.select({ status: providerPayments.status, providerPaymentId: providerPayments.providerPaymentId }).from(providerPayments)
+        .where(eq(providerPayments.providerSubscriptionId, subscription.subscription_id)).orderBy(desc(providerPayments.occurredAt)).limit(1);
+      if (mayUpdateSubscription) {
         await tx.insert(subscriptions).values({ providerSubscriptionId: subscription.subscription_id,
           userId: order.userId, siteId: order.siteId, productId: order.productId, status: subscription.status,
           currentPeriodEnd: end, providerUpdatedAt: event.occurredAt })
           .onConflictDoUpdate({ target: subscriptions.providerSubscriptionId, set: { status: subscription.status,
             currentPeriodEnd: end, providerUpdatedAt: event.occurredAt, updatedAt: sql`now()` } });
-        const blocked = latestPayment && ["refunded", "disputed", "failed"].includes(latestPayment.status);
-        await grant(tx, order, snapshot, `subscription:${subscription.subscription_id}`, validDate(subscription.created_at), end,
-          subscription.status === "active" && !blocked);
         if (!old || old.status !== subscription.status) await enqueueNotification({ userId: order.userId,
           eventKey: `subscription:${subscription.subscription_id}:${event.id}`, type: "subscription_event", variables: {} }, tx);
         if (!old || old.status !== subscription.status) await recordAnalyticsEvent({ name: "subscription_changed", eventKey: `subscription:${event.id}:changed`, siteId: order.siteId,
           properties: { status: subscription.status } }, tx);
       }
+      // A payment can arrive after a newer subscription event. Reconcile its new
+      // evidence even when that older event cannot overwrite subscription state.
+      const [proof] = snapshot.kind === "sidebar_ad" && latestPayment ? await tx.select({ payload: paymentEvents.normalizedPayload }).from(paymentEvents)
+        .where(and(eq(paymentEvents.orderId, order.id), sql`${paymentEvents.normalizedPayload}->>'verifiedPaymentId'=${latestPayment.providerPaymentId}`,
+          sql`(${paymentEvents.processedAt} IS NOT NULL OR ${paymentEvents.id}=${event.id})`))
+        .orderBy(paymentEvents.createdAt).limit(1) : [];
+      const chargeCreatedAt = typeof proof?.payload.verifiedChargeCreatedAt === "string" ? validDate(proof.payload.verifiedChargeCreatedAt) : null;
+      const blocked = latestPayment && ["refunded", "disputed", "failed"].includes(latestPayment.status);
+      const paidCurrentAdPeriod = snapshot.kind !== "sidebar_ad" || latestPayment?.status === "succeeded" && chargeCreatedAt !== null
+        && chargeCreatedAt >= validDate(subscription.previous_billing_date) && chargeCreatedAt < end
+        && end.getTime() === validDate(subscription.next_billing_date).getTime();
+      await grant(tx, order, snapshot, `subscription:${subscription.subscription_id}`, validDate(subscription.created_at), end,
+        currentStatus === "active" && !blocked && paidCurrentAdPeriod);
+      if (snapshot.kind === "sidebar_ad") await reconcileAdSubscription(tx, { orderId: order.id,
+        subscriptionId: subscription.subscription_id, status: currentStatus, endsAt: end,
+        paymentStatus: paidCurrentAdPeriod ? latestPayment?.status : latestPayment?.status === "succeeded" ? "pending" : latestPayment?.status });
     }
     await tx.update(paymentEvents).set({ orderId: order.id, processedAt: sql`now()` }).where(eq(paymentEvents.id, event.id));
     return { status: "processed" as const };

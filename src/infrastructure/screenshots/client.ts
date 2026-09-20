@@ -3,7 +3,7 @@ import { AppError } from "@/lib/http/errors";
 import { z } from "zod";
 import { prepareCapture, type CaptureRequest } from "../../../services/screenshot/contracts";
 
-const artifact = z.object({ objectKey: z.string().max(512), publicUrl: z.url().optional(), width: z.number().int().min(1).max(10000), height: z.number().int().min(1).max(8000),
+const artifact = z.object({ objectKey: z.string().max(512), publicUrl: z.url().optional(), visibility: z.enum(["private", "public"]).optional(), width: z.number().int().min(1).max(10000), height: z.number().int().min(1).max(8000),
   contentType: z.enum(["image/jpeg", "image/webp"]), size: z.number().int().min(1).max(6 * 1024 * 1024), hash: z.string().regex(/^[a-f0-9]{64}$/) });
 export const screenshotResponseSchema = z.object({ id: z.uuid(), status: z.enum(["pending", "processing", "ready", "failed", "expired"]),
   result: z.object({ optimized: artifact, original: artifact, finalUrl: z.url(), title: z.string().max(512), capturedAt: z.iso.datetime(), retentionUntil: z.iso.datetime() }).optional(), errorCode: z.string().max(64).optional() });

@@ -1,8 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
-import { checkoutAnalyticsConsent, isAnalyticsPage, readAnalyticsConsent } from "./consent";
+import { checkoutAnalyticsConsent, isAnalyticsOrigin, isAnalyticsPage, readAnalyticsConsent } from "./consent";
 import { minorToMajor } from "./datafast";
 vi.mock("@/config/env", () => ({ getEnv: () => ({ ANALYTICS_ENABLED: false }) }));
 describe("opt-in analytics", () => {
+  it("permits the canonical browser origin only, including its protocol and port", () => {
+    const canonical = "https://example.test";
+    expect(isAnalyticsOrigin(canonical, canonical)).toBe(true);
+    for (const origin of ["https://preview.example.test", "https://example.test.attacker.test", "http://example.test",
+      "https://example.test:8443", "http://localhost:3100", "https://example.test/path", ""]) {
+      expect(isAnalyticsOrigin(origin, canonical)).toBe(false);
+    }
+    expect(isAnalyticsOrigin(canonical, undefined)).toBe(false);
+    expect(isAnalyticsOrigin("", "")).toBe(false);
+  });
   it("defaults to no consent and honors GPC/DNT over a prior opt-in", () => {
     expect(readAnalyticsConsent("")).toBe("unset");
     expect(readAnalyticsConsent("tfw_analytics_v1=granted", { gpc: true })).toBe("denied");

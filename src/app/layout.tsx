@@ -1,43 +1,47 @@
 import type { Metadata } from "next";
-import { Mona_Sans, Geist_Mono } from "next/font/google";
+import { Outfit, JetBrains_Mono, Inter } from "next/font/google";
 import { Suspense } from "react";
 import { Nav } from "@/components/layout/Nav";
 import { NavigationProgress } from "@/components/layout/NavigationProgress";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Footer } from "@/components/layout/Footer";
 import { getCurrentUser } from "@/lib/auth";
-import { hasAccountProAccess } from "@/modules/payments/entitlements";
 import { getDb } from "@/db/index";
-import { adSlots } from "@/db/schema";
-import { eq, and, or, isNull, gt, sql } from "drizzle-orm";
-import { safeJsonLd } from "@/lib/seo/json-ld";
+import { adSlots, adminRoles } from "@/db/schema";
+import { eq, and, or, isNull, gt } from "drizzle-orm";
 import { siteConfig } from "@/config/site";
+import { safeJsonLd } from "@/lib/seo/json-ld";
+import { pageMetadata, SITE_DESCRIPTION } from "@/lib/seo/metadata";
+import { identityGraph } from "@/lib/seo/structured-data";
 import ConsentAnalytics from "@/infrastructure/analytics/consent-analytics";
 import { getPublicAnalyticsConfig } from "@/infrastructure/analytics/config";
 import "./globals.css";
 
-// The width axis carries the display voice: headlines run expanded, body copy stays at normal width.
-const monaSans = Mona_Sans({
-  variable: "--font-mona",
+const outfit = Outfit({
+  variable: "--font-outfit",
   subsets: ["latin"],
-  axes: ["wdth"],
   display: "swap",
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-jetbrains-mono",
+  subsets: ["latin"],
+  display: "swap",
+});
+
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
   display: "swap",
 });
 
 export const metadata: Metadata = {
+  ...pageMetadata({ title: "Website speed rankings", description: SITE_DESCRIPTION, path: "/" }),
   metadataBase: new URL(siteConfig.url),
   title: {
-    default: "TheFastestWeb: Speed Rankings for the Web",
-    template: "%s | TheFastestWeb",
+    default: `Website speed rankings | ${siteConfig.name}`,
+    template: `%s | ${siteConfig.name}`,
   },
-  description:
-    "Discover, benchmark, and showcase the world's fastest websites. Submit yours and prove you belong on the leaderboard.",
   icons: {
     icon: [
       { url: "/favicon/favicon.ico", sizes: "any" },
@@ -47,38 +51,11 @@ export const metadata: Metadata = {
     apple: "/favicon/apple-touch-icon.png",
   },
   manifest: "/favicon/site.webmanifest",
-  verification: {
-    google: process.env.SEARCH_CONSOLE_VERIFICATION || undefined,
-    ...(process.env.BING_VERIFICATION ? { other: { "msvalidate.01": process.env.BING_VERIFICATION } } : {}),
-  },
-  openGraph: {
-    title: "TheFastestWeb: Speed Rankings for the Web",
-    description:
-      "Discover, benchmark, and showcase the world's fastest websites.",
-    type: "website",
-    siteName: "TheFastestWeb",
-    url: siteConfig.url,
-    images: [{ url: "/og.png", width: 1536, height: 1024, alt: "TheFastestWeb: How Fast Is Your Website?" }],
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "TheFastestWeb: Speed Rankings for the Web",
-    description:
-      "Discover, benchmark, and showcase the world's fastest websites.",
-    images: ["/og.png"],
-  },
-  keywords: [
-    "website speed test",
-    "PageSpeed score",
-    "Core Web Vitals",
-    "fastest websites",
-    "website performance ranking",
-    "website speed leaderboard",
-    "Lighthouse score",
-    "web performance benchmark",
-    "site speed checker",
-    "website speed monitoring",
-  ],
+  applicationName: siteConfig.name,
+  category: "technology",
+  referrer: "strict-origin-when-cross-origin",
+  verification: { google: process.env.SEARCH_CONSOLE_VERIFICATION || undefined,
+    ...(process.env.BING_VERIFICATION ? { other: { "msvalidate.01": process.env.BING_VERIFICATION } } : {}) },
 };
 
 export default async function RootLayout({
@@ -87,69 +64,56 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const user = await getCurrentUser();
-  const navigationUser = user ? { ...user, isPro: await hasAccountProAccess(user.id, user.isPro) } : null;
 
   const db = getDb();
+  const [adminGrant] = user && db ? await db.select({ role: adminRoles.role }).from(adminRoles)
+    .where(and(eq(adminRoles.userId, user.id), eq(adminRoles.role, "admin"))).limit(1) : [];
 
   // Fetch active ad slots
   const activeAdSlots = db
     ? await db
-        .select()
+        .select({
+          id: adSlots.id,
+          position: adSlots.position,
+          orderIndex: adSlots.orderIndex,
+          name: adSlots.name,
+          url: adSlots.url,
+          tagline: adSlots.tagline,
+          faviconUrl: adSlots.faviconUrl,
+        })
         .from(adSlots)
         .where(
           and(
             eq(adSlots.isActive, true),
             eq(adSlots.status, "active"),
-            or(isNull(adSlots.expiresAt), gt(adSlots.expiresAt, sql`now()`))
+            or(isNull(adSlots.expiresAt), gt(adSlots.expiresAt, new Date()))
           )
-        ).catch(() => [])
+        )
     : [];
 
   return (
-    <html lang="en" className={`${monaSans.variable} ${geistMono.variable}`} data-scroll-behavior="smooth" suppressHydrationWarning>
-      <head><script dangerouslySetInnerHTML={{ __html: "try{var t=localStorage.getItem('tfw-theme');document.documentElement.dataset.theme=t==='light'||t==='dark'?t:matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'}catch{}" }} /></head>
-      <body className="antialiased">
-        <a href="#main-content" className="skip-link">Skip to content</a>
+    <html lang="en">
+      <body
+        className={`${outfit.variable} ${jetbrainsMono.variable} ${inter.variable} antialiased`}
+      >
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
-            __html: safeJsonLd({
-              "@context": "https://schema.org",
-              "@graph": [
-                {
-                  "@type": "WebSite",
-                  "@id": `${siteConfig.url}/#website`,
-                  name: "TheFastestWeb",
-                  url: siteConfig.url,
-                  description: "Speed rankings for the web. Discover, benchmark, and showcase the world's fastest websites.",
-                  potentialAction: {
-                    "@type": "SearchAction",
-                    target: `${siteConfig.url}/explore?q={search_term_string}`,
-                    "query-input": "required name=search_term_string",
-                  },
-                },
-                {
-                  "@type": "Organization",
-                  "@id": `${siteConfig.url}/#organization`,
-                  name: "TheFastestWeb",
-                  url: siteConfig.url,
-                  logo: `${siteConfig.url}/favicon/favicon-96x96.png`,
-                },
-              ],
-            }),
+            __html: safeJsonLd(identityGraph()),
           }}
         />
         <Suspense fallback={null}>
           <NavigationProgress />
         </Suspense>
-        {siteConfig.isDemo && <div className="border-b border-border bg-bg-main px-5 py-2 text-center text-xs text-text-secondary"><span className="mr-2 font-semibold text-text-primary">Demo preview</span>Payments, email delivery and scheduled monitoring are disabled.</div>}
-        <Nav user={navigationUser} />
-        <div className="mx-auto grid min-h-[70dvh] max-w-[1600px] grid-cols-1 2xl:grid-cols-[204px_minmax(0,1fr)_204px]">
-          <Sidebar position="left" adSlots={activeAdSlots} />
-          <main id="main-content" tabIndex={-1} className="min-w-0">{children}</main>
-          <Sidebar position="right" adSlots={activeAdSlots} />
+        <Nav user={user} canManagePayments={adminGrant?.role === "admin"} />
+        <div className="grid grid-cols-[190px_1fr_190px] min-h-screen max-[1100px]:grid-cols-[1fr]">
+          <Sidebar position="left" count={5} adSlots={activeAdSlots} />
+          <main id="main-content" className="col-start-2 min-w-0 pt-[60px] max-[1100px]:col-start-1">
+            {children}
+            <Footer />
+          </main>
+          <Sidebar position="right" count={5} adSlots={activeAdSlots} />
         </div>
-        <Footer />
         <Suspense fallback={null}><ConsentAnalytics config={getPublicAnalyticsConfig()} /></Suspense>
       </body>
     </html>

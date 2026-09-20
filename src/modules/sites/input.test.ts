@@ -11,6 +11,17 @@ describe("submission contract", () => {
   });
   it("requires both device proofs and preparation for the publication API", () => {
     expect(publicationSchema.safeParse(valid).success).toBe(false);
-    expect(publicationSchema.safeParse({ ...valid, preparationId: "ef413f26-7839-4053-9de5-78d2d2bcecbf", desktopTestResultId: "c8a1e936-3d93-4b2d-a8e2-0673b077de0b" }).success).toBe(true);
+    expect(publicationSchema.safeParse({ ...valid, countryCode: "TR", preparationId: "ef413f26-7839-4053-9de5-78d2d2bcecbf", desktopTestResultId: "c8a1e936-3d93-4b2d-a8e2-0673b077de0b" }).success).toBe(true);
+  });
+  it("requires a real, explicit ISO country for new publications while preserving legacy nulls", () => {
+    const ready = { ...valid, preparationId: "ef413f26-7839-4053-9de5-78d2d2bcecbf", desktopTestResultId: "c8a1e936-3d93-4b2d-a8e2-0673b077de0b" };
+    for (const countryCode of [undefined, null, "", "ZZ", "EU", "UK", "tr", "Türkiye"]) {
+      expect(publicationSchema.safeParse({ ...ready, countryCode }).success).toBe(false);
+    }
+    for (const countryCode of ["TR", "US", "GB", "AX", "BQ"]) {
+      expect(publicationSchema.safeParse({ ...ready, countryCode }).success).toBe(true);
+    }
+    expect(submissionSchema.safeParse({ ...valid, countryCode: null }).success).toBe(true);
+    expect(submissionSchema.safeParse({ ...valid, countryCode: "ZZ" }).success).toBe(false);
   });
 });

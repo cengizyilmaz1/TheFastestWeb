@@ -38,6 +38,15 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["node", "dist/screenshot/api.cjs"]
 
+# Production shared-renderer deployment: R2/queue credentials stay in this
+# browser-free processor. Chromium lives exclusively behind the isolated gateway.
+FROM api AS remote-worker
+ENV SCREENSHOT_CAPTURE_BACKEND=remote
+EXPOSE 3101
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+ CMD node -e "fetch('http://127.0.0.1:3101/health/ready',{signal:AbortSignal.timeout(4000)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+CMD ["node", "dist/screenshot/worker.cjs"]
+
 FROM api AS worker
 USER root
 ENV CHROMIUM_EXECUTABLE_PATH=/opt/chrome/chrome-linux64/chrome CHROME_DEVEL_SANDBOX=/opt/chrome/chrome-linux64/chrome_sandbox

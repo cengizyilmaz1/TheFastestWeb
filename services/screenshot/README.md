@@ -1,8 +1,8 @@
 # Central screenshot service
 
-This stack is deployed separately from TheFastestWeb. Its PostgreSQL ledger owns capture state, idempotency, daily quotas and staged media; Redis/BullMQ is a recoverable delivery mechanism. The API never runs a browser. The worker produces a JPEG original and a metadata-stripped WebP, stores bytes in R2, and exposes only metadata to the main application. Private drafts use a separate private bucket and authenticated image delivery.
+This stack is deployed separately from TheFastestWeb. Its PostgreSQL ledger owns capture state, idempotency, daily quotas and staged media; Redis/BullMQ is a recoverable delivery mechanism. The API never runs a browser. The processor retains the JPEG original in the private R2 bucket and publishes only the Sharp-decoded, metadata-stripped WebP for approved public captures. Private drafts keep both artifacts private. The main application receives only metadata; original image delivery requires client authentication. Existing receipts retain their recorded bucket locations and are not moved during deployment.
 
-The existing IndieTools renderer was inspected read-only and remains unchanged. The default `remote` backend calls its existing authenticated `POST /capture` protocol. That renderer supports desktop 1440×900 viewport only; unsupported profiles return HTTP 422. The shipped `local` backend uses pinned Chromium 153.0.8010.36 with its sandbox and supports desktop, mobile and bounded full-page capture. Enable it in this separate worker when those profiles are needed. No client should point its central URL at the old renderer: the API protocols differ.
+The default `remote` backend reuses the IndieTools renderer's authenticated `POST /capture` protocol. The renderer is an independent shared Coolify resource; IndieTools continues using its existing adapter and publication pipeline. The renderer accepts a separate hashed client credential for TheFastestWeb, with per-client rate/concurrency bounds, while retaining the existing IndieTools credential. Its protocol supports desktop 1440×900 viewport only; unsupported profiles return HTTP 422. The optional `local` backend uses pinned Chromium 153.0.8010.36 with its sandbox and supports mobile and bounded full-page capture, but it is not used by the shared-renderer Compose deployment. No client should point its central URL at the renderer: the API protocols differ. See [shared deployment and cutover](SHARED-DEPLOYMENT.md).
 
 ## Build and deploy
 
@@ -10,10 +10,10 @@ Use the repository root as build context:
 
 ```sh
 docker build -f services/screenshot/Dockerfile --target api -t central-screenshot-api .
-docker build -f services/screenshot/Dockerfile --target worker -t central-screenshot-worker .
+docker build -f services/screenshot/Dockerfile --target remote-worker -t central-screenshot-worker .
 ```
 
-`compose.yaml` is a separate Coolify resource. Only API port 3100 receives a private route or authenticated HTTPS public route; worker port 3101 is health-only. Do not publish PostgreSQL or Redis. Use independent secrets, least-privilege DB credentials, a persistent Redis volume with AOF enabled, `maxmemory` bounded and `maxmemory-policy noeviction`. Readiness refuses missing schema, a privileged/owner/DDL database role, or unsuitable Redis durability settings. API and worker must use identical queue prefix/concurrency settings. Production R2 credentials need access only to the screenshot project's two buckets.
+`compose.yaml` is a separate Coolify resource. Its `remote-worker` image contains no Chromium; browser execution remains behind the shared renderer's isolated gateway. Only API port 3100 receives a private route or authenticated HTTPS public route; worker port 3101 is health-only. Do not publish PostgreSQL or Redis. Use independent secrets, least-privilege DB credentials, a persistent Redis volume with AOF enabled, `maxmemory` bounded and `maxmemory-policy noeviction`. Readiness refuses missing schema, a privileged/owner/DDL database role, unsuitable Redis durability settings, or an unavailable renderer (processor readiness). API and worker must use identical queue prefix/concurrency settings. Production R2 credentials need access only to the screenshot project's two buckets.
 
 Provision a dedicated database named `central_screenshot` with a separate migration owner and runtime login. Supply `SCREENSHOT_MIGRATION_DATABASE_URL` only to a one-off migration container, then run:
 
@@ -37,11 +37,11 @@ Required service settings:
 | `R2_PRIVATE_BUCKET` | Required private bucket, with no public domain |
 | `R2_BUCKET`, `R2_PUBLIC_BASE_URL` | Distinct public bucket and HTTPS origin for approved public captures |
 
-`SCREENSHOT_CLIENTS_JSON` is an array containing `id`, `namespace`, and `tokenHash` (SHA-256 of the raw client token). Optional fields are `requestsPerMinute` (default 10), `requestsPerDay` (250), and `allowPublic` (false). IDs/namespaces are unique lowercase letters, digits and hyphens. Generate a different random 32-byte hexadecimal token for each client using a secure secret manager; store only its hash in the central service. TheFastestWeb uses ID/namespace `thefastestweb` with public captures allowed. IndieTools uses `indietools` with public captures forbidden. Never copy existing tokens into source or logs.
+`SCREENSHOT_CLIENTS_JSON` is an array containing `id`, `namespace`, and `tokenHash` (SHA-256 of the raw client token). Optional fields are `requestsPerMinute` (default 10), `requestsPerDay` (250), and `allowPublic` (false). IDs/namespaces are unique lowercase letters, digits and hyphens. Generate a different random 32-byte hexadecimal token for each client using a secure secret manager; store only its hash in the central service. TheFastestWeb uses ID/namespace `thefastestweb` with public captures allowed. An optional future IndieTools central client must use `indietools` with public captures forbidden; it is not required for the current compatible renderer cutover. Never copy existing tokens into source or logs.
 
 TheFastestWeb uses server-only `SCREENSHOTS_ENABLED`, `SCREENSHOT_SERVICE_URL`, `SCREENSHOT_SERVICE_TOKEN`, `SCREENSHOT_CLIENT_ID=thefastestweb`, and `R2_PUBLIC_BASE_URL` for validating returned public media URLs. The actual job handler verifies published lifecycle and source URL both before requesting and before committing metadata; async waiting does not spend a retry attempt. Its UUID is the central idempotency key. Requests expire after 24 hours rather than polling forever.
 
-The private IndieTools repository has a separate, uncommitted migration patch and focused tests. It retains its existing product review/publication flow, requests private captures and downloads originals via authenticated API. Partial central configuration fails closed. Existing renderer credentials and containers can remain available for rollback. The private patch and repository history are intentionally not copied into this public repository.
+The private IndieTools repository changes only the renderer credential handling and its Compose environment declaration. Its web application retains the existing worker URL, token, product review/publication flow and Sharp/R2 pipeline; no central-client migration or web rebuild is required. The shared renderer owns no R2 or database credentials. Existing IndieTools media paths remain unchanged. The private source and repository history are intentionally not copied into this public repository.
 
 ## API
 
@@ -52,7 +52,7 @@ All capture routes require `Authorization: Bearer <client-id>.<64-character-hex-
 - `GET /v1/captures/:id/image` returns its JPEG original after ownership checks. It uses `private, no-store`; private images never receive a public URL.
 - `GET /health/live` reports process state; `GET /health/ready` checks actual DB/Redis dependencies. These return no connection details or credentials. A worker also checks its consumer state.
 
-Result metadata includes object key, optional public URL, dimensions, content type, size, SHA-256 hash, actual capture timestamp and retention expiry. Pending, failed and expired states never fabricate images or scores. Original URLs can contain sensitive query strings: they live only in the access-controlled ledger and are excluded from logs.
+Result metadata includes object key, per-artifact visibility, optional public URL, dimensions, content type, size, SHA-256 hash, actual capture timestamp and retention expiry. New JPEG originals never include a public URL. Paths are `<client-namespace>/sites/screenshots/<device>/<capture-id>/<lease-id>/<sha256>.<jpg|webp>`; clients cannot supply or override the namespace. Pending, failed and expired states never fabricate images or scores. Original URLs can contain sensitive query strings: they live only in the access-controlled ledger and are excluded from logs.
 
 ## Resource and recovery policy
 

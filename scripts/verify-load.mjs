@@ -2,7 +2,7 @@ import { performance } from "node:perf_hooks";
 import { mkdir, writeFile } from "node:fs/promises";
 const base = new URL(process.env.SMOKE_BASE_URL || "http://127.0.0.1:3200");
 if (!["127.0.0.1", "localhost", "[::1]"].includes(base.hostname)) throw new Error("Load smoke is restricted to a loopback test instance.");
-const paths = ["/", "/explore", "/leaderboard", "/methodology"];
+const paths = ["/", "/leaderboard/90-plus", "/fastest/saas", "/about"];
 const durations = [], failures = [];
 let next = 0;
 const began = performance.now();

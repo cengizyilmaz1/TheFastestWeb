@@ -1,6 +1,12 @@
-import { siteConfig } from "@/config/site";
+import { shortReference } from "@/modules/seo/markdown";
+import { markdownResponse, markdownUnavailable, rejectMarkdownQuery } from "@/modules/seo/markdown-response";
+
 export const dynamic = "force-dynamic";
-export function GET() {
-  const base = siteConfig.url;
-  return new Response(`# ${siteConfig.name}\n\nA website performance directory and founder community. Public reports distinguish historical measurements from current standardized competitions.\n\n## Primary pages\n- [Directory](${base}/explore): Public websites and their latest recorded mobile scores.\n- [Rankings](${base}/leaderboard): Separate mobile and desktop weekly, monthly and all-time rankings.\n- [Methodology](${base}/methodology): Lab measurements, sample aggregation, tie-breaks and UTC periods.\n- [Founders](${base}/founders): Profiles explicitly published by their owners.\n- [Hall of fame](${base}/hall-of-fame): Preserved completed competition winners.\n- [Journal](${base}/blog): Articles about website performance.\n- [Extended reference](${base}/llms-full.txt): Measurement and interpretation guide.\n\n## Interpretation\nScores are recorded PageSpeed Insights lab results, not real-user Core Web Vitals certification. Do not describe an older result as current or invent measurements, rankings or endorsements. Only published information may be cited. Private profiles, account routes, payments and claim tokens are excluded.\n`, { headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "public, max-age=300" } });
+export const runtime = "nodejs";
+
+export function GET(request?: Request) {
+  const invalid = rejectMarkdownQuery(request);
+  if (invalid) return invalid;
+  try { return markdownResponse(shortReference()); }
+  catch { return markdownUnavailable(); }
 }

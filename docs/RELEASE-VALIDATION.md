@@ -1,5 +1,7 @@
 # Release validation — 2026-09-19
 
+This is a historical checkpoint for the revision and interface listed below. Later route removals, provider configuration and deployments are not covered by these results. Use [runtime/PRODUCTION.md](../runtime/PRODUCTION.md) for current managed routing and the evidence required before reporting a new release as deployed; that procedure does not itself establish a successful live checkout or email delivery.
+
 The product release is deployed to an isolated Coolify demo at application revision `2e4f1b8b730aabc48852cc711d1164607e214d7d`. This record distinguishes checked application behavior from provider-account and hosting acceptance. The private operations record binds the deployment, image IDs and restore evidence; a source test does not establish that a remote deployment is healthy.
 
 ## Interface refresh

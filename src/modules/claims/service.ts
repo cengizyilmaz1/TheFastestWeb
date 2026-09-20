@@ -46,7 +46,7 @@ export async function issueSiteClaim(userId: string, raw: unknown) {
       userId, siteId: input.siteId, method: input.method, tokenHash: hash(token), expiresAt: sql`now() + interval '1 day'`,
     }).returning({ id: siteClaims.id, expiresAt: siteClaims.expiresAt });
     await enqueueNotification({ userId, type: "claim_verification", eventKey: `claim:${claim.id}:issued`,
-      variables: { siteName: site.name.slice(0, 200), actionPath: `/claim?site=${input.siteId}` } }, tx);
+      variables: { siteName: site.name.slice(0, 200), actionPath: "/submit" } }, tx);
     // The raw token is returned once; neither database rows nor queue payloads contain it.
     return { ...claim, method: input.method, token, verification };
   });

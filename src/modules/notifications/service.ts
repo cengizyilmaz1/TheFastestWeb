@@ -80,7 +80,7 @@ export async function deliverNotificationEmail(deliveryId: string): Promise<{ st
     const variables = variablesSchema.safeParse(notification.payload);
     if (!variables.success) throw new MailDeliveryError("REJECTED", false);
     const unsubscribeUrl = category !== "transactional" && category && delivery.userId
-      ? `${getEnv().SITE_URL}/unsubscribe?token=${encodeURIComponent(createUnsubscribeToken(delivery.userId, category))}` : undefined;
+      ? `${getEnv().SITE_URL}/privacy?unsubscribe=${encodeURIComponent(createUnsubscribeToken(delivery.userId, category))}#email-preferences` : undefined;
     const rendered = renderNotification(type.data, variables.data, unsubscribeUrl);
     await tx.update(emailDeliveries).set({ status: "sending", attempts: delivery.attempts + 1, updatedAt: sql`now()` }).where(eq(emailDeliveries.id, deliveryId));
     return { message: { ...rendered, to: delivery.recipient } };

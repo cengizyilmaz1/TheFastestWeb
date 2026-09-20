@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { normalizePublicUrl } from "../../src/lib/security/public-url";
 
-export const CAPTURE_VERSION = "capture-v1";
+export const CAPTURE_VERSION = "capture-v2-private-original";
 export const captureRequestSchema = z.object({
   url: z.string().min(1).max(2048),
   device: z.enum(["desktop", "mobile"]).default("desktop"),
@@ -13,7 +13,7 @@ export const captureRequestSchema = z.object({
 }).strict();
 export type CaptureRequest = z.input<typeof captureRequestSchema>;
 export type PreparedCapture = z.output<typeof captureRequestSchema> & { viewport: { width: number; height: number } };
-export type ImageArtifact = { objectKey: string; publicUrl?: string; width: number; height: number; contentType: "image/jpeg" | "image/webp"; size: number; hash: string };
+export type ImageArtifact = { objectKey: string; publicUrl?: string; visibility?: "private" | "public"; width: number; height: number; contentType: "image/jpeg" | "image/webp"; size: number; hash: string };
 export type CaptureResult = {
   optimized: ImageArtifact; original: ImageArtifact;
   finalUrl: string; title: string; capturedAt: string; retentionUntil: string;

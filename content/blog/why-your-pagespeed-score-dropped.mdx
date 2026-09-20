@@ -2,11 +2,12 @@
 title: "Why Your PageSpeed Score Dropped (And How to Fix It)"
 description: "A sudden PageSpeed score drop can silently kill your Google rankings before you notice. Here's how to diagnose what went wrong and recover fast."
 date: "2026-03-23"
+updated: "2026-09-20"
 ---
 
 Your site was fast. Then you launched something new, a redesign, a new plugin, a third-party widget, and your PageSpeed score quietly tanked. Traffic followed a few weeks later.
 
-This is exactly what happened to me with FixMyPDF. After migrating to a new framework, traffic dropped from 100+ visitors a day to under 20. The site looked fine. No errors in the console. But the Core Web Vitals had collapsed.
+A framework migration can increase JavaScript work or introduce layout shifts even when the site looks unchanged. Compare measurements from before and after the release; a traffic change by itself does not establish that performance caused it.
 
 Here's how to figure out why your score dropped and how to get it back.
 
@@ -46,7 +47,7 @@ If your hosting got slower (overloaded shared server, cold starts on serverless,
 
 ## How to Diagnose It
 
-1. **Run a PageSpeed test** at [thefastestweb.site/test](/test) or Google PageSpeed Insights
+1. **Run a PageSpeed test** with [TheFastestWeb](/test) or Google PageSpeed Insights
 2. **Look at the score breakdown.** Which metrics dropped? LCP, TBT, CLS?
 3. **Check the "Opportunities" and "Diagnostics" sections.** PageSpeed will tell you exactly what's causing the problem.
 4. **Compare against your history.** If you're listed on TheFastestWeb, your score history shows exactly when it dropped.
@@ -64,8 +65,8 @@ The key is to fix the specific metric that dropped rather than trying to optimiz
 
 ## Monitor It Going Forward
 
-A score drop often goes unnoticed for weeks. By the time you see it in traffic data, Google has already re-ranked your pages.
+A score drop can go unnoticed between releases. Keep a record of measurements so you can compare performance under similar conditions.
 
-The best approach is daily monitoring. Know the moment your score changes so you can fix it before it affects rankings. That's what TheFastestWeb does for your site automatically.
+Regular monitoring can help identify a regression. Review the recorded test dates and compare the same device and measurement method. A score change alone does not establish a change in search rankings.
 
-[Submit your site](/submit) to get daily speed tracking and alerts when your score drops significantly.
+[Submit your site](/submit) to keep a public performance report. Scheduled retests and email alerts depend on service availability and your notification preferences.

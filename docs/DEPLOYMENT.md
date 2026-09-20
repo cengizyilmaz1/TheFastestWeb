@@ -1,5 +1,7 @@
 # Coolify deployment
 
+For the current managed Resources and optional production routing overlay, follow [runtime/PRODUCTION.md](../runtime/PRODUCTION.md). The combined stack instructions below also document the alternative standalone installation; they are not evidence that the current production release has completed.
+
 The stack contains web, PostgreSQL, Redis, a worker and a dispatcher with explicitly
 enabled scheduled generation. Dodo, Microsoft Graph, R2, consent analytics and the isolated screenshot
 service are implemented behind explicit configuration gates. Passing health checks
@@ -11,7 +13,7 @@ Use `DEPLOYMENT_MODE=demo` with an HTTPS demo `SITE_URL` and matching `AUTH_URL`
 Google credentials may be absent; sign-in then explains that it is not configured.
 An authentication secret, private PostgreSQL and authenticated Redis remain required.
 The demo validator refuses payments, email, analytics or scheduled monitoring to be
-enabled. Responses carry `X-Robots-Tag: noindex, nofollow, noarchive`, robots disallows
+enabled. Responses carry `X-Robots-Tag` indexing restrictions, robots disallows
 crawling, and the sitemap is empty. The preview notice identifies these limits.
 
 For the final domain, change both origins together, configure Google's callback,
@@ -86,8 +88,8 @@ to bootstrap PostgreSQL, never to authenticate the web service.
 1. Create the PostgreSQL 18.6 service and a persistent volume. Compose mounts
    `/var/lib/postgresql`, the parent of the PostgreSQL 18 versioned data directory.
    The database port is not published publicly.
-2. Restore the approved backup into staging, validate all eight migrations through
-   `0007_founder_invitations`, and
+2. Restore the approved backup into staging, validate all nine migrations through
+   `0008_indietools_categories`, and
    provision the application role with only necessary table/sequence privileges.
    The migration/admin role stays separate from `DATABASE_URL`.
 3. Validate users, sites, historical tests and ownership using the documented
@@ -95,7 +97,7 @@ to bootstrap PostgreSQL, never to authenticate the web service.
 4. Configure the web resource to build `Dockerfile`, expose port 3000 and bind the
    domain above. Supply secrets only in the runtime environment, never build args.
 5. Route only healthy instances. `/health/live` checks process liveness;
-   `/health/ready` checks the schema through migration 0007 with a zero-row query and verifies that the
+   `/health/ready` checks required runtime schema columns with a zero-row query and verifies that the
    application role has no administrator flags, database/table ownership or
    `CREATE` privilege on the public schema. It checks queue-table write grants,
    Redis connectivity, bounded memory, `noeviction` and healthy AOF persistence.
@@ -163,9 +165,9 @@ it does not generate scheduled monitoring or maintenance work. Its health respon
 identifies `dispatch-only` mode. To stop dispatch, stop the process explicitly.
 Enable scheduled generation in this order:
 
-1. Apply and validate all eight migrations through 0007 on a restored staging copy,
+1. Apply and validate all nine migrations through 0008 on a restored staging copy,
    including provider, product, ranking, audit, ad inventory, domain analytics and
-   founder invitation tables. The reviewed schema contains 43 public tables, one
+   founder invitation tables and the expanded category catalog. The reviewed schema contains 43 public tables, one
    public view and one public sequence; the migration ledger is separate in `app_meta`.
    Grant the runtime role the documented table permissions and verify readiness.
 2. Deploy Redis, worker and dispatcher, then verify readiness. Keep new scheduled

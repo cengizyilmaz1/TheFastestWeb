@@ -1,6 +1,11 @@
 export const ANALYTICS_CONSENT_COOKIE = "tfw_analytics_v1";
 export type AnalyticsConsent = "granted" | "denied" | "unset";
-export type PublicAnalyticsConfig = { enabled: boolean; gaId?: string; datafastWebsiteId?: string; datafastDomain?: string };
+export type PublicAnalyticsConfig = { enabled: boolean; siteOrigin?: string; gaId?: string; datafastWebsiteId?: string; datafastDomain?: string };
+
+/** A production resource can also serve a preview hostname. Never measure it. */
+export function isAnalyticsOrigin(origin: string, siteOrigin: string | undefined): boolean {
+  return Boolean(siteOrigin) && origin === siteOrigin;
+}
 
 export function cookieValue(cookies: string, name: string): string | undefined {
   const part = cookies.split(";").map((item) => item.trim()).find((item) => item.startsWith(`${name}=`));

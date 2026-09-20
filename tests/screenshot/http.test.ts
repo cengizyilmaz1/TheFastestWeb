@@ -7,12 +7,13 @@ import type { ScreenshotBroker } from "../../services/screenshot/broker";
 import { screenshotConfig, token } from "./fixtures";
 
 let server: Server | undefined;
-const create = vi.fn(), find = vi.fn(), rateLimit = vi.fn(async () => true);
+const create = vi.fn(), find = vi.fn(), present = vi.fn(), rateLimit = vi.fn(async () => true);
+const imageReader = vi.fn(async () => ({ bytes: Buffer.from([0xff, 0xd8, 0xff]), contentType: "image/jpeg" as const }));
 afterEach(async () => { await new Promise<void>((resolve) => { if (!server) return resolve(); server.close(() => resolve()); server.closeAllConnections(); }); vi.clearAllMocks(); });
 async function start(config = screenshotConfig()) {
   rateLimit.mockResolvedValue(true); find.mockResolvedValue(null);
-  server = createScreenshotServer(config, { create, find, ready: async () => undefined } as unknown as ScreenshotRepository,
-    { rateLimit, ready: async () => undefined } as unknown as ScreenshotBroker);
+  server = createScreenshotServer(config, { create, find, present, ready: async () => undefined } as unknown as ScreenshotRepository,
+    { rateLimit, ready: async () => undefined } as unknown as ScreenshotBroker, { isStopping: () => false, imageReader });
   await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("No test address");
@@ -29,6 +30,17 @@ describe("screenshot authenticated API", () => {
     const base = await start(), id = randomUUID();
     expect((await fetch(`${base}/v1/captures/${id}/image`, { headers })).status).toBe(404);
     expect(find).toHaveBeenCalledWith("thefastestweb", id);
+  });
+  it("reads new originals privately and preserves legacy artifact locations", async () => {
+    const base = await start(), id = randomUUID(), objectKey = "thefastestweb/sites/screenshots/desktop/original.jpg";
+    find.mockResolvedValue({ request: { visibility: "public" } });
+    present.mockReturnValue({ id, status: "ready", result: { original: { objectKey, visibility: "private" } } });
+    const response = await fetch(`${base}/v1/captures/${id}/image`, { headers });
+    expect(response.status).toBe(200); expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(imageReader).toHaveBeenLastCalledWith(objectKey, { visibility: "private", maxBytes: 6 * 1024 * 1024 });
+    present.mockReturnValue({ id, status: "ready", result: { original: { objectKey } } });
+    expect((await fetch(`${base}/v1/captures/${id}/image`, { headers })).status).toBe(200);
+    expect(imageReader).toHaveBeenLastCalledWith(objectKey, { visibility: "public", maxBytes: 6 * 1024 * 1024 });
   });
   it("rejects private destinations, unbounded bodies, absent idempotency, and public drafts", async () => {
     const base = await start();

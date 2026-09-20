@@ -41,6 +41,13 @@ x-provider-environment: &provider-environment
   SCREENSHOT_SERVICE_URL: ${SCREENSHOT_SERVICE_URL:-}
   SCREENSHOT_SERVICE_TOKEN: ${SCREENSHOT_SERVICE_TOKEN:-}
 
+x-analytics-environment: &analytics-environment
+  ANALYTICS_ENABLED: ${ANALYTICS_ENABLED:-false}
+  GA_MEASUREMENT_ID: ${GA_MEASUREMENT_ID:-}
+  DATAFAST_WEBSITE_ID: ${DATAFAST_WEBSITE_ID:-}
+  DATAFAST_DOMAIN: ${DATAFAST_DOMAIN:-}
+  DATAFAST_API_KEY: ${DATAFAST_API_KEY:-}
+
 x-runtime-logging: &runtime-logging
   driver: json-file
   options:
@@ -62,7 +69,7 @@ services:
       dockerfile: Dockerfile
       target: runner
     environment:
-      <<: [*job-environment, *provider-environment]
+      <<: [*job-environment, *provider-environment, *analytics-environment]
       AUTH_SECRET: ${AUTH_SECRET:?Generate a new auth secret}
       AUTH_GOOGLE_ID: ${AUTH_GOOGLE_ID:-}
       AUTH_GOOGLE_SECRET: ${AUTH_GOOGLE_SECRET:-}
@@ -72,11 +79,9 @@ services:
       GOOGLE_PSI_API_KEY_BACKUP: ${GOOGLE_PSI_API_KEY_BACKUP:-}
       CRON_SECRET: ${CRON_SECRET:-}
       UNAVATAR_API_KEY: ${UNAVATAR_API_KEY:-}
-      ANALYTICS_ENABLED: ${ANALYTICS_ENABLED:-false}
-      GA_MEASUREMENT_ID: ${GA_MEASUREMENT_ID:-}
-      DATAFAST_WEBSITE_ID: ${DATAFAST_WEBSITE_ID:-}
-      DATAFAST_DOMAIN: ${DATAFAST_DOMAIN:-}
-      DATAFAST_API_KEY: ${DATAFAST_API_KEY:-}
+      DATAFAST_BOT_TRACKING_ENABLED: ${DATAFAST_BOT_TRACKING_ENABLED:-false}
+      DATAFAST_BOT_TOKEN: ${DATAFAST_BOT_TOKEN:-}
+      DATAFAST_BOT_TRUSTED_IP_HEADER: ${DATAFAST_BOT_TRUSTED_IP_HEADER:-none}
       SEARCH_CONSOLE_VERIFICATION: ${SEARCH_CONSOLE_VERIFICATION:-}
       BING_VERIFICATION: ${BING_VERIFICATION:-}
       INDEXNOW_KEY: ${INDEXNOW_KEY:-}
@@ -107,7 +112,7 @@ services:
       dockerfile: Dockerfile
       target: jobs-runner
     environment:
-      <<: [*job-environment, *provider-environment]
+      <<: [*job-environment, *provider-environment, *analytics-environment]
       WORKER_HEALTH_PORT: ${WORKER_HEALTH_PORT:-3001}
       GOOGLE_PSI_API_KEY: ${GOOGLE_PSI_API_KEY:-}
       GOOGLE_PSI_API_KEY_BACKUP: ${GOOGLE_PSI_API_KEY_BACKUP:-}

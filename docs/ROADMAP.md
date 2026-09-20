@@ -70,7 +70,7 @@ Bu dosya kullanıcı master planındaki **0–141 maddelerinin tamamını** baş
 | 57 | M365 mail configuration | Needs replacement | 3 / 5 | Graph ve Dodo adapter/queue/ledger/entitlements gerekiyor. M1 güvenli olmayan ödeme yazmalarını durdurur; eski Pro/veri korunur. |
 | 58 | Mail queue | New feature | 2 | Redis/BullMQ, worker, scheduler, idempotent jobs ve outbox henüz uygulanmadı. M1 yalnız sınırlı cron uyumluluk yolu sağlar. |
 | 59 | Mail events | Needs replacement | 3 / 5 | Graph ve Dodo adapter/queue/ledger/entitlements gerekiyor. M1 güvenli olmayan ödeme yazmalarını durdurur; eski Pro/veri korunur. |
-| 60 | Payment — Polar kaldırılacak | Needs replacement | 3 / 5 | Graph ve Dodo adapter/queue/ledger/entitlements gerekiyor. M1 güvenli olmayan ödeme yazmalarını durdurur; eski Pro/veri korunur. |
+| 60 | Payment — Dodo Payments | Implemented; provider configuration pending | 3 / 5 | Dodo checkout/webhook/ledger, aylık reklam akışı ve yönetim paneli katalog senkronizasyonu hazır; eski Pro/veri korunur. Gerçek sağlayıcı doğrulaması erişimler yapılandırılınca yapılır. |
 | 61 | Dodo Payments | Needs replacement | 3 / 5 | Graph ve Dodo adapter/queue/ledger/entitlements gerekiyor. M1 güvenli olmayan ödeme yazmalarını durdurur; eski Pro/veri korunur. |
 | 62 | Payment model | Needs replacement | 3 / 5 | Graph ve Dodo adapter/queue/ledger/entitlements gerekiyor. M1 güvenli olmayan ödeme yazmalarını durdurur; eski Pro/veri korunur. |
 | 63 | Products / monetization | Needs replacement | 3 / 5 | Graph ve Dodo adapter/queue/ledger/entitlements gerekiyor. M1 güvenli olmayan ödeme yazmalarını durdurur; eski Pro/veri korunur. |

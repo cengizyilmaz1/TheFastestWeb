@@ -25,15 +25,18 @@ export function createCaptureProcessor(config: ScreenshotConfig, repository: Scr
       // worker's successful image while cleaning up its own abandoned upload.
       const prefix = `${client.namespace}/sites/screenshots/${row.request.device}/${row.id}/${row.lease_token}`;
       const originalKey = `${prefix}/${hash(images.original)}.jpg`, optimizedKey = `${prefix}/${hash(images.optimized)}.webp`;
-      await repository.stageObjects(row, [originalKey, optimizedKey]);
-      const uploadedOriginal = await storage.put({ bytes: images.original, contentType: "image/jpeg", objectKey: originalKey, visibility: row.request.visibility });
+      // Browser originals are never a public asset. Publish only the decoded,
+      // metadata-stripped WebP; retain the JPEG for authenticated draft delivery.
+      await repository.stageObjects(row, [{ objectKey: originalKey, visibility: "private" },
+        { objectKey: optimizedKey, visibility: row.request.visibility }]);
+      await storage.put({ bytes: images.original, contentType: "image/jpeg", objectKey: originalKey, visibility: "private" });
       const uploadedOptimized = await storage.put({ bytes: images.optimized, contentType: "image/webp", objectKey: optimizedKey, visibility: row.request.visibility });
-      const metadata = (bytes: Buffer, objectKey: string, contentType: ImageArtifact["contentType"], publicUrl: string | null): ImageArtifact => ({
-        objectKey, ...(publicUrl ? { publicUrl } : {}), width: images.width, height: images.height, contentType, size: bytes.length, hash: hash(bytes),
+      const metadata = (bytes: Buffer, objectKey: string, contentType: ImageArtifact["contentType"], visibility: "private" | "public", publicUrl: string | null): ImageArtifact => ({
+        objectKey, visibility, ...(publicUrl ? { publicUrl } : {}), width: images.width, height: images.height, contentType, size: bytes.length, hash: hash(bytes),
       });
       await repository.complete(row, {
-        original: metadata(images.original, originalKey, "image/jpeg", uploadedOriginal.publicUrl),
-        optimized: metadata(images.optimized, optimizedKey, "image/webp", uploadedOptimized.publicUrl),
+        original: metadata(images.original, originalKey, "image/jpeg", "private", null),
+        optimized: metadata(images.optimized, optimizedKey, "image/webp", row.request.visibility, uploadedOptimized.publicUrl),
         finalUrl: images.finalUrl, title: images.title, capturedAt: new Date().toISOString(), retentionUntil: row.expires_at.toISOString(),
       });
     } catch (error) {

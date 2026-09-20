@@ -18,7 +18,11 @@ export const directorySchema = z.object({
 export type DirectoryQuery = z.input<typeof directorySchema>;
 export const publicSiteProjection = {
   id: sites.id, slug: sites.slug, name: sites.name, url: sites.url, description: sites.description,
-  tagline: sites.tagline, category: sites.category, countryCode: sites.countryCode, faviconUrl: sites.faviconUrl,
+  tagline: sites.tagline,
+  // Drizzle removes Column qualifiers inside a single-table selection. Keep
+  // this correlated identifier explicit so it cannot resolve to categories.id.
+  category: sql<string>`coalesce((SELECT c.slug FROM site_categories sc JOIN categories c ON c.id=sc.category_id WHERE sc.site_id=${sql.identifier("sites")}.${sql.identifier("id")} AND sc.is_primary AND c.active LIMIT 1), ${sites.category}::text)`,
+  countryCode: sites.countryCode, faviconUrl: sites.faviconUrl,
   currentScore: sites.currentScore, currentLcp: sites.currentLcp, currentTbt: sites.currentTbt,
   currentCls: sites.currentCls, lastTestedAt: sites.lastTestedAt, createdAt: sites.createdAt, lifecycle: sites.lifecycle,
 };

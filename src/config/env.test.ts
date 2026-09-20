@@ -62,6 +62,17 @@ describe("runtime environment", () => {
     expect(config.PAYMENTS_ENABLED).toBe(false);
     expect(config.STORAGE_ENABLED).toBe(false);
     expect(config.ANALYTICS_ENABLED).toBe(false);
+    expect(config.DATAFAST_BOT_TRACKING_ENABLED).toBe(false);
+    expect(config.DATAFAST_BOT_TRUSTED_IP_HEADER).toBe("none");
+  });
+
+  it("requires a dedicated matching DataFast website before enabling crawler tracking", () => {
+    const config = { DATAFAST_BOT_TRACKING_ENABLED: "true", DATAFAST_WEBSITE_ID: "dfid_synthetic", DATAFAST_DOMAIN: "thefastestweb.site" };
+    expect(parseEnv(config).DATAFAST_BOT_TRACKING_ENABLED).toBe(true);
+    for (const change of [{ DATAFAST_WEBSITE_ID: "" }, { DATAFAST_DOMAIN: "indietools.app" }, { DEPLOYMENT_MODE: "demo" },
+      { DATAFAST_BOT_TOKEN: "df_wrong_kind_of_key" }, { DATAFAST_BOT_TRUSTED_IP_HEADER: "untrusted-client-ip" }]) {
+      expect(() => parseEnv({ ...config, ...change })).toThrow(EnvironmentError);
+    }
   });
 
   it("validates background dependencies without requiring web credentials", () => {

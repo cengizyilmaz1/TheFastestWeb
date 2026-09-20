@@ -22,7 +22,7 @@ export async function synchronizeGoogleUser(profile: { email: string; name?: str
     const id = randomUUID();
     await tx.insert(users).values({ id, email, name, avatarUrl });
     await enqueueNotification({ userId: id, type: "welcome", eventKey: `user:${id}:welcome`,
-      variables: { name: name.slice(0, 120), actionPath: "/dashboard" } }, tx);
+      variables: { name: name.slice(0, 120), actionPath: "/submit" } }, tx);
     return id;
   });
 }

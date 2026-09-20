@@ -19,7 +19,8 @@ export const productInputSchema = z.object({ id: z.uuid(), key: z.string().regex
   entitlementDays: z.number().int().min(1).max(36500).nullable(), requiresSite: z.boolean(), active: z.boolean(),
 }).strict().refine((value) => !value.active || Boolean(value.providerProductId), "Active products require a provider product")
   .refine((value) => !["featured_listing", "sponsorship"].includes(value.kind) || value.requiresSite, "Paid discovery placements require an owned site")
-  .refine((value) => value.kind !== "sidebar_ad" || (value.requiresSite && value.billingInterval === "one_time" && Boolean(value.entitlementDays)), "Ad products require an owned site and fixed one-time duration");
+  .refine((value) => value.kind !== "sidebar_ad" || (value.requiresSite && (value.billingInterval === "month" && value.entitlementDays === null
+    || value.billingInterval === "one_time" && Boolean(value.entitlementDays))), "Ad products require an owned site and a monthly subscription or fixed one-time duration");
 export const adminActionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("site.lifecycle"), siteId: z.uuid(), lifecycle: z.enum(["active", "suspended", "archived"]), reason }).strict(),
   z.object({ action: z.literal("site.monitoring"), siteId: z.uuid(), paused: z.boolean(), reason }).strict(),
@@ -73,8 +74,14 @@ async function beforeState(tx: Transaction, action: AdminAction) {
     await tx.execute(sql`SELECT o.id FROM checkout_orders o JOIN ad_reservations r ON r.order_id=o.id WHERE r.id=${identity.id} FOR UPDATE OF o`);
     await tx.execute(sql`SELECT i.id FROM ad_inventory i JOIN ad_reservations r ON r.inventory_id=i.id WHERE r.id=${identity.id} FOR UPDATE OF i`);
     rows = await tx.execute(sql`SELECT r.id,r.inventory_id,r.order_id,r.user_id,r.site_id,r.ad_slot_id,r.status,r.starts_at,r.ends_at,
-      a.name AS creative_name,a.tagline AS creative_tagline,a.url AS creative_url,a.status AS creative_status
-      FROM ad_reservations r LEFT JOIN ad_slots a ON a.id=r.ad_slot_id WHERE r.id=${identity.id} FOR UPDATE OF r`);
+      a.name AS creative_name,a.tagline AS creative_tagline,a.url AS creative_url,a.status AS creative_status,a.is_active AS creative_is_active,
+      i.position AS placement_position,i.order_index AS placement_order_index,
+      o.product_snapshot->>'billingInterval' AS billing_interval,o.product_snapshot->>'amountCents' AS amount_cents,
+      o.product_snapshot->>'currency' AS currency,
+      (SELECT max(s.current_period_end) FROM subscriptions s JOIN payment_ledger p ON p.provider_subscription_id=s.provider_subscription_id
+        WHERE p.order_id=o.id AND p.status='succeeded' AND s.status='active') AS paid_period_end
+      FROM ad_reservations r JOIN checkout_orders o ON o.id=r.order_id JOIN ad_inventory i ON i.id=r.inventory_id
+      LEFT JOIN ad_slots a ON a.id=r.ad_slot_id WHERE r.id=${identity.id} FOR UPDATE OF r`);
   }
   else rows = await tx.execute(sql`SELECT id,status,provider_checkout_id,product_id,created_at FROM checkout_orders WHERE id=${identity.id} FOR UPDATE`);
   if (!rows.length && !["product", "inventory"].includes(identity.type)) throw new AppError("NOT_FOUND", "Administrative target not found.", 404);
@@ -153,6 +160,8 @@ export async function executeAdminAction(actor: AdminActor, raw: unknown, token:
         : { status: "cancelled", leaseToken: null, leasedUntil: null, finishedAt: sql`now()`, updatedAt: sql`now()` }).where(eq(backgroundJobs.id, job.id));
       await tx.insert(jobEvents).values({ jobId: job.id, event: action.action === "job.retry" ? "operator_retry" : "cancelled", actor: "admin", attempt: job.attempts });
     } else if (action.action === "product.save") {
+      if (["pro_lifetime", "sidebar_ad_monthly"].includes(action.product.key)
+        || ["pro_lifetime", "sidebar_ad_monthly"].includes(String(before?.key))) throw new AppError("CONFLICT", "Use the Dodo catalog panel to manage the original packages and verify their prices.", 409);
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`product-key:${action.product.key}`},0))`);
       const [sameKey] = await tx.select({ id: products.id }).from(products).where(eq(products.key, action.product.key));
       if (sameKey && sameKey.id !== action.product.id) throw new AppError("CONFLICT", "This catalog key belongs to another product.", 409);
@@ -160,6 +169,14 @@ export async function executeAdminAction(actor: AdminActor, raw: unknown, token:
     } else if (action.action === "ad.inventory") {
       if (before && (before.position !== action.position || before.order_index !== action.orderIndex)) throw new AppError("CONFLICT", "Existing inventory coordinates cannot be moved. Create another placement instead.", 409);
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`ad-coordinate:${action.position}:${action.orderIndex}`},0))`);
+      if (action.active && !before?.active) {
+        const occupied = await tx.execute(sql`SELECT id FROM ad_slots WHERE position=${action.position} AND order_index=${action.orderIndex}
+          AND is_active AND status='active' AND (expires_at IS NULL OR expires_at>now()) LIMIT 1`);
+        if (occupied.length) throw new AppError("CONFLICT", "An active advertisement already occupies this position. Wait for its verified expiry before enabling inventory.", 409);
+        const reserved = await tx.execute(sql`SELECT r.id FROM ad_reservations r JOIN ad_inventory i ON i.id=r.inventory_id
+          WHERE i.position=${action.position} AND i.order_index=${action.orderIndex} AND r.status IN ('held','paid','active') LIMIT 1`);
+        if (reserved.length) throw new AppError("CONFLICT", "A purchase already reserves this position. Reconcile its reservation before re-enabling inventory.", 409);
+      }
       const [coordinate] = await tx.select({ id: adInventory.id }).from(adInventory).where(sql`${adInventory.position}=${action.position} AND ${adInventory.orderIndex}=${action.orderIndex}`);
       if (coordinate && coordinate.id !== action.inventoryId) throw new AppError("CONFLICT", "This position already belongs to an inventory record.", 409);
       await tx.insert(adInventory).values({ id: action.inventoryId, position: action.position, orderIndex: action.orderIndex, active: action.active })

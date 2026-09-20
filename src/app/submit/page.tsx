@@ -1,49 +1,34 @@
-import { siteConfig } from "@/config/site";
-import { Metadata } from "next";
+import { pageMetadata } from "@/lib/seo/metadata";
 import { Suspense } from "react";
 import { SubmitPageForm } from "@/components/submit/SubmitPageForm";
 import { getCurrentUser } from "@/lib/auth";
-import { getCatalog } from "@/modules/catalog/service";
-import { getOwnFounder } from "@/modules/founders/service";
 import { hasAccountProAccess } from "@/modules/payments/entitlements";
+import { AdSuccessBanner } from "@/components/ads/AdSuccessBanner";
 
-export const metadata: Metadata = {
-  title: "Submit Your Website | TheFastestWeb",
-  description:
-    "Prepare your website details, review mobile and desktop lab measurements, and publish your performance profile.",
-  alternates: { canonical: `${siteConfig.url}/submit` },
-  openGraph: {
-    title: "Submit Your Website | TheFastestWeb",
-    description: "Review your website details and real mobile and desktop measurements before publishing.",
-  },
-  twitter: {
-    title: "Submit Your Website | TheFastestWeb",
-    description: "Review your website details and real mobile and desktop measurements before publishing.",
-  },
-};
+export const metadata = pageMetadata({
+  "title": "Submit your website",
+  "description": "Add your website to TheFastestWeb. Sign in, verify its performance and choose whether to publish a public leaderboard listing.",
+  "path": "/submit"
+});
 
 export default async function SubmitPage() {
   const user = await getCurrentUser();
-  const submissionUser = user ? { id: user.id, name: user.name, isPro: await hasAccountProAccess(user.id, user.isPro) } : null;
-  const [catalogResult, founderResult] = await Promise.allSettled([getCatalog(), user ? getOwnFounder(user.id) : Promise.resolve(null)]);
-  const catalog = catalogResult.status === "fulfilled" ? catalogResult.value : null;
-  const founder = founderResult.status === "fulfilled" && founderResult.value ? {
-    id: founderResult.value.id, name: founderResult.value.name, visibility: founderResult.value.visibility,
-  } : null;
+  const publicUser = user ? { name: user.name, avatarUrl: user.avatarUrl, twitterHandle: user.twitterHandle, isPro: await hasAccountProAccess(user.id, user.isPro) } : null;
 
   return (
-    <div className="mx-auto max-w-[1240px] px-5 pb-20 pt-12 sm:px-8 sm:pb-28 sm:pt-20">
-      <header className="mb-10 sm:mb-14">
-        <h1 className="page-title max-w-[16ch]">
-          Put your website on the map.
+    <div className="max-w-[540px] mx-auto py-10 px-5">
+      <div className="text-center mb-6">
+        <h1 className="font-display text-[clamp(1.6rem,3vw,2.1rem)] font-[900] tracking-[-0.02em] mb-2">
+          Submit Your Website
         </h1>
-        <p className="page-description mt-6 sm:text-lg">
-          Start with a URL. Review your details and real measurements, then share your website with the community.
+        <p className="text-text-secondary text-[0.88rem] max-w-md mx-auto">
+          Test your speed, join the leaderboard, and get a dofollow link on your public listing.
         </p>
-      </header>
+      </div>
 
       <Suspense fallback={null}>
-        <SubmitPageForm user={submissionUser} siteUrl={siteConfig.url} catalog={catalog} founder={founder} />
+        <AdSuccessBanner />
+        <SubmitPageForm user={publicUser} />
       </Suspense>
     </div>
   );

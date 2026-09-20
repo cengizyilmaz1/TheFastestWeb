@@ -4,6 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { getDb } from "../../src/db";
 import { checkDatabaseReadiness } from "../../src/infrastructure/health/readiness";
 import { getCatalog, setSiteTaxonomy } from "../../src/modules/catalog/service";
+import { getCategoryCounts, getCategoryListing } from "../../src/modules/catalog/public-categories";
 import { getPublicFounder, linkFounderSite, saveFounderProfile } from "../../src/modules/founders/service";
 import { issueSiteClaim, verifySiteClaim } from "../../src/modules/claims/service";
 import { cleanupIntegrationDatabase, fixtureSql, prepareIntegrationDatabase, resetIntegrationData } from "./database";
@@ -37,10 +38,22 @@ beforeEach(async () => {
 });
 
 describe("product catalog and founder privacy", () => {
+  it("retains historic unassigned category listings and excludes archived or inactive catalog assignments", async () => {
+    await fixtureSql()`UPDATE sites SET category='tool' WHERE id=${siteId}`;
+    expect((await getCategoryListing("tool")).sites.map((site) => site.id)).toContain(siteId);
+    expect((await getCategoryCounts()).categories.find((category) => category.slug === "tool")?.count).toBe(1);
+    const catalog = await getCatalog(), ai = catalog.categories.find((category) => category.slug === "ai")!;
+    await setSiteTaxonomy(ownerId, siteId, { categoryIds: [ai.id], technologyIds: [] });
+    expect((await getCategoryListing("tool")).total).toBe(0);
+    expect((await getCategoryListing("ai")).total).toBe(1);
+    await fixtureSql()`UPDATE sites SET archived_at=now(),lifecycle='archived' WHERE id=${siteId}`;
+    expect((await getCategoryListing("ai")).total).toBe(0);
+  });
+
   it("seeds reference catalogs without inventing a site's country or technology", async () => {
     const catalog = await getCatalog();
     expect(catalog.countries).toHaveLength(249);
-    expect(catalog.categories).toHaveLength(8);
+    expect(catalog.categories).toHaveLength(23);
     expect(catalog.technologies).toHaveLength(15);
     const [row] = await fixtureSql()`SELECT country_code,(SELECT count(*)::integer FROM site_technologies) AS detected FROM sites WHERE id=${siteId}`;
     expect({ ...row }).toEqual({ country_code: null, detected: 0 });
@@ -93,7 +106,8 @@ describe("bounded ownership proofs", () => {
     expect(stored.token_hash).toMatch(/^[a-f0-9]{64}$/);
     expect(stored.active).toBe(true);
     const [notice] = await fixtureSql()`SELECT payload FROM notifications WHERE event_key=${`claim:${claim.id}:issued`}`;
-    expect(notice.payload.actionPath).toBe(`/claim?site=${siteId}`);
+    // The restored public route set keeps submission; the old /claim page is removed.
+    expect(notice.payload.actionPath).toBe("/submit");
     expect(JSON.stringify(notice.payload)).not.toContain(claim.token);
     fetchProof.mockResolvedValue({ html: claim.verification.recordValue });
     await expect(verifySiteClaim(otherId, { claimId: claim.id, token: claim.token })).resolves.toMatchObject({ status: "verified", requiresReview: false });

@@ -14,8 +14,13 @@ import { enqueueNotification } from "@/modules/notifications/service";
 import { matchingWebsiteIdentity, websiteIdentity } from "./identity";
 import { loadSiteMetadata, type SiteMetadata } from "./metadata";
 import { UnsafeUrlError } from "@/lib/security/public-url";
+import { legacyCategory } from "@/modules/catalog/categories";
+import { isCountryCode } from "@/modules/catalog/countries";
 
 export async function createListing(userId: string, input: SubmissionInput) {
+  if ((input.preparationId && !input.countryCode) || (input.countryCode && !isCountryCode(input.countryCode))) {
+    throw new AppError("INVALID_REQUEST", "Choose your product's country of origin.", 400);
+  }
   const db = getDb();
   if (!db) throw new AppError("DATABASE_UNAVAILABLE", "Submissions are temporarily unavailable.", 503);
   const url = normalizeSubmittedUrl(input.url);
@@ -117,14 +122,13 @@ export async function createListing(userId: string, input: SubmissionInput) {
       throw new AppError("CONFLICT", "Run a new complete desktop measurement before publishing.", 409);
     }
     const primary = selectedCategories.find((item) => item.id === categoryIds[0])!;
-    const legacyCategories = ["saas", "tool", "directory", "agency", "ecommerce", "blog", "portfolio", "other"];
     const [site] = await tx.insert(sites).values({
       slug, name: input.name, url, normalizedUrl: identity.normalizedUrl, redirectUrl: identity.redirectUrl, description: input.description,
       tagline: input.tagline || null, countryCode: input.countryCode ?? null, lifecycle: input.isListed ? "active" : "pending",
       faviconUrl, ownerId: userId, ownerName: owner.name, twitterHandle: input.twitterHandle || null,
       // Legacy tier is historical. Expiring provider grants are evaluated at read
       // time and must not become a permanent badge exemption in this row.
-      category: legacyCategories.includes(primary.slug) ? primary.slug as typeof input.category : "other", tier: owner.isPro ? "pro" : "free", isListed: input.isListed,
+      category: legacyCategory(primary.slug), tier: owner.isPro ? "pro" : "free", isListed: input.isListed,
       requiresBadge: !owner.isPro && input.isListed, currentScore: result.score,
       badgeStatus: badgeVerified ? "verified" : "missing", badgeCheckedAt: badgeVerified ? new Date() : null,
       currentLoadTime: result.loadTime, currentFcp: result.fcp, currentLcp: result.lcp,

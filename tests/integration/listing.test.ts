@@ -7,6 +7,7 @@ import { createListing } from "@/modules/sites/create-listing";
 import { synchronizeGoogleUser } from "@/modules/auth/google-user";
 import { submissionSchema, type SubmissionInput } from "@/modules/sites/input";
 import { normalizePublicUrl } from "@/lib/security/public-url";
+import { getCategoryCounts, getCategoryListing } from "@/modules/catalog/public-categories";
 import { cleanupIntegrationDatabase, fixtureSql, prepareIntegrationDatabase, resetIntegrationData } from "./database";
 
 const { badge } = vi.hoisted(() => ({ badge: vi.fn() }));
@@ -72,6 +73,22 @@ beforeEach(async () => {
 });
 
 describe("listing transactions with the least-privilege application role", () => {
+  it("publishes an IndieTools category through normalized taxonomy without misclassifying it as Other", async () => {
+    const owner = await user(true), url = "https://example.com/";
+    const listing = await createListing(owner, { ...input(url, await proof(owner, url)), category: "ai" });
+    expect(listing.category).toBe("other"); // Immutable enum is a compatibility field only.
+    const [assigned] = await fixtureSql()`SELECT c.slug,sc.is_primary FROM site_categories sc JOIN categories c ON c.id=sc.category_id WHERE sc.site_id=${listing.id}`;
+    expect({ ...assigned }).toEqual({ slug: "ai", is_primary: true });
+    const ai = await getCategoryListing("ai");
+    expect(ai).toMatchObject({ available: true, total: 1 });
+    expect(ai.sites[0]).toMatchObject({ id: listing.id, category: "ai" });
+    expect((await getCategoryListing("other")).total).toBe(0);
+    expect((await getCategoryCounts()).categories.find((category) => category.slug === "ai")?.count).toBe(1);
+    await fixtureSql()`UPDATE sites SET is_listed=false WHERE id=${listing.id}`;
+    expect((await getCategoryListing("ai")).total).toBe(0);
+    expect((await getCategoryCounts()).categories.find((category) => category.slug === "ai")?.count).toBe(0);
+  });
+
   it("honors an active account payment for private and additional listings without immortalizing its tier", async () => {
     const owner = await user(false);
     await accountGrant(owner);

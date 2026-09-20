@@ -58,7 +58,10 @@ export function createScreenshotServer(config: ScreenshotConfig, repository: Scr
       const result = repository.present(row);
       if (!match[2]) return send(200, result);
       if (result.status !== "ready" || !result.result) throw new ServiceError("IMAGE_UNAVAILABLE", 409);
-      const image = await (options.imageReader ?? readObject)(result.result.original.objectKey, { visibility: row.request.visibility, maxBytes: 6 * 1024 * 1024 });
+      // Earlier receipts stored both artifacts in the request's bucket. New
+      // captures mark the original private without relocating historical keys.
+      const image = await (options.imageReader ?? readObject)(result.result.original.objectKey,
+        { visibility: result.result.original.visibility ?? row.request.visibility, maxBytes: 6 * 1024 * 1024 });
       if (image.contentType !== "image/jpeg") throw new ServiceError("INVALID_IMAGE", 502);
       response.writeHead(200, { "content-type": "image/jpeg", "content-length": image.bytes.length, "cache-control": "private, no-store", "x-content-type-options": "nosniff", "x-correlation-id": correlationId });
       response.end(image.bytes);

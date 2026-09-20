@@ -99,6 +99,9 @@ const envSchema = z.object({
   DATAFAST_WEBSITE_ID: optionalString.refine((value) => !value || /^[a-zA-Z0-9_-]{1,100}$/.test(value), "Invalid website ID"),
   DATAFAST_DOMAIN: optionalString.refine((value) => !value || /^[a-z0-9][a-z0-9.-]{1,251}[a-z0-9]$/i.test(value), "Must be a hostname"),
   DATAFAST_API_KEY: optionalString,
+  DATAFAST_BOT_TRACKING_ENABLED: flag,
+  DATAFAST_BOT_TOKEN: optionalString.refine((value) => !value || /^dfbot_[a-zA-Z0-9_-]{16,256}$/.test(value), "Must be a website bot token"),
+  DATAFAST_BOT_TRUSTED_IP_HEADER: z.enum(["none", "x-real-ip", "cf-connecting-ip", "x-forwarded-for"]).default("none"),
   SCREENSHOTS_ENABLED: flag,
   SCREENSHOT_CLIENT_ID: z.string().regex(/^[a-z0-9-]{1,40}$/).default("thefastestweb"),
   SCREENSHOT_SERVICE_URL: optionalOrigin,
@@ -155,8 +158,11 @@ export function parseEnv(
   requireFields(config.SCREENSHOTS_ENABLED, ["SCREENSHOT_SERVICE_URL", "SCREENSHOT_SERVICE_TOKEN"]);
   if (config.ANALYTICS_ENABLED && !config.GA_MEASUREMENT_ID && !config.DATAFAST_WEBSITE_ID) missing.push("GA_MEASUREMENT_ID", "DATAFAST_WEBSITE_ID");
   if (config.DATAFAST_WEBSITE_ID && !config.DATAFAST_DOMAIN) missing.push("DATAFAST_DOMAIN");
+  requireFields(config.DATAFAST_BOT_TRACKING_ENABLED, ["DATAFAST_WEBSITE_ID", "DATAFAST_DOMAIN"]);
+  if ((config.ANALYTICS_ENABLED || config.DATAFAST_BOT_TRACKING_ENABLED) && config.DATAFAST_DOMAIN
+    && config.DATAFAST_DOMAIN.toLowerCase() !== new URL(config.SITE_URL).hostname) missing.push("DATAFAST_DOMAIN");
   if (config.DEPLOYMENT_MODE === "demo") {
-    for (const key of ["PAYMENTS_ENABLED", "EMAIL_ENABLED", "ANALYTICS_ENABLED", "SCHEDULER_ENABLED"] as const) {
+    for (const key of ["PAYMENTS_ENABLED", "EMAIL_ENABLED", "ANALYTICS_ENABLED", "DATAFAST_BOT_TRACKING_ENABLED", "SCHEDULER_ENABLED"] as const) {
       if (config[key]) missing.push(key);
     }
   }

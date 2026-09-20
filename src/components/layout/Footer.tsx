@@ -1,42 +1,27 @@
 import Link from "next/link";
-import Image from "next/image";
-import { ArrowUpRightIcon } from "@phosphor-icons/react/dist/ssr";
 import { siteConfig } from "@/config/site";
 
-const groups: { title: string; links: [string, string][] }[] = [
-  { title: "Directory", links: [["/explore", "Explore websites"], ["/leaderboard", "Rankings"], ["/compare", "Compare websites"], ["/founders", "Founders"]] },
-  { title: "Measure", links: [["/test", "Test a site"], ["/submit", "Submit website"], ["/methodology", "How we measure"], ["/pricing", "Plans & sponsorship"]] },
-  { title: "About", links: [["/about", "About"], ["/blog", "Journal"], ["/privacy", "Privacy"], ["/terms", "Terms"]] },
+const groups = [
+  { title: "Explore", links: [["Leaderboard", "/"], ["Categories", "/categories"], ["Blog", "/blog"], ["About", "/about"]] },
+  { title: "Build with us", links: [["Submit a website", "/submit"], ["Pricing", "/pricing"], ["Advertise", "/advertise"], ["Contact", `mailto:${siteConfig.email}`]] },
+  { title: "Resources", links: [["Privacy", "/privacy"], ["Terms", "/terms"], ["Markdown", "/markdown"], ["LLMs", "/llms.txt"], ["LLMs Full", "/llms-full.txt"]] },
 ];
 
 export function Footer() {
-  return <footer className="mt-6 border-t border-border bg-bg-main">
-    <div className="mx-auto max-w-[1240px] px-5 pb-7 pt-10 sm:px-8 sm:pt-14">
-      <div className="mb-10 flex flex-wrap items-center justify-between gap-5 border-b border-border pb-9">
-        <p className="max-w-[24ch] text-2xl font-semibold leading-tight tracking-tight sm:text-3xl">Good websites deserve to be discovered.</p>
-        <Link href="/explore" className="button-secondary">Explore the directory <ArrowUpRightIcon size={17} aria-hidden /></Link>
-      </div>
-      <div className="grid gap-10 lg:grid-cols-[1.1fr_1.9fr]">
+  return <footer className="site-footer">
+    <div className="mx-auto max-w-[960px]">
+      <div className="grid grid-cols-[1.25fr_2fr] gap-10 max-[820px]:grid-cols-1 max-[820px]:gap-8">
         <div>
-          <Link href="/" className="inline-flex items-center gap-2.5 text-lg font-bold tracking-[-0.045em] text-text-primary no-underline font-stretch-[118%]">
-            <Image src="/favicon/favicon-96x96.png" alt="" width={32} height={32} className="h-8 w-8" />{siteConfig.name}
-          </Link>
-          <p className="mt-4 max-w-[31ch] text-sm leading-relaxed text-text-secondary">Discover the makers, products, and ideas behind a faster web.</p>
-          <p className="mt-5 text-xs text-text-muted">Real measurements. Open methodology.</p>
+          <Link href="/" className="font-display text-xl font-semibold tracking-[-0.035em] text-text-primary">TheFastestWeb<span className="text-accent">.</span></Link>
+          <p className="mt-3 max-w-[250px] text-[0.82rem] leading-7">Discover the web at its fastest. Measured performance, independent products.</p>
+          <a href={siteConfig.ownerUrl} target="_blank" rel="noopener noreferrer" className="mt-5 inline-flex items-center gap-2 text-xs hover:text-accent"><span aria-hidden="true" className="flex h-7 w-7 items-center justify-center rounded-full border border-border text-[0.6rem] font-semibold text-accent">CY</span><span>Built by <span className="text-text-primary">{siteConfig.ownerName}</span></span></a>
         </div>
-        <nav aria-label="Footer" className="grid grid-cols-2 gap-x-8 gap-y-10 text-sm sm:grid-cols-3">
-          {groups.map((group) => <div key={group.title}>
-            <p className="font-semibold text-text-primary">{group.title}</p>
-            <ul className="mt-4 space-y-1">
-              {group.links.map(([href, label]) => <li key={href}><Link href={href} className="footer-link">{label}</Link></li>)}
-              {group.title === "About" && siteConfig.email && <li><a className="footer-link" href={"mailto:" + siteConfig.email}>Contact</a></li>}
-              {group.title === "Directory" && siteConfig.indieToolsUrl && <li><a className="footer-link" href={siteConfig.indieToolsUrl} rel="noopener noreferrer">Discover IndieTools</a></li>}
-            </ul>
-          </div>)}
-        </nav>
+        <div className="grid grid-cols-3 gap-x-5 gap-y-8 max-[380px]:grid-cols-2">
+          {groups.map(group => <nav key={group.title} aria-label={`Footer: ${group.title}`}><h2 className="mb-4 text-[0.75rem] font-semibold text-text-primary">{group.title}</h2><ul className="space-y-3 text-[0.78rem]">{group.links.map(([label, href]) => <li key={href}>{href.startsWith("mailto:") || href.endsWith(".txt") || href === "/markdown" ? <a href={href}>{label}</a> : <Link href={href}>{label}</Link>}</li>)}</ul></nav>)}
+        </div>
       </div>
-      <div className="mt-10 flex flex-wrap justify-between gap-3 border-t border-border pt-6 text-xs text-text-muted">
-        <span>© {new Date().getUTCFullYear()} {siteConfig.name}</span><span>Built for people who care about performance.</span>
+      <div className="mt-9 border-t border-border pt-6">
+        <p className="text-[0.72rem] leading-6">Performance is measured. Rankings are earned.</p>
       </div>
     </div>
   </footer>;

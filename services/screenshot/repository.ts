@@ -85,12 +85,12 @@ export class ScreenshotRepository {
       return true;
     });
   }
-  async stageObjects(row: CaptureRow, keys: string[]) {
+  async stageObjects(row: CaptureRow, objects: { objectKey: string; visibility: "public" | "private" }[]) {
     await this.sql.begin(async (tx) => {
       const owned = await tx`SELECT id FROM screenshot_captures WHERE id=${row.id} AND lease_token=${row.lease_token} AND lease_until>now() AND expires_at>now() FOR UPDATE`;
       if (!owned.length) throw new ServiceError("LEASE_EXPIRED", 409);
-      for (const key of keys) await tx`INSERT INTO screenshot_objects(object_key,capture_id,lease_token,visibility)
-        VALUES(${key},${row.id},${row.lease_token},${row.request.visibility}) ON CONFLICT DO NOTHING`;
+      for (const object of objects) await tx`INSERT INTO screenshot_objects(object_key,capture_id,lease_token,visibility)
+        VALUES(${object.objectKey},${row.id},${row.lease_token},${object.visibility}) ON CONFLICT DO NOTHING`;
     });
   }
   async objectsToDelete(): Promise<{ object_key: string; visibility: "public" | "private" }[]> {

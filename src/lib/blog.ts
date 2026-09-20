@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import matter from "gray-matter";
+import { siteConfig } from "@/config/site";
 import { BLOG_CATEGORIES, getPostTags, getTopicGroup, validCoverPath, type BlogCategory } from "./blog-content";
 
 const BLOG_DIR = path.join(process.cwd(), "content/blog");
@@ -10,6 +11,7 @@ export interface PostMeta {
   title: string;
   description: string;
   date: string;
+  updated?: string;
   readingTime: number;
   category: BlogCategory;
   tags: string[];
@@ -35,10 +37,11 @@ function readPost(slug: string, raw: string): Post {
   const hasCover = validCoverPath(data.coverImage) && fs.existsSync(path.join(process.cwd(), "public", data.coverImage));
   return {
     slug, title: String(data.title ?? slug), description: String(data.description ?? ""), date: String(data.date ?? ""),
+    ...(typeof data.updated === "string" && Number.isFinite(new Date(data.updated).getTime()) ? { updated: data.updated } : {}),
     readingTime: Math.max(1, Math.round(content.trim().split(/\s+/).length / 200)),
     category, tags: getPostTags(slug, data.tags),
-    // Preserve the attribution that accompanied the original journal; no new byline is invented.
-    author: typeof data.author === "string" && data.author.trim() ? data.author.trim().slice(0, 100) : "Ramesh Kumar",
+    // Preserve explicit attribution; unsigned legacy articles use the editorial publisher.
+    author: typeof data.author === "string" && data.author.trim() ? data.author.trim().slice(0, 100) : siteConfig.name,
     coverImage: hasCover ? data.coverImage as string : "/images/journal-cover.png",
     coverAlt: hasCover && typeof data.coverAlt === "string" ? data.coverAlt.slice(0, 200) : "TheFastestWeb performance journal",
     content,

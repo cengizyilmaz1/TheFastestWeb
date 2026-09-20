@@ -1,36 +1,79 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { ListIcon, XIcon } from "@phosphor-icons/react";
-import { isActive, primaryLinks } from "./NavLinks";
 
-export function MobileMenu({ signedIn = false }: { signedIn?: boolean }) {
+export function MobileMenu() {
   const [open, setOpen] = useState(false);
-  const pathname = usePathname();
-  const container = useRef<HTMLDivElement>(null);
-  const trigger = useRef<HTMLButtonElement>(null);
+  const ref = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
-    if (!open) return;
-    function outside(event: PointerEvent) { if (!container.current?.contains(event.target as Node)) setOpen(false); }
-    function escape(event: KeyboardEvent) { if (event.key === "Escape") { setOpen(false); trigger.current?.focus(); } }
-    document.addEventListener("pointerdown", outside);
-    document.addEventListener("keydown", escape);
-    return () => {
-      document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", escape);
-    };
+    function handleClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    if (open) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [open]);
-  return <div ref={container} className="xl:hidden" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false); }}>
-    <button ref={trigger} className="icon-button" type="button" aria-label={open ? "Close navigation" : "Open navigation"} aria-expanded={open} aria-controls="mobile-navigation" onClick={() => setOpen(!open)}>
-      {open ? <XIcon size={22} aria-hidden /> : <ListIcon size={22} aria-hidden />}
-    </button>
-    {open && <div id="mobile-navigation" className="animate-modal-in absolute inset-x-3 top-[calc(100%+10px)] max-h-[calc(100dvh-10rem)] origin-top overflow-y-auto overscroll-contain rounded-[26px] border border-border bg-bg-main p-3 shadow-pop sm:inset-x-6">
-      <ul className="grid gap-0.5">{primaryLinks.map((link) => <li key={link.href}><Link href={link.href} aria-current={isActive(pathname, link.match) ? "page" : undefined} className="nav-link flex min-h-12 w-full px-4 text-base" onClick={() => setOpen(false)}>{link.label}</Link></li>)}</ul>
-      <div className="mt-3 grid gap-2 border-t border-border pt-3 sm:grid-cols-2">
-        <Link href="/submit" className="button-primary min-h-12" onClick={() => setOpen(false)}>Submit website</Link>
-        <Link href={signedIn ? "/dashboard" : "/auth/login"} className="button-secondary min-h-12" onClick={() => setOpen(false)}>{signedIn ? "Dashboard" : "Sign in"}</Link>
-      </div>
-    </div>}
-  </div>;
+
+  return (
+    <div className="relative min-[769px]:hidden" ref={ref}>
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center justify-center w-9 h-9 rounded-lg border border-border bg-bg-card text-text-secondary cursor-pointer transition-colors hover:bg-bg-card-hover hover:text-text-primary"
+        aria-label="Menu"
+      >
+        {open ? (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        ) : (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-[calc(100%+8px)] w-[180px] bg-bg-main border border-border rounded-[12px] shadow-[0_8px_30px_rgba(0,0,0,0.5)] overflow-hidden z-50 animate-fade-in-up">
+          <Link
+            href="/"
+            onClick={() => setOpen(false)}
+            className="block px-4 py-2.5 text-[0.85rem] font-medium text-text-secondary no-underline hover:bg-bg-card hover:text-text-primary transition-colors"
+          >
+            Leaderboard
+          </Link>
+          <Link
+            href="/test"
+            onClick={() => setOpen(false)}
+            className="block px-4 py-2.5 text-[0.85rem] font-medium text-text-secondary no-underline hover:bg-bg-card hover:text-text-primary transition-colors"
+          >
+            Test Speed
+          </Link>
+          <Link
+            href="/pricing"
+            onClick={() => setOpen(false)}
+            className="block px-4 py-2.5 text-[0.85rem] font-medium text-text-secondary no-underline hover:bg-bg-card hover:text-text-primary transition-colors"
+          >
+            Pricing
+          </Link>
+          <div className="h-px bg-border" />
+          <Link href="/categories" onClick={() => setOpen(false)} className="block px-4 py-2.5 text-[0.85rem] font-medium text-text-secondary no-underline hover:bg-bg-card hover:text-text-primary transition-colors">Categories</Link>
+          <Link
+            href="/submit"
+            onClick={() => setOpen(false)}
+            className="block px-4 py-2.5 text-[0.85rem] font-semibold text-accent no-underline hover:bg-bg-card transition-colors"
+          >
+            Submit Site
+          </Link>
+        </div>
+      )}
+    </div>
+  );
 }

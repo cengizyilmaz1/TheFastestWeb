@@ -1,19 +1,16 @@
 "use client";
 
-import { AdSlot } from "@/db/schema";
-import Image from "next/image";
-import { ArrowUpRightIcon } from "@phosphor-icons/react";
+import type { PublicAdSlot } from "@/components/ads/types";
 
 interface SidebarCardProps {
-  slot: AdSlot;
+  slot: PublicAdSlot;
 }
 
-/** A sold sponsor spot. Compact, so six fit a rail; it sits flat and only lifts on hover. */
 export function SidebarCard({ slot }: SidebarCardProps) {
   function handleClick() {
     navigator.sendBeacon(
       "/api/ad-click",
-      new Blob([JSON.stringify({ id: slot.id })], { type: "application/json" })
+      JSON.stringify({ id: slot.id })
     );
   }
 
@@ -23,20 +20,28 @@ export function SidebarCard({ slot }: SidebarCardProps) {
       target="_blank"
       rel="sponsored noopener noreferrer"
       onClick={handleClick}
-      className="group block min-h-[86px] rounded-[18px] border border-border bg-bg-main p-3 no-underline transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-text-primary hover:shadow-panel active:scale-[.98]"
+      className="bg-bg-card border border-border rounded-[10px] px-2.5 py-2.5 text-center cursor-pointer transition-all duration-250 no-underline flex flex-col items-center justify-center flex-1 min-h-0 hover:bg-bg-card-hover hover:border-border-light hover:-translate-y-0.5"
     >
-      <span className="flex items-center gap-2.5">
+      <div className="[perspective:400px] shrink-0 mb-1.5">
         {slot.faviconUrl ? (
-          <span data-theme="light" className="inline-flex h-8 w-8 flex-none items-center justify-center rounded-[10px] bg-bg-main shadow-[inset_0_0_0_1px_var(--line)]">
-            <Image unoptimized width={40} height={40} src={slot.faviconUrl} alt="" className="h-5 w-5 rounded-[4px] object-contain" />
-          </span>
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={slot.faviconUrl}
+            alt=""
+            className="animate-coin-toss w-[40px] h-[40px] rounded-[8px] object-contain bg-white p-1"
+          />
         ) : (
-          <span aria-hidden className="monogram h-8 w-8 rounded-[10px] text-[13px]">{slot.name.trim().charAt(0).toUpperCase()}</span>
+          <div className="animate-coin-toss w-[40px] h-[40px] rounded-[8px] bg-bg-elevated flex items-center justify-center text-[0.9rem] font-bold text-text-muted">
+            {slot.name[0]}
+          </div>
         )}
-        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold leading-tight text-text-primary">{slot.name}</span>
-        <ArrowUpRightIcon size={13} aria-hidden className="flex-none text-text-muted transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-text-primary" />
-      </span>
-      <span className="mt-2 line-clamp-2 text-xs leading-snug text-text-muted">{slot.tagline}</span>
+      </div>
+      <div className="font-bold text-[0.78rem] text-text-primary mb-0.5 font-display leading-tight truncate w-full">
+        {slot.name}
+      </div>
+      <div className="text-[0.62rem] text-text-muted leading-[1.3] line-clamp-2">
+        {slot.tagline}
+      </div>
     </a>
   );
 }

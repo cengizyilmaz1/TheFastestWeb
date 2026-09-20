@@ -1,8 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, type NextFetchEvent } from "next/server";
 import { CORRELATION_HEADER, correlationIdFrom } from "@/lib/http/correlation";
+import { recordCrawlerRequest } from "@/infrastructure/analytics/datafast-crawlers";
 
 /** Resource handlers perform authorization; the proxy is not a security boundary. */
-export default function proxy(request: NextRequest) {
+export default function proxy(request: NextRequest, event: NextFetchEvent) {
+  recordCrawlerRequest(request, event);
   const correlationId = correlationIdFrom(request.headers);
   const headers = new Headers(request.headers);
   headers.set(CORRELATION_HEADER, correlationId);
@@ -18,7 +20,10 @@ export default function proxy(request: NextRequest) {
   if (process.env.NODE_ENV === "production" && process.env.SITE_URL?.startsWith("https://")) {
     response.headers.set("Strict-Transport-Security", "max-age=15552000");
   }
-  if (process.env.DEPLOYMENT_MODE === "demo") response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
+  if (process.env.DEPLOYMENT_MODE === "demo") {
+    const publicHomepage = request.nextUrl.pathname === "/" && !request.nextUrl.search;
+    response.headers.set("X-Robots-Tag", publicHomepage ? "noindex, follow, noarchive" : "noindex, nofollow, noarchive");
+  }
   return response;
 }
 export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"] };

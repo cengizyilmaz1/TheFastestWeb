@@ -1,91 +1,55 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRightIcon, ArrowUpRightIcon, CheckIcon } from "@phosphor-icons/react/dist/ssr";
-import { CheckoutButton } from "@/app/dashboard/controls";
-import type { listProducts } from "@/modules/payments/service";
+import { Check, ArrowUpRight } from "@phosphor-icons/react";
+import { accountPro, loadCheckoutCatalog, productPeriod, productPrice, startProCheckout, type CheckoutCatalog } from "./checkout-client";
 
-type Product = Awaited<ReturnType<typeof listProducts>>[number];
+const freeFeatures = ["One website listing", "Recorded performance results", "Scheduled speed monitoring", "Homepage badge required"];
+const proFeatures = ["Unlimited website submissions", "No homepage badge requirement", "Dofollow website links", "One payment for Pro account access"];
 
-const included = [
-  "Server-verified performance evidence",
-  "Public website profile and leaderboard eligibility",
-  "Ownership verification and founder profile",
-  "Badge eligibility and transparent ranking methodology",
-];
+export function PricingTiers({ isPro = false }: { isPro?: boolean }) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [catalog, setCatalog] = useState<CheckoutCatalog | null>(null);
+  const [catalogFailed, setCatalogFailed] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void loadCheckoutCatalog().then(value => { if (active) setCatalog(value); })
+      .catch(() => { if (active) setCatalogFailed(true); });
+    return () => { active = false; };
+  }, []);
+  const product = catalog ? accountPro(catalog) : undefined;
+  const catalogStatus = catalogFailed ? "Checkout availability could not be loaded. Please refresh to try again."
+    : catalog ? "Pro checkout is currently unavailable." : "Checking checkout availability…";
 
-function kindLabel(kind: string) {
-  const label = kind.replaceAll("_", " ");
-  return label.charAt(0).toUpperCase() + label.slice(1);
-}
+  async function handleProCheckout() {
+    setLoading(true); setError("");
+    try { await startProCheckout(); }
+    catch (failure) { setError(failure instanceof Error ? failure.message : "Purchases are temporarily unavailable."); }
+    finally { setLoading(false); }
+  }
 
-function formatPrice(product: Product) {
-  const formatter = new Intl.NumberFormat("en", { style: "currency", currency: product.currency });
-  return formatter.format(product.amountCents / 10 ** (formatter.resolvedOptions().maximumFractionDigits ?? 2));
-}
-
-/** The free listing is the recommended plan, so it takes the brand surface. It is a wide band, not a tower. */
-function FreePlan() {
-  return <article className="surface-brand relative overflow-hidden rounded-[28px] px-7 pb-8 pt-9 sm:px-12 sm:pb-10 sm:pt-12">
-    <div className="grid gap-x-16 gap-y-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
-      <div>
-        <h2 className="text-lg font-semibold tracking-[-.02em] text-text-primary">Directory listing</h2>
-        <p className="mt-2 text-[clamp(3.75rem,9vw,7.25rem)] font-bold leading-[.92] tracking-[-.055em] text-text-primary font-stretch-[125%]">Free</p>
-        <p className="mt-6 max-w-[40ch] text-[17px] leading-relaxed text-text-secondary">Submit a website for a verified performance measurement, public profile and fair rankings.</p>
-        <Link href="/submit" className="button-ink mt-8 min-h-12 px-6 text-[15px]">Submit website <ArrowUpRightIcon size={18} weight="bold" aria-hidden /></Link>
-      </div>
-      <ul className="self-end text-[15px] font-medium text-text-primary">
-        {included.map((item) => <li key={item} className="flex items-start gap-3.5 border-t border-border py-4 last:border-b">
-          <CheckIcon size={18} weight="bold" className="mt-[3px] flex-none" aria-hidden />{item}
-        </li>)}
-      </ul>
-    </div>
-    <div aria-hidden className="tick-rule mt-10 opacity-70 sm:mt-12" />
-  </article>;
-}
-
-/** One row of the rate card: what it is, its terms, then the price and the action in a fixed column so every action starts on the same line. */
-function PlanRow({ product, signedIn, sites, adInventory }: { product: Product; signedIn: boolean; sites: { id: string; name: string }[]; adInventory: { id: string; position: string; orderIndex: number }[] }) {
-  const terms: [string, string][] = [
-    ["Billing", product.billingInterval === "one_time" ? "One-time payment" : `Billed every ${product.billingInterval}`],
-    ["Applies to", product.requiresSite ? "The owned website you select" : "Your account"],
-    ["Access", product.entitlementDays ? `${product.entitlementDays} days` : product.billingInterval === "one_time" ? "No fixed expiry" : "Follows your active subscription period"],
-  ];
-  return <article className="grid gap-x-12 gap-y-7 border-t border-border py-9 sm:py-11 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_340px]">
-    <div>
-      <p className="page-eyebrow">{kindLabel(product.kind)}</p>
-      <h3 className="mt-4 max-w-[16ch] text-[clamp(1.6rem,2.6vw,2.125rem)] font-semibold leading-[1.08] tracking-[-.04em] font-stretch-[116%]">{product.title}</h3>
-    </div>
-    <dl className="self-start text-[15px]">
-      {terms.map(([term, value]) => <div key={term} className="flex items-baseline justify-between gap-6 border-t border-border py-3.5 first:border-t-0 first:pt-0 last:pb-0">
-        <dt className="text-text-secondary">{term}</dt><dd className="text-right font-semibold text-text-primary">{value}</dd>
-      </div>)}
-    </dl>
-    <div>
-      <p className="stat-value text-[2.5rem] font-medium leading-none text-text-primary">{formatPrice(product)}</p>
-      <p className="mt-2.5 text-[13px] text-text-muted">Before applicable tax</p>
-      {signedIn
-        ? <div className="mt-3"><CheckoutButton productKey={product.key} requiresSite={product.requiresSite} sites={sites} adInventory={product.kind === "sidebar_ad" ? adInventory : undefined} /></div>
-        : <Link className="button-secondary mt-6" href="/auth/login?returnTo=%2Fpricing">Sign in to choose this plan <ArrowRightIcon size={16} weight="bold" aria-hidden /></Link>}
-    </div>
-  </article>;
-}
-
-export function PricingTiers({ products, signedIn, sites, adInventory }: {
-  products: Awaited<ReturnType<typeof listProducts>>; signedIn: boolean; sites: { id: string; name: string }[]; adInventory: { id: string; position: string; orderIndex: number }[];
-}) {
   return <>
-    <FreePlan />
-    {products.length > 0 ? <section className="pt-20 sm:pt-28">
-      <h2 className="section-title">Paid plans and sponsorship.</h2>
-      <p className="mt-5 max-w-[52ch] leading-relaxed text-text-secondary">Choose the plan that fits your next step. Complete checkout with Dodo Payments; your access starts after payment is confirmed.</p>
-      <div className="mt-10 border-b border-border">
-        {products.map((product) => <PlanRow key={product.key} product={product} signedIn={signedIn} sites={sites} adInventory={adInventory} />)}
-      </div>
-    </section> : <section className="pt-20 sm:pt-28">
-      <h2 className="section-title">New plans are being prepared.</h2>
-      <div className="mt-6 flex flex-col justify-between gap-7 lg:flex-row lg:items-end">
-        <p className="max-w-[58ch] leading-relaxed text-text-secondary">Paid plans are not available yet. Start with a free listing, or sign in to review the access you already have.</p>
-        <Link href="/dashboard" className="button-secondary flex-none self-start lg:self-auto">View existing access <ArrowRightIcon size={16} weight="bold" aria-hidden /></Link>
-      </div>
-    </section>}
+    <div className="content-grid">
+      <section className="content-card flex flex-col">
+        <div className="mb-7 flex items-center justify-between gap-3"><h2 className="font-display text-xl font-semibold">Free</h2><span className="text-xs text-text-secondary">For your first website</span></div>
+        <p className="flex items-baseline gap-3"><span className="font-display text-[3.5rem] font-medium leading-none tracking-[-0.05em]">$0</span><span className="text-sm text-text-secondary">no payment</span></p>
+        <p className="mt-5 text-sm leading-7 text-text-secondary">Give your website a place on the leaderboard. Start with one listing and see how it performs.</p>
+        <ul className="my-7 flex-1 space-y-3 border-t border-border pt-6">{freeFeatures.map(text => <li key={text} className="flex gap-3 text-sm text-text-primary"><Check size={17} aria-hidden="true" className="mt-0.5 shrink-0 text-accent" /><span>{text}</span></li>)}</ul>
+        <Link href="/submit" className="content-action-secondary w-full">Submit your website <ArrowUpRight size={17} aria-hidden="true" /></Link>
+        <p className="mt-3 text-center text-xs leading-5 text-text-secondary">Sign in with Google to get started.</p>
+      </section>
+      <section className="content-card flex flex-col border-t-2 border-t-accent">
+        <div className="mb-7 flex items-center justify-between gap-3"><h2 className="font-display text-xl font-semibold">Pro</h2><span className="rounded-md bg-accent/10 px-2.5 py-1 text-xs font-medium text-accent">One-time purchase</span></div>
+        <p className="flex items-baseline gap-3"><span className="font-display text-[3.5rem] font-medium leading-none tracking-[-0.05em]">{product ? productPrice(product) : "$9"}</span><span className="text-sm text-text-secondary">{product ? productPeriod(product) : "USD · one-time"}</span></p>
+        <p className="mt-5 text-sm leading-7 text-text-secondary">For builders with more to share. Add every website you manage, without a badge on each homepage.</p>
+        <ul className="my-7 flex-1 space-y-3 border-t border-border pt-6">{proFeatures.map(text => <li key={text} className="flex gap-3 text-sm text-text-primary"><Check size={17} aria-hidden="true" className="mt-0.5 shrink-0 text-accent" /><span>{text}</span></li>)}</ul>
+        {isPro ? <p className="content-action-secondary w-full" role="status">Your Pro plan is active</p> : <button type="button" onClick={handleProCheckout} disabled={loading || !product} className="content-action w-full">{loading ? "Opening checkout…" : "Get Pro access"}<ArrowUpRight size={17} aria-hidden="true" /></button>}
+        <p role={!isPro && !product ? "status" : undefined} className="mt-3 text-center text-xs leading-5 text-text-secondary">{!isPro && !product ? catalogStatus : "No recurring listing subscription."}</p>
+      </section>
+    </div>
+    {error && <p role="alert" className="mt-5 text-sm text-red">{error}</p>}
+    <p className="mt-5 text-xs leading-6 text-text-secondary">Prices in USD. Applicable taxes and the final amount are shown at checkout. Listing and monitoring depend on eligibility and service availability.</p>
   </>;
 }

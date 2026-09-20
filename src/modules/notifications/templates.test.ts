@@ -7,7 +7,7 @@ describe("notification content and preferences", () => {
   it("renders all required event categories", () => {
     expect(Object.keys(notificationTemplates)).toHaveLength(15);
     for (const template of Object.keys(notificationTemplates) as (keyof typeof notificationTemplates)[]) {
-      expect(renderNotification(template, {}).html).toContain("https://thefastestweb.site/dashboard");
+      expect(renderNotification(template, {}).html).toContain("https://thefastestweb.site/submit");
     }
   });
   it("escapes untrusted names and disallows offsite action URLs", () => {

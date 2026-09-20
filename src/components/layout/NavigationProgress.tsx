@@ -6,46 +6,53 @@ import { usePathname, useSearchParams } from "next/navigation";
 export function NavigationProgress() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const currentRoute = `${pathname}?${searchParams.toString()}`;
-  // Route completion remounts the indicator and clears its timers naturally.
-  return <NavigationProgressIndicator key={currentRoute} />;
-}
-
-function NavigationProgressIndicator() {
   const [progress, setProgress] = useState(0);
   const [visible, setVisible] = useState(false);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
-  const deadline = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevPath = useRef(pathname + searchParams.toString());
+
+  useEffect(() => {
+    const current = pathname + searchParams.toString();
+
+    if (current !== prevPath.current) {
+      // Navigation completed — finish the bar
+      const finish = setTimeout(() => setProgress(100), 0);
+      const hide = setTimeout(() => {
+        setVisible(false);
+        setProgress(0);
+      }, 300);
+      prevPath.current = current;
+
+      if (timer.current) {
+        clearInterval(timer.current);
+        timer.current = null;
+      }
+      return () => { clearTimeout(finish); clearTimeout(hide); };
+    }
+  }, [pathname, searchParams]);
 
   // Listen for link clicks to start the progress bar
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (!(e.target instanceof Element) || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
-      const anchor = e.target.closest("a");
+      const anchor = (e.target as HTMLElement).closest("a");
       if (!anchor) return;
 
       const href = anchor.getAttribute("href");
-      if (!href || anchor.target === "_blank" || anchor.hasAttribute("download")) return;
-      const destination = new URL(href, window.location.href);
-      const current = window.location;
-      if (destination.origin !== current.origin) return;
-      if (`${destination.pathname}${destination.search}` !== `${current.pathname}${current.search}`) {
+      if (!href || href.startsWith("#") || href.startsWith("http") || anchor.target === "_blank") return;
+
+      const current = pathname + searchParams.toString();
+      // Only show progress for actual navigations
+      if (href !== current && href !== pathname) {
         setProgress(10);
         setVisible(true);
 
         if (timer.current) clearInterval(timer.current);
-        if (deadline.current) clearTimeout(deadline.current);
         timer.current = setInterval(() => {
           setProgress((p) => {
             if (p >= 90) return 90;
             return p + (90 - p) * 0.1;
           });
         }, 200);
-        deadline.current = setTimeout(() => {
-          if (timer.current) clearInterval(timer.current);
-          setVisible(false);
-          setProgress(0);
-        }, 15_000);
       }
     }
 
@@ -53,9 +60,8 @@ function NavigationProgressIndicator() {
     return () => {
       document.removeEventListener("click", handleClick);
       if (timer.current) clearInterval(timer.current);
-      if (deadline.current) clearTimeout(deadline.current);
     };
-  }, []);
+  }, [pathname, searchParams]);
 
   if (!visible && progress === 0) return null;
 

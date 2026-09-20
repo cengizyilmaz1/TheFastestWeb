@@ -81,6 +81,9 @@ describe("URL-first durable submission", () => {
     const owner = await user(), input = await publishingInput(owner);
     await expect(createListing(owner, { ...input, categoryIds: [randomUUID()] })).rejects.toMatchObject({ code: "INVALID_REQUEST" });
     await expect(createListing(owner, { ...input, founderIds: [randomUUID()] })).rejects.toMatchObject({ code: "INVALID_REQUEST" });
+    for (const countryCode of [undefined, null, "ZZ", "EU"]) {
+      await expect(createListing(owner, { ...input, countryCode })).rejects.toMatchObject({ code: "INVALID_REQUEST" });
+    }
     expect(await fixtureSql()`SELECT * FROM sites`).toHaveLength(0);
     expect(await fixtureSql()`SELECT * FROM analytics_events WHERE name='site_submitted'`).toHaveLength(0);
     expect((await fixtureSql()`SELECT consumed_at FROM verified_speed_tests`).every((row) => row.consumed_at === null)).toBe(true);

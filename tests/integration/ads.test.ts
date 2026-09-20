@@ -6,12 +6,14 @@ import { executeAdminAction, previewAdminAction } from "../../src/modules/admin/
 import { PaymentProviderError } from "../../src/infrastructure/payments/dodo";
 import { cleanupIntegrationDatabase, fixtureSql, prepareIntegrationDatabase, resetIntegrationData } from "./database";
 const provider = vi.hoisted(() => ({ createCheckout: vi.fn(), getPayment: vi.fn(), getSubscription: vi.fn() }));
+const periods = new Map<string, { start: Date; end: Date }>();
 vi.mock("../../src/config/env", () => ({ getEnv: () => ({ PAYMENTS_ENABLED: true, EMAIL_ENABLED: false,
   ANALYTICS_ENABLED: false, JOB_MAX_ATTEMPTS: 3, AUTH_SECRET: "synthetic-admin-secret-at-least-32-characters" }) }));
 vi.mock("../../src/infrastructure/payments/dodo", async (original) => ({ ...await original<object>(), dodo: provider }));
 beforeAll(prepareIntegrationDatabase, 60_000);
 afterAll(cleanupIntegrationDatabase, 30_000);
 beforeEach(async () => {
+  periods.clear();
   await resetIntegrationData(); provider.createCheckout.mockReset().mockImplementation(async (input) => ({ id: `cs_${input.orderId}`, url: "https://checkout.dodopayments.com/synthetic" }));
   provider.getPayment.mockReset(); provider.getSubscription.mockReset();
 });
@@ -48,6 +50,106 @@ async function adminAction(userId: string, action: unknown) {
   const actor = { userId, role: "admin" as const }, preview = await previewAdminAction(actor, action);
   return executeAdminAction(actor, action, preview.token);
 }
+
+async function monthlySetup() {
+  const input = await setup();
+  await fixtureSql()`UPDATE products SET billing_interval='month',entitlement_days=NULL WHERE key='synthetic-ad'`;
+  return { ...input, ...await checkout(input) };
+}
+async function subscriptionEvent(orderId: string, input: { status?: string; payment?: boolean; periodStart?: Date; periodEnd?: Date;
+  eventOffset?: number; paymentStatus?: string; cancelAtEnd?: boolean; paymentId?: string; paymentCreatedAt?: Date } = {}) {
+  const previous = periods.get(orderId);
+  const periodStart = input.periodStart ?? previous?.start ?? new Date(Date.now() - 60_000), periodEnd = input.periodEnd ?? previous?.end ?? new Date(Date.now() + 30 * 86400_000);
+  periods.set(orderId, { start: periodStart, end: periodEnd });
+  const id = `sub_${orderId}`, paymentId = input.paymentId ?? `pay_${randomUUID()}`;
+  provider.getSubscription.mockResolvedValue({ subscription_id: id, metadata: { order_id: orderId },
+    product_id: "prod_ad", quantity: 1, status: input.status ?? "active", created_at: new Date(Date.now() - 86400_000).toISOString(),
+    previous_billing_date: periodStart.toISOString(), next_billing_date: periodEnd.toISOString(), currency: "USD", recurring_pre_tax_amount: 1900,
+    payment_frequency_count: 1, payment_frequency_interval: "Month", trial_period_days: 0, on_demand: false, cancel_at_next_billing_date: input.cancelAtEnd ?? false });
+  if (input.payment) provider.getPayment.mockResolvedValue({ payment_id: paymentId, metadata: { order_id: orderId },
+    subscription_id: id, status: input.paymentStatus ?? "succeeded", created_at: (input.paymentCreatedAt ?? periodStart).toISOString(), total_amount: 1900,
+    currency: "USD", is_update_payment_method: false, refund_status: null, refunds: [], disputes: [] });
+  const eventId = `evt_${randomUUID()}`;
+  await receivePaymentEvent({ providerEventId: eventId, type: input.payment ? "payment.succeeded" : "subscription.active",
+    resourceId: input.payment ? paymentId : id, occurredAt: new Date(Date.now() + (input.eventOffset ?? 0)), payloadHash: "b".repeat(64) });
+  const [event] = await fixtureSql()`SELECT id FROM payment_events WHERE provider_event_id=${eventId}`;
+  return processPaymentWebhook(event.id);
+}
+
+describe("verified monthly advertisement subscriptions", () => {
+  it("requires a confirmed charge plus explicit creative approval, then renews only the paid period", async () => {
+    const input = await monthlySetup(), end = new Date(Date.now() + 30 * 86400_000);
+    await subscriptionEvent(input.orderId, { payment: true, periodEnd: end });
+    const [reservation] = await fixtureSql()`SELECT id FROM ad_reservations`;
+    expect((await fixtureSql()`SELECT is_active FROM ad_slots`)[0].is_active).toBe(false);
+    await adminAction(input.userId, { action: "ad.approve", reservationId: reservation.id, reason: "Reviewed monthly payment and creative" });
+    expect((await fixtureSql()`SELECT expires_at,is_active FROM ad_slots`)[0]).toMatchObject({ expires_at: end, is_active: true });
+    const renewedEnd = new Date(end.getTime() + 30 * 86400_000);
+    await subscriptionEvent(input.orderId, { payment: true, eventOffset: 2000, periodEnd: renewedEnd });
+    expect((await fixtureSql()`SELECT expires_at,is_active FROM ad_slots`)[0]).toMatchObject({ expires_at: renewedEnd, is_active: true });
+    expect((await fixtureSql()`SELECT count(*)::int AS count FROM ad_slots`)[0].count).toBe(1);
+  });
+  it("blocks subscription-only grants and unpaid renewal approval despite an older succeeded charge", async () => {
+    const input = await monthlySetup();
+    await subscriptionEvent(input.orderId);
+    expect((await fixtureSql()`SELECT count(*)::int AS count FROM ad_slots`)[0].count).toBe(0);
+    expect((await fixtureSql()`SELECT status FROM entitlements`)[0].status).toBe("revoked");
+    await subscriptionEvent(input.orderId, { payment: true, eventOffset: 1000 });
+    await subscriptionEvent(input.orderId, { periodStart: new Date(Date.now() + 2000), eventOffset: 3000 });
+    const [reservation] = await fixtureSql()`SELECT id FROM ad_reservations`;
+    await expect(adminAction(input.userId, { action: "ad.approve", reservationId: reservation.id,
+      reason: "Attempting approval without current renewal payment" })).rejects.toMatchObject({ status: 409 });
+    expect((await fixtureSql()`SELECT is_active FROM ad_slots`)[0].is_active).toBe(false);
+  });
+  it("retains capacity during retryable billing and releases only after verified terminal cancellation", async () => {
+    const input = await monthlySetup();
+    await subscriptionEvent(input.orderId, { payment: true });
+    const [reservation] = await fixtureSql()`SELECT id FROM ad_reservations`;
+    await adminAction(input.userId, { action: "ad.approve", reservationId: reservation.id, reason: "Reviewed recurring advertisement creative" });
+    await fixtureSql()`UPDATE ad_reservations SET starts_at=now()-interval '32 days',ends_at=now()-interval '1 day'`;
+    await subscriptionEvent(input.orderId, { status: "on_hold", eventOffset: 1000 });
+    expect((await fixtureSql()`SELECT is_active FROM ad_slots`)[0].is_active).toBe(false);
+    expect(await expireAdReservations()).toEqual({ expired: 0 });
+    expect(await listAvailableAdInventory()).toEqual([]);
+    await subscriptionEvent(input.orderId, { status: "cancelled", eventOffset: 2000 });
+    expect(await listAvailableAdInventory()).toHaveLength(1);
+    expect((await fixtureSql()`SELECT status FROM ad_reservations`)[0].status).toBe("expired");
+  });
+  it("scheduled cancellation preserves an already-paid advertisement until provider term end", async () => {
+    const input = await monthlySetup(); await subscriptionEvent(input.orderId, { payment: true });
+    const [reservation] = await fixtureSql()`SELECT id FROM ad_reservations`;
+    await adminAction(input.userId, { action: "ad.approve", reservationId: reservation.id, reason: "Reviewed paid recurring advertisement" });
+    await subscriptionEvent(input.orderId, { cancelAtEnd: true, eventOffset: 1000 });
+    expect((await fixtureSql()`SELECT is_active FROM ad_slots`)[0].is_active).toBe(true);
+    expect(await listAvailableAdInventory()).toEqual([]);
+  });
+  it("does not treat a late update to a previous charge as payment for the new month", async () => {
+    const input = await monthlySetup(), paymentId = `pay_${randomUUID()}`, paidAt = new Date(Date.now() - 29 * 86400_000);
+    await subscriptionEvent(input.orderId, { payment: true, paymentId, periodStart: paidAt, paymentCreatedAt: paidAt });
+    const [reservation] = await fixtureSql()`SELECT id FROM ad_reservations`;
+    await adminAction(input.userId, { action: "ad.approve", reservationId: reservation.id, reason: "Reviewed initial paid monthly advertisement" });
+    const initialEnd = (await fixtureSql()`SELECT ends_at FROM ad_reservations`)[0].ends_at;
+    await subscriptionEvent(input.orderId, { periodStart: new Date(Date.now() - 1000),
+      periodEnd: new Date(Date.now() + 60 * 86400_000), eventOffset: 1000 });
+    await subscriptionEvent(input.orderId, { payment: true, paymentId, paymentCreatedAt: paidAt, eventOffset: 2000 });
+    expect((await fixtureSql()`SELECT is_active FROM ad_slots`)[0].is_active).toBe(false);
+    expect((await fixtureSql()`SELECT ends_at FROM ad_reservations`)[0].ends_at).toEqual(initialEnd);
+    expect((await fixtureSql()`SELECT status FROM entitlements`)[0].status).toBe("revoked");
+    expect((await fixtureSql()`SELECT normalized_payload->>'verifiedChargeCreatedAt' AS charged FROM payment_events WHERE normalized_payload ? 'verifiedChargeCreatedAt'`)
+      .every((event) => event.charged === paidAt.toISOString())).toBe(true);
+  });
+  it("accepts a delayed payment event after a newer subscription event without losing paid creative", async () => {
+    const input = await monthlySetup();
+    await subscriptionEvent(input.orderId, { eventOffset: 2000 });
+    await subscriptionEvent(input.orderId, { payment: true, eventOffset: 1000 });
+    expect((await fixtureSql()`SELECT status FROM ad_reservations`)[0].status).toBe("paid");
+    expect((await fixtureSql()`SELECT status,is_active FROM ad_slots`)[0]).toMatchObject({ status: "pending", is_active: false });
+    expect((await fixtureSql()`SELECT status FROM entitlements`)[0].status).toBe("active");
+    const [reservation] = await fixtureSql()`SELECT id FROM ad_reservations`;
+    await adminAction(input.userId, { action: "ad.approve", reservationId: reservation.id, reason: "Reviewed delayed verified payment and creative" });
+    expect((await fixtureSql()`SELECT is_active FROM ad_slots`)[0].is_active).toBe(true);
+  });
+});
 describe("durable advertisement inventory", () => {
   it("reserves a placement before one concurrent buyer can open provider checkout", async () => {
     const first = await setup(), second = { ...await owner(), inventoryId: first.inventoryId };

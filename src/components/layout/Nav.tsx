@@ -1,33 +1,84 @@
 import Link from "next/link";
-import Image from "next/image";
-import { UserMenu } from "./UserMenu";
-import { MobileMenu } from "./MobileMenu";
-import { NavLinks } from "./NavLinks";
-import { ThemeToggle } from "./ThemeToggle";
-import { CommandPalette, SearchTrigger } from "./CommandPalette";
-import { siteConfig } from "@/config/site";
+import { SubmitButton } from "@/components/submit/SubmitButton";
+import { UserMenu } from "@/components/layout/UserMenu";
+import { MobileMenu } from "@/components/layout/MobileMenu";
 import type { User } from "@/db/schema";
 
-/** Brand and destinations on the left; search, theme and the account on the right. "Submit website" is the bar's one filled action. */
-export function Nav({ user }: { user: User | null }) {
-  return <header className="site-header sticky top-0 z-50 border-b border-border bg-bg-main/95 backdrop-blur-xl">
-    <nav aria-label="Main navigation" className="mx-auto flex h-[76px] max-w-[1440px] items-center gap-2 px-4 sm:px-6 lg:px-8">
-      <Link href="/" className="flex shrink-0 items-center gap-2.5 text-text-primary no-underline" aria-label={siteConfig.name + " home"}>
-        <Image src="/favicon/favicon-96x96.png" alt="" width={36} height={36} className="h-9 w-9" priority />
-        <span className="text-[1.05rem] font-bold tracking-[-0.045em] font-stretch-[112%] max-[379px]:hidden sm:text-lg">{siteConfig.name}</span>
+interface NavProps {
+  user: User | null;
+  canManagePayments?: boolean;
+}
+
+export function Nav({ user, canManagePayments = false }: NavProps) {
+  return (
+    <nav className="fixed top-0 left-[190px] right-[190px] z-[100] bg-[rgba(17,15,13,0.88)] backdrop-blur-[20px] border-b border-border px-6 h-[60px] flex items-center justify-between max-[1100px]:left-0 max-[1100px]:right-0 max-[768px]:px-4">
+      <Link href="/" className="flex items-center gap-2 no-underline shrink-0">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/logo.png" alt="TheFastestWeb" className="w-8 h-8 object-contain" />
+        <span className="font-display font-[800] text-[1.15rem] text-text-primary tracking-[-0.02em]">
+          TheFastestWeb
+        </span>
       </Link>
-      <span aria-hidden className="mx-1.5 hidden h-6 w-px bg-border xl:block" />
-      <NavLinks />
-      <div className="ml-auto flex items-center gap-0.5 sm:gap-1">
-        <SearchTrigger compact label="Search" className="hidden h-10 w-[196px] items-center gap-2 rounded-xl border border-border bg-bg-deep pl-3.5 pr-2 text-sm text-text-muted transition-colors hover:border-text-muted hover:text-text-primary md:inline-flex xl:max-[1399px]:w-auto xl:max-[1399px]:[&>span:nth-child(2)]:hidden" />
-        <SearchTrigger compact label="" className="icon-button md:hidden [&>span]:hidden" />
-        <ThemeToggle />
-        {!user && <Link className="nav-link hidden lg:inline-flex" href="/auth/login">Sign in</Link>}
-        <Link className="button-primary hidden min-h-10 px-4 sm:inline-flex" href="/submit">Submit website</Link>
-        {user && <UserMenu userId={user.id} name={user.name} avatarUrl={user.avatarUrl} twitterHandle={user.twitterHandle} isPro={user.isPro} />}
-        <MobileMenu signedIn={Boolean(user)} />
+      {/* Desktop nav */}
+      <div className="flex items-center gap-2 max-[768px]:hidden">
+        <Link
+          href="/"
+          className="px-3.5 py-[7px] rounded-lg text-[0.875rem] font-medium text-text-secondary no-underline transition-all duration-200 hover:text-text-primary hover:bg-bg-card"
+        >
+          Leaderboard
+        </Link>
+        <Link
+          href="/test"
+          className="px-3.5 py-[7px] rounded-lg text-[0.875rem] font-medium text-text-secondary no-underline transition-all duration-200 hover:text-text-primary hover:bg-bg-card"
+        >
+          Test Speed
+        </Link>
+        <Link
+          href="/pricing"
+          className="px-3.5 py-[7px] rounded-lg text-[0.875rem] font-medium text-text-secondary no-underline transition-all duration-200 hover:text-text-primary hover:bg-bg-card"
+        >
+          Pricing
+        </Link>
+        <SubmitButton />
+        {user ? (
+          <UserMenu
+            userId={user.id}
+            name={user.name}
+            avatarUrl={user.avatarUrl}
+            twitterHandle={user.twitterHandle}
+            isPro={user.isPro}
+            canManagePayments={canManagePayments}
+          />
+        ) : (
+          <Link
+            href="/submit"
+            className="ml-1 px-3.5 py-[7px] rounded-lg text-[0.875rem] font-medium text-text-secondary no-underline transition-all duration-200 hover:text-text-primary hover:bg-bg-card"
+          >
+            Sign In
+          </Link>
+        )}
+      </div>
+      {/* Mobile nav */}
+      <div className="flex items-center gap-2 min-[769px]:hidden">
+        {user ? (
+          <UserMenu
+            userId={user.id}
+            name={user.name}
+            avatarUrl={user.avatarUrl}
+            twitterHandle={user.twitterHandle}
+            isPro={user.isPro}
+            canManagePayments={canManagePayments}
+          />
+        ) : (
+          <Link
+            href="/submit"
+            className="px-3 py-[6px] rounded-lg text-[0.82rem] font-medium text-text-secondary no-underline transition-all duration-200 hover:text-text-primary hover:bg-bg-card"
+          >
+            Sign In
+          </Link>
+        )}
+        <MobileMenu />
       </div>
     </nav>
-    <CommandPalette />
-  </header>;
+  );
 }
