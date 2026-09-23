@@ -1,13 +1,71 @@
 import { z } from "zod";
 import { getEnv } from "@/config/env";
 import { AppError } from "@/lib/http/errors";
+import { logger } from "@/infrastructure/logging/logger";
+
+const graphErrorCodes = [
+  "ErrorAccessDenied", "Authorization_RequestDenied", "ErrorSendAsDenied", "insufficient_claims",
+  "InvalidAuthenticationToken", "ErrorInvalidUser", "Request_ResourceNotFound", "ResourceNotFound",
+  "ErrorItemNotFound", "MailboxNotEnabledForRESTAPI", "ErrorInvalidRecipients", "ErrorRecipientNotFound",
+  "ErrorInvalidRequest", "BadRequest", "ErrorQuotaExceeded", "TooManyRequests", "ErrorThrottled",
+  "ErrorServerBusy", "ServiceUnavailable", "ErrorInternalServerError",
+] as const;
+type GraphErrorCode = typeof graphErrorCodes[number] | "UNRECOGNIZED_ERROR" | "ERROR_DETAILS_UNAVAILABLE";
+type GraphDiagnostic = { httpStatus: number; providerCode: GraphErrorCode };
+const knownGraphCodes = new Map(graphErrorCodes.map(code => [code.toLowerCase(), code]));
+const MAX_ERROR_BYTES = 16_384;
+const ERROR_READ_TIMEOUT_MS = 1000;
+
+/** Only allowlisted machine codes leave this boundary; messages may contain PII. */
+async function graphErrorCode(response: Response): Promise<GraphErrorCode> {
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    reader = response.body?.getReader();
+    if (!reader) return "ERROR_DETAILS_UNAVAILABLE";
+    const deadline = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => reject(new Error("Diagnostic read timed out")), ERROR_READ_TIMEOUT_MS);
+    });
+    const chunks: Uint8Array[] = [];
+    let bytes = 0;
+    for (;;) {
+      const { done, value } = await Promise.race([reader.read(), deadline]);
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > MAX_ERROR_BYTES) return "ERROR_DETAILS_UNAVAILABLE";
+      chunks.push(value);
+    }
+    const body: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    let current: unknown = body && typeof body === "object" ? (body as Record<string, unknown>).error : undefined;
+    let code: GraphErrorCode = "UNRECOGNIZED_ERROR";
+    // Graph recommends the deepest error code understood by the caller. Bound
+    // traversal and canonicalize via our map, never echo provider-supplied text.
+    for (let depth = 0; depth < 5 && current && typeof current === "object"; depth++) {
+      const detail = current as Record<string, unknown>;
+      const recognized = typeof detail.code === "string" ? knownGraphCodes.get(detail.code.toLowerCase()) : undefined;
+      if (recognized) code = recognized;
+      current = detail.innerError ?? detail.innererror;
+    }
+    return code;
+  } catch { return "ERROR_DETAILS_UNAVAILABLE"; }
+  finally {
+    clearTimeout(timer);
+    // Diagnostics must never delay or change the original delivery decision.
+    void reader?.cancel().catch(() => undefined);
+    reader?.releaseLock();
+  }
+}
 
 export type MailMessage = { to: string; subject: string; html: string };
 export interface MailProvider { send(message: MailMessage): Promise<{ status: "accepted" }> }
 export class MailDeliveryError extends AppError {
+  readonly httpStatus?: number;
+  readonly providerCode?: GraphErrorCode;
   constructor(readonly deliveryCode: "TOKEN_UNAVAILABLE" | "RATE_LIMITED" | "REJECTED" | "UNCERTAIN",
-    readonly retryable: boolean, readonly retryAfterMs?: number) {
+    readonly retryable: boolean, readonly retryAfterMs?: number, diagnostic?: GraphDiagnostic) {
     super("UPSTREAM_UNAVAILABLE", "The email provider could not confirm this request.", 503);
+    this.httpStatus = diagnostic?.httpStatus;
+    this.providerCode = diagnostic?.providerCode;
   }
 }
 export const isEmailEnabled = () => getEnv().EMAIL_ENABLED;
@@ -61,16 +119,20 @@ export const graphMail: MailProvider = {
           saveToSentItems: true }),
       });
     } catch { throw new MailDeliveryError("UNCERTAIN", false); }
-    await response.body?.cancel();
-    if (response.status === 202) return { status: "accepted" };
-    if (response.status === 401) { cachedToken = undefined; throw new MailDeliveryError("REJECTED", true); }
+    if (response.status === 202) { await response.body?.cancel(); return { status: "accepted" }; }
+    const diagnostic: GraphDiagnostic = { httpStatus: response.status, providerCode: await graphErrorCode(response) };
+    const failure = (deliveryCode: MailDeliveryError["deliveryCode"], retryable: boolean, retryAfterMs?: number) => {
+      logger.warn({ event: "mail.graph_send_failed", ...diagnostic, deliveryCode, retryable });
+      return new MailDeliveryError(deliveryCode, retryable, retryAfterMs, diagnostic);
+    };
+    if (response.status === 401) { cachedToken = undefined; throw failure("REJECTED", true); }
     if (response.status === 429) {
       const header = response.headers.get("retry-after") ?? "";
       const duration = /^\d+$/.test(header) ? Number(header) * 1000 : Date.parse(header) - Date.now();
-      throw new MailDeliveryError("RATE_LIMITED", true, Number.isFinite(duration) ? Math.min(86_400_000, Math.max(0, duration)) : undefined);
+      throw failure("RATE_LIMITED", true, Number.isFinite(duration) ? Math.min(86_400_000, Math.max(0, duration)) : undefined);
     }
-    if (response.status >= 400 && response.status < 500 && response.status !== 408) throw new MailDeliveryError("REJECTED", false);
+    if (response.status >= 400 && response.status < 500 && response.status !== 408) throw failure("REJECTED", false);
     // A timeout or server error after submission cannot prove the mail was unsent.
-    throw new MailDeliveryError("UNCERTAIN", false);
+    throw failure("UNCERTAIN", false);
   },
 };
