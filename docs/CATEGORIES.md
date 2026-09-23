@@ -23,7 +23,7 @@ The normalized `site_categories` relationship is authoritative. New category nam
 - Category results include public active/verified sites only. Private, archived and inactive records do not enter counts or sitemaps.
 - Results use stable score ordering, 24 entries per page, canonical page links and numbered structured data that match visible results. Invalid pages and unknown slugs return 404.
 - Every page has category-specific visible guidance, description, Open Graph/Twitter metadata, breadcrumb and CollectionPage/ItemList markup.
-- Empty collections and query-filter variants are noindex. `/sitemaps/categories/0.xml` includes only populated canonical collections. Demo deployments keep all indexing disabled.
+- Empty collections and query-filter variants are noindex. `/sitemap-categories-1.xml` includes only populated canonical collections. The former `/sitemaps/categories/0.xml` redirects to it. Demo deployments keep all indexing disabled.
 - `/submit?category={slug}` preselects a valid category. Saved checkout drafts retain the user's choice.
 
 Updating the IndieTools vocabulary in future requires reviewing its public source, updating the shared catalog and appending another reference-data migration. There is no runtime dependency on IndieTools for submissions.

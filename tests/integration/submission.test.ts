@@ -2,13 +2,13 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanupIntegrationDatabase, fixtureSql, prepareIntegrationDatabase, resetIntegrationData } from "./database";
 import type { PerformanceResult } from "@/modules/performance/service";
-const mocks = vi.hoisted(() => ({ measure: vi.fn(), metadata: vi.fn(), badge: vi.fn() }));
+const mocks = vi.hoisted(() => ({ measure: vi.fn(), metadata: vi.fn(), badge: vi.fn(), screenshotsEnabled: false }));
 vi.mock("@/modules/performance/service", async (original) => ({ ...await original<typeof import("@/modules/performance/service")>(), runPerformanceTest: mocks.measure }));
 vi.mock("@/modules/sites/metadata", async (original) => ({ ...await original<typeof import("@/modules/sites/metadata")>(), loadSiteMetadata: mocks.metadata }));
 vi.mock("@/infrastructure/browser/badge-verification", () => ({ getVerifiedBadge: mocks.badge }));
 vi.mock("@/config/env", async (original) => {
   const actual = await original<typeof import("@/config/env")>();
-  return { ...actual, getEnv: () => ({ ...actual.getEnv(), SCREENSHOTS_ENABLED: false }) };
+  return { ...actual, getEnv: () => ({ ...actual.getEnv(), SCREENSHOTS_ENABLED: mocks.screenshotsEnabled }) };
 });
 import { startSubmissionPreparation, getSubmissionPreparation } from "@/modules/submissions/service";
 import { processBackgroundJob } from "@/modules/jobs/service";
@@ -20,6 +20,7 @@ const measurement: PerformanceResult = { score: 81, loadTimeMs: 2400, fcpMs: 120
   lighthouseVersion: "13.0.0", rawResponse: {}, sampleCount: 2, metricsSource: "lab", methodologyVersion: "psi-v2-two-sample" };
 beforeAll(prepareIntegrationDatabase, 30_000); afterAll(cleanupIntegrationDatabase);
 beforeEach(async () => {
+  mocks.screenshotsEnabled = false;
   await resetIntegrationData(); mocks.measure.mockReset().mockResolvedValue(measurement);
   mocks.metadata.mockReset().mockResolvedValue(parseSiteMetadata('<title>Example tools</title><meta name="description" content="Useful tools for a real website."><script src="/_next/static/a.js"></script>', "https://example.com/"));
   mocks.badge.mockReset().mockResolvedValue({ verified: true, status: "verified" });
@@ -40,6 +41,18 @@ async function publishingInput(owner: string, url?: string) {
 }
 
 describe("URL-first durable submission", () => {
+  it("queues a fresh public capture on publication while keeping private preparation media private", async () => {
+    const owner = await user(), input = await publishingInput(owner);
+    const privateCaptureId = randomUUID();
+    await fixtureSql()`UPDATE background_jobs SET result=jsonb_set(result,'{screenshotId}',to_jsonb(${privateCaptureId}::text)) WHERE id=${input.preparationId}`;
+    mocks.screenshotsEnabled = true;
+    const site = await createListing(owner, input);
+    const [capture] = await fixtureSql()`SELECT kind,payload,job_key,result FROM background_jobs WHERE queue='screenshots'`;
+    expect(capture).toMatchObject({ kind: "site.screenshot.capture", job_key: `screenshot:${site.id}:initial`, result: null,
+      payload: { siteId: site.id, sourceUrl: site.url, device: "desktop", mode: "viewport", history: "daily" } });
+    expect(JSON.stringify(capture)).not.toContain(privateCaptureId);
+    expect(await fixtureSql()`SELECT id FROM site_screenshots`).toHaveLength(0);
+  });
   it("deduplicates preparation and protects owner-only results", async () => {
     const owner = await user();
     const receipts = await Promise.all(Array.from({ length: 6 }, () => prepare(owner)));

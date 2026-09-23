@@ -16,8 +16,8 @@ export const legacyLeaderboardProjection = {
 
 // Initial server rows and subsequent pages must have the same stable ordering.
 const loadMilliseconds = sql`CASE
-  WHEN ${sites.currentLoadTime} ~ '^[0-9]+([.][0-9]+)?ms$' THEN replace(${sites.currentLoadTime}, 'ms', '')::numeric
-  WHEN ${sites.currentLoadTime} ~ '^[0-9]+([.][0-9]+)?s$' THEN replace(${sites.currentLoadTime}, 's', '')::numeric * 1000
+  WHEN ${sites.currentLoadTime} ~* '^[[:space:]]*[0-9]+([.][0-9]+)?[[:space:]]*ms[[:space:]]*$' THEN regexp_replace(${sites.currentLoadTime}, '[^0-9.]', '', 'g')::numeric
+  WHEN ${sites.currentLoadTime} ~* '^[[:space:]]*[0-9]+([.][0-9]+)?[[:space:]]*s[[:space:]]*$' THEN regexp_replace(${sites.currentLoadTime}, '[^0-9.]', '', 'g')::numeric * 1000
   ELSE NULL END`;
 export const legacyLeaderboardOrder = (sort: "score" | "loadtime" = "score") => sort === "loadtime"
   ? [asc(loadMilliseconds), desc(sites.currentScore), asc(sites.createdAt), asc(sites.id)]

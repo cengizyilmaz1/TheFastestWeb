@@ -64,13 +64,11 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const user = await getCurrentUser();
+  const [user, activeAdSlots] = await Promise.all([getCurrentUser(), getPublicAdSlots()]);
 
   const db = getDb();
   const [adminGrant] = user && db ? await db.select({ role: adminRoles.role }).from(adminRoles)
     .where(and(eq(adminRoles.userId, user.id), eq(adminRoles.role, "admin"))).limit(1) : [];
-
-  const activeAdSlots = await getPublicAdSlots();
 
   return (
     <html lang="en">

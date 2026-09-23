@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { sitemapDocument, sitemapIndex, sitemapSections, sitemapPageSize, type SitemapSection } from "./sitemaps";
 import { GET as childRoute } from "@/app/sitemaps/[section]/[page]/route";
+import { GET as namedRoute } from "@/app/[sitemap]/route";
 import robots from "@/app/robots";
 
 const { countSites, listSites, categoryCounts, posts, countFounders, listFounders } = vi.hoisted(() => ({ countSites: vi.fn(), listSites: vi.fn(), categoryCounts: vi.fn(), posts: vi.fn(), countFounders: vi.fn(), listFounders: vi.fn() }));
@@ -20,6 +21,50 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllEnvs(); vi.resetAllMocks(); });
 
 describe("sectioned canonical sitemaps", () => {
+  it("advertises readable root filenames in deterministic section order", async () => {
+    expect(paths(await sitemapIndex())).toEqual([
+      "/sitemap-pages-1.xml", "/sitemap-sites-1.xml", "/sitemap-blog-1.xml", "/sitemap-categories-1.xml",
+    ]);
+  });
+
+  it("serves one-based named files and permanently redirects existing zero-based submissions", async () => {
+    const records = sites(201);
+    listSites.mockImplementation(async (page: number) => records.slice(page * 200, (page + 1) * 200));
+    const old = await childRoute(new NextRequest("https://untrusted.invalid/sitemaps/sites/1.xml"), {
+      params: Promise.resolve({ section: "sites", page: "1.xml" }),
+    });
+    expect(old.status).toBe(301);
+    expect(old.headers.get("location")).toBe("https://example.invalid/sitemap-sites-2.xml");
+    const named = await namedRoute(new NextRequest("https://untrusted.invalid/sitemap-sites-2.xml"), {
+      params: Promise.resolve({ sitemap: "sitemap-sites-2.xml" }),
+    });
+    expect(named.status).toBe(200);
+    expect(named.headers.get("content-type")).toBe("application/xml; charset=utf-8");
+    expect(named.headers.get("link")).toBe('<https://example.invalid/sitemap-sites-2.xml>; rel="canonical"');
+    expect(paths(await named.text())).toEqual(["/site/site-200"]);
+    const missing = await childRoute(new NextRequest("https://example.invalid/sitemaps/sites/2.xml"), {
+      params: Promise.resolve({ section: "sites", page: "2.xml" }),
+    });
+    expect(missing.status).toBe(404);
+    expect(missing.headers.get("location")).toBeNull();
+  });
+
+  it("rejects unsupported filenames and query aliases before consulting discovery sources", async () => {
+    for (const sitemap of ["sitemap-sites-0.xml", "sitemap-sites-01.xml", "sitemap-sites--1.xml", "sitemap-sites-1.json",
+      "sitemap-technologies-1.xml", "sitemap-pages.xml", "sitemap-sites-1000000000.xml", "unknown-page"]) {
+      const response = await namedRoute(new NextRequest(`https://example.invalid/${sitemap}`), {
+        params: Promise.resolve({ sitemap }),
+      });
+      expect(response.status).toBe(404);
+    }
+    const response = await namedRoute(new NextRequest("https://example.invalid/sitemap-sites-1.xml?token=private"), {
+      params: Promise.resolve({ sitemap: "sitemap-sites-1.xml" }),
+    });
+    expect(response.status).toBe(400);
+    expect(await response.text()).not.toContain("private");
+    expect(countSites).not.toHaveBeenCalled(); expect(listSites).not.toHaveBeenCalled(); expect(categoryCounts).not.toHaveBeenCalled();
+  });
+
   it("lets crawlers observe utility noindex directives and legacy redirects", () => {
     const controls = robots();
     expect(controls.sitemap).toBe("https://example.invalid/sitemap.xml");
@@ -42,8 +87,9 @@ describe("sectioned canonical sitemaps", () => {
   it.each([[200, 1], [201, 2], [400, 2], [401, 3]])("publishes exactly the required child pages for %i records", async (count, expectedPages) => {
     const records = sites(count); countSites.mockResolvedValue(count);
     listSites.mockImplementation(async (page: number) => records.slice(page * 200, (page + 1) * 200));
-    const indexPaths = paths(await sitemapIndex()).filter((path) => path.startsWith("/sitemaps/sites/"));
+    const indexPaths = paths(await sitemapIndex()).filter((path) => path.startsWith("/sitemap-sites-"));
     expect(indexPaths).toHaveLength(expectedPages); expect(sitemapPageSize).toBe(200);
+    expect(indexPaths).toEqual(Array.from({ length: expectedPages }, (_, page) => `/sitemap-sites-${page + 1}.xml`));
     const all: string[] = [];
     for (let page = 0; page < expectedPages; page++) {
       const part = paths(await sitemapDocument("sites", page)); expect(part.length).toBeLessThanOrEqual(200); all.push(...part);
@@ -56,7 +102,7 @@ describe("sectioned canonical sitemaps", () => {
     countFounders.mockResolvedValue(201);
     listFounders.mockResolvedValue([{ username: "public-founder", name: "Public founder", updatedAt: new Date("2026-09-04") }]);
     const index = paths(await sitemapIndex());
-    expect(index).toContain("/sitemaps/founders/1.xml");
+    expect(index).toContain("/sitemap-founders-2.xml");
     expect(sitemapSections).toEqual(["pages", "sites", "blog", "categories", "founders"]);
     const xml = await sitemapDocument("founders", 0);
     expect(paths(xml)).toEqual(["/founder/public-founder"]); expect(xml).not.toContain("/profile/");
@@ -73,7 +119,7 @@ describe("sectioned canonical sitemaps", () => {
   });
   it("has no empty child sitemap, rejects duplicate zero-padding and query aliases", async () => {
     countSites.mockResolvedValue(0); posts.mockReturnValue([]); categoryCounts.mockResolvedValue({ available: true, categories: [] });
-    expect(paths(await sitemapIndex())).toEqual(["/sitemaps/pages/0.xml"]);
+    expect(paths(await sitemapIndex())).toEqual(["/sitemap-pages-1.xml"]);
     for (const page of ["00.xml", "01.xml", "-1.xml", "2.md"]) {
       const response = await childRoute(new NextRequest(`https://example.invalid/sitemaps/pages/${page}`), { params: Promise.resolve({ section: "pages", page }) });
       expect(response.status).toBe(404); expect(response.headers.get("cache-control")).toBe("no-store");
@@ -85,6 +131,10 @@ describe("sectioned canonical sitemaps", () => {
     vi.stubEnv("DEPLOYMENT_MODE", "demo");
     expect(paths(await sitemapIndex())).toEqual([]);
     for (const section of sitemapSections) await expect(sitemapDocument(section, 0)).rejects.toMatchObject({ status: 404 });
+    const response = await namedRoute(new NextRequest("https://example.invalid/sitemap-sites-1.xml"), {
+      params: Promise.resolve({ sitemap: "sitemap-sites-1.xml" }),
+    });
+    expect(response.status).toBe(404);
     expect(countSites).not.toHaveBeenCalled(); expect(countFounders).not.toHaveBeenCalled(); expect(categoryCounts).not.toHaveBeenCalled();
     expect(robots()).toEqual({ rules: { userAgent: "*", disallow: "/" } });
   });
@@ -96,5 +146,9 @@ describe("sectioned canonical sitemaps", () => {
     listSites.mockRejectedValue(new Error("postgres://private:secret@internal"));
     const response = await childRoute(new NextRequest("https://example.invalid/sitemaps/sites/0.xml"), { params: Promise.resolve({ section: "sites", page: "0.xml" }) });
     expect(response.status).toBe(503); expect(response.headers.get("cache-control")).toBe("no-store"); expect(await response.text()).not.toMatch(/private|secret|postgres|internal/);
+    const named = await namedRoute(new NextRequest("https://example.invalid/sitemap-sites-1.xml"), {
+      params: Promise.resolve({ sitemap: "sitemap-sites-1.xml" }),
+    });
+    expect(named.status).toBe(503); expect(named.headers.get("cache-control")).toBe("no-store"); expect(await named.text()).not.toMatch(/private|secret|postgres|internal/);
   });
 });

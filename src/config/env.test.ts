@@ -86,6 +86,14 @@ describe("runtime environment", () => {
     }
   });
 
+  it("lets the scheduler generate screenshots without giving it capture credentials", () => {
+    const raw = { ...production, SCREENSHOTS_ENABLED: "true" };
+    expect(parseEnv(raw, { requireProductionSecrets: true, role: "scheduler" }).SCREENSHOTS_ENABLED).toBe(true);
+    for (const role of ["web", "worker"] as const) {
+      expect(() => parseEnv(raw, { requireProductionSecrets: true, role })).toThrow(EnvironmentError);
+    }
+  });
+
   it.each([
     { REDIS_URL: "" }, { REDIS_URL: "https://redis.example.test" },
     { REDIS_URL: "redis://redis:6379/0" },

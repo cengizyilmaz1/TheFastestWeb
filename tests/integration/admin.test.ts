@@ -3,10 +3,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { bootstrapAdministrator, executeAdminAction, previewAdminAction } from "../../src/modules/admin/service";
 import { getAdminReport } from "../../src/modules/admin/queries";
 import { cleanupIntegrationDatabase, fixtureSql, prepareIntegrationDatabase, resetIntegrationData } from "./database";
-vi.mock("../../src/config/env", () => ({ getEnv: () => ({ AUTH_SECRET: "synthetic-admin-secret-at-least-32-characters", JOB_MAX_ATTEMPTS: 3 }) }));
+const screenshotFeature = vi.hoisted(() => ({ enabled: false }));
+vi.mock("../../src/config/env", () => ({ getEnv: () => ({ AUTH_SECRET: "synthetic-admin-secret-at-least-32-characters", JOB_MAX_ATTEMPTS: 3, SCREENSHOTS_ENABLED: screenshotFeature.enabled }) }));
 beforeAll(prepareIntegrationDatabase, 60_000);
 afterAll(cleanupIntegrationDatabase, 30_000);
-beforeEach(resetIntegrationData);
+beforeEach(async () => { screenshotFeature.enabled = false; await resetIntegrationData(); });
 async function user(role?: "admin" | "moderator") {
   const userId = randomUUID();
   await fixtureSql()`INSERT INTO users(id,email,name) VALUES(${userId},${`${userId}@example.com`},'Synthetic')`;
@@ -19,6 +20,22 @@ async function site() {
   return id;
 }
 describe("administrator authorization and audited changes", () => {
+  it("atomically queues one initial screenshot when a private listing is published", async () => {
+    screenshotFeature.enabled = true;
+    const actor = await user("admin"), siteId = await site();
+    await fixtureSql()`UPDATE sites SET is_listed=false,lifecycle='pending' WHERE id=${siteId}`;
+    const action = { action: "site.lifecycle", siteId, lifecycle: "active", reason: "Publish reviewed synthetic website" };
+    const preview = await previewAdminAction(actor, action);
+    expect(await fixtureSql()`SELECT id FROM background_jobs WHERE queue='screenshots'`).toHaveLength(0);
+    await executeAdminAction(actor, action, preview.token);
+    const [capture] = await fixtureSql()`SELECT id,job_key,payload,status FROM background_jobs WHERE queue='screenshots'`;
+    expect(capture).toMatchObject({ job_key: `screenshot:${siteId}:initial`, status: "pending",
+      payload: { siteId, sourceUrl: `https://example.com/${siteId}`, device: "desktop", mode: "viewport", history: "daily" } });
+    expect(await fixtureSql()`SELECT id FROM job_events WHERE job_id=${capture.id} AND event='scheduled'`).toHaveLength(1);
+    const repeated = await previewAdminAction(actor, action);
+    await executeAdminAction(actor, action, repeated.token);
+    expect(await fixtureSql()`SELECT id FROM background_jobs WHERE queue='screenshots'`).toHaveLength(1);
+  });
   it("changes the normalized primary category, preserves secondary taxonomy and audits the exact change", async () => {
     const actor = await user("admin"), siteId = await site();
     await fixtureSql()`INSERT INTO site_categories(site_id,category_id,is_primary) SELECT ${siteId},id,slug='other' FROM categories WHERE slug IN ('other','tool')`;

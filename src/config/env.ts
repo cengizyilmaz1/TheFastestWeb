@@ -154,7 +154,8 @@ export function parseEnv(
   requireFields(config.EMAIL_ENABLED, ["M365_TENANT_ID", "M365_CLIENT_ID", "M365_CLIENT_SECRET", "M365_SENDER", "EMAIL_UNSUBSCRIBE_SECRET"]);
   requireFields(config.STORAGE_ENABLED, ["R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_PRIVATE_BUCKET"]);
   if (config.R2_BUCKET && config.R2_BUCKET === config.R2_PRIVATE_BUCKET) missing.push("R2_PRIVATE_BUCKET");
-  requireFields(config.SCREENSHOTS_ENABLED, ["SCREENSHOT_SERVICE_URL", "SCREENSHOT_SERVICE_TOKEN"]);
+  // Scheduler only writes capture jobs; the worker owns provider credentials.
+  requireFields(config.SCREENSHOTS_ENABLED && options.role !== "scheduler", ["SCREENSHOT_SERVICE_URL", "SCREENSHOT_SERVICE_TOKEN"]);
   if (config.ANALYTICS_ENABLED && !config.GA_MEASUREMENT_ID && !config.DATAFAST_WEBSITE_ID) missing.push("GA_MEASUREMENT_ID", "DATAFAST_WEBSITE_ID");
   if (config.DATAFAST_WEBSITE_ID && !config.DATAFAST_DOMAIN) missing.push("DATAFAST_DOMAIN");
   requireFields(config.DATAFAST_BOT_TRACKING_ENABLED, ["DATAFAST_WEBSITE_ID", "DATAFAST_DOMAIN"]);

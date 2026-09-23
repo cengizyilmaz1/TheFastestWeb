@@ -7,6 +7,7 @@ import { assertSameOrigin, readJson } from "@/modules/security/request";
 import { publicationSchema, normalizeSubmittedUrl } from "@/modules/sites/input";
 import { createListing } from "@/modules/sites/create-listing";
 import { loadSiteMetadata } from "@/modules/sites/metadata";
+import { UnsafeUrlError } from "@/lib/security/public-url";
 
 export const GET = withApi(async (request) => {
   const session = await auth();
@@ -15,7 +16,8 @@ export const GET = withApi(async (request) => {
   const url = normalizeSubmittedUrl(request.nextUrl.searchParams.get("url") || "");
   try {
     return NextResponse.json(await loadSiteMetadata(url), { headers: { "Cache-Control": "no-store" } });
-  } catch {
+  } catch (error) {
+    if (error instanceof UnsafeUrlError) throw new AppError("URL_BLOCKED", "The website must resolve to a public address.", 400);
     throw new AppError("UPSTREAM_UNAVAILABLE", "Website details could not be loaded. You can enter them manually.", 502);
   }
 });

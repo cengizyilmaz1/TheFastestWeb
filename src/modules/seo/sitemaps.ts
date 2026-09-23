@@ -14,6 +14,19 @@ import { markdownText, type PublicPageContent } from "./markdown-format";
 export const sitemapSections = ["pages", "sites", "blog", "categories", "founders"] as const;
 export type SitemapSection = typeof sitemapSections[number];
 export const sitemapPageSize = discoveryPageSize;
+
+/** Public filenames are one-based; database windows remain zero-based. */
+export function sitemapPath(section: SitemapSection, page: number) {
+  discoveryOffset(page);
+  return `/sitemap-${section}-${page + 1}.xml`;
+}
+
+export function parseSitemapFilename(filename: string): { section: SitemapSection; page: number } | null {
+  const match = /^sitemap-([a-z]+)-([1-9]\d{0,8})\.xml$/.exec(filename);
+  if (!match || !sitemapSections.includes(match[1] as SitemapSection)) return null;
+  return { section: match[1] as SitemapSection, page: Number(match[2]) - 1 };
+}
+
 type Entry = { path: string; modified?: Date | string | null };
 export const xmlEscape = (value: string) => value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[char]!);
 const staticPaths = ["/", "/test", "/submit", "/pricing", "/advertise", "/about", "/blog", "/privacy", "/terms", "/categories",
@@ -40,7 +53,7 @@ export async function sitemapIndex() {
       const counts: Record<SitemapSection, number> = { pages: staticPaths.length, sites: siteCount, blog: posts().length, categories: categories.length, founders: founderCount };
       const total = sitemapSections.reduce((sum, section) => sum + Math.ceil(counts[section] / sitemapPageSize), 0);
       if (!Number.isSafeInteger(total) || total > 50_000) throw new AppError("SERVICE_UNAVAILABLE", "The sitemap index requires another index partition.", 503);
-      paths = sitemapSections.flatMap((section) => Array.from({ length: Math.ceil(counts[section] / sitemapPageSize) }, (_, page) => `/sitemaps/${section}/${page}.xml`));
+      paths = sitemapSections.flatMap((section) => Array.from({ length: Math.ceil(counts[section] / sitemapPageSize) }, (_, page) => sitemapPath(section, page)));
     }
     return ['<?xml version="1.0" encoding="UTF-8"?>', '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
       ...paths.map((path) => `  <sitemap>\n    <loc>${xmlEscape(siteConfig.url + path)}</loc>\n  </sitemap>`), "</sitemapindex>", ""].join("\n");

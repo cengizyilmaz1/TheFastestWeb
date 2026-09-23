@@ -16,6 +16,9 @@ import { CategorySelect } from "./CategorySelect";
 import { findCategory } from "@/modules/catalog/categories";
 import { CountrySelect } from "./CountrySelect";
 import { restoreCountryCode } from "@/modules/catalog/countries";
+import { listingDetailsSchema } from "@/modules/sites/listing-fields";
+import { useListingAutofill } from "./useListingAutofill";
+import { AutofillDetails } from "./AutofillDetails";
 
 interface SpeedResult {
   score: number;
@@ -56,21 +59,6 @@ interface SiteMeta {
   domain: string;
 }
 
-const ANALYSIS_STAGES = [
-  "Connecting to speed testing service",
-  "Loading page in a real browser",
-  "Rendering above-the-fold content",
-  "Measuring First Contentful Paint",
-  "Measuring Largest Contentful Paint",
-  "Analyzing Cumulative Layout Shift",
-  "Calculating Total Blocking Time",
-  "Evaluating Time to Interactive",
-  "Computing Speed Index",
-  "Analyzing performance metrics",
-  "Computing weighted score",
-  "Generating final performance score",
-];
-
 interface Props {
   user: Pick<User, "name" | "avatarUrl" | "twitterHandle" | "isPro"> | null;
 }
@@ -87,11 +75,7 @@ export function SubmitPageForm({ user }: Props) {
   const [testing, setTesting] = useState(false);
   const [testError, setTestError] = useState("");
 
-  // Progress animation
-  const [currentStage, setCurrentStage] = useState(0);
-  const [progress, setProgress] = useState(0);
-  const stageTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const progressRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [preparationStatus, setPreparationStatus] = useState("Preparing your measurement request.");
 
   // Step 2: Results
   const [speedResult, setSpeedResult] = useState<SpeedResult | null>(null);
@@ -102,7 +86,7 @@ export function SubmitPageForm({ user }: Props) {
   const [name, setName] = useState("");
   const [desc, setDesc] = useState("");
   const [twitter, setTwitter] = useState(user?.twitterHandle || "");
-  const [category, setCategory] = useState<string>(() => findCategory(searchParams.get("category") ?? "")?.slug ?? "other");
+  const [category, setCategory] = useState<string>(() => findCategory(searchParams.get("category") ?? "")?.slug ?? "");
   const [countryCode, setCountryCode] = useState<string | null>(null);
   const [countryError, setCountryError] = useState("");
   const [customFavicon, setCustomFavicon] = useState("");
@@ -118,6 +102,8 @@ export function SubmitPageForm({ user }: Props) {
   const [submitted, setSubmitted] = useState(false);
   const [showNudge, setShowNudge] = useState(false);
   const [proSubmitUpgrade, setProSubmitUpgrade] = useState(false); // true when auto-submitted after Pro upgrade
+  const autofill = useListingAutofill({ name: setName, description: setDesc, category: setCategory, faviconUrl: setCustomFavicon },
+    Boolean(findCategory(searchParams.get("category") ?? "")));
 
   // Holds pending data for auto-submit after Pro checkout return
   const autoSubmitRef = useRef<{
@@ -145,17 +131,18 @@ export function SubmitPageForm({ user }: Props) {
         setName(d.name ?? "");
         setDesc(d.desc ?? "");
         setTwitter(d.twitter ?? (user?.twitterHandle || ""));
-        setCategory(d.category ?? "other");
+        setCategory(findCategory(d.category ?? "")?.slug ?? "");
         setCountryCode(restoreCountryCode(d.countryCode));
         setCustomFavicon(d.customFavicon ?? "");
         setShowOnLeaderboard(d.showOnLeaderboard ?? true);
+        for (const field of ["name", "description", "category", "faviconUrl"] as const) autofill.edit(field);
         // Store for auto-submit once speedResult state is applied
         autoSubmitRef.current = justUpgraded ? {
           url: d.url ?? "",
           name: d.name ?? "",
           desc: d.desc ?? "",
           twitter: d.twitter ?? (user?.twitterHandle || ""),
-          category: d.category ?? "other",
+          category: findCategory(d.category ?? "")?.slug ?? "",
           countryCode: restoreCountryCode(d.countryCode),
           customFavicon: d.customFavicon ?? "",
           showOnLeaderboard: d.showOnLeaderboard ?? true,
@@ -190,67 +177,14 @@ export function SubmitPageForm({ user }: Props) {
 
       const domain = getDomain(data.url);
       const favicon = getFaviconUrl(data.url);
-      fetch(`/api/submit?action=metadata&url=${encodeURIComponent(data.url)}`)
-        .then(r => r.ok ? r.json() : null)
-        .then(meta => {
-          const title = meta?.title ? meta.title.substring(0, 60) : domain;
-          const description = meta?.description ? meta.description.substring(0, 200) : "";
-          setSiteMeta({ title, description, favicon, domain });
-          setName(title);
-          setDesc(description);
-        })
-        .catch(() => {
-          setSiteMeta({ title: domain, description: "", favicon, domain });
-          setName(domain);
-        });
+      setSiteMeta({ title: domain, description: "", favicon, domain });
+      autofill.populate(null, data.url);
+      void autofill.refresh(data.url);
     } catch {
       // ignore parse errors
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Progress animation
-  useEffect(() => {
-    if (!testing) {
-      setCurrentStage(0);
-      setProgress(0);
-      if (stageTimeout.current) clearTimeout(stageTimeout.current);
-      if (progressRef.current) clearInterval(progressRef.current);
-      return;
-    }
-
-    let stage = 0;
-    setCurrentStage(0);
-    setProgress(0);
-
-    function advanceStage() {
-      if (stage < ANALYSIS_STAGES.length - 1) {
-        stage++;
-        setCurrentStage(stage);
-        const delay = 1500 + Math.random() * 2000;
-        stageTimeout.current = setTimeout(advanceStage, delay);
-      }
-    }
-    stageTimeout.current = setTimeout(advanceStage, 2000);
-
-    progressRef.current = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 98) return 98;
-        const increment =
-          prev < 30 ? 1.2 :
-          prev < 60 ? 0.8 :
-          prev < 85 ? 0.4 :
-          prev < 92 ? 0.2 :
-          0.05;
-        return Math.min(prev + increment, 98);
-      });
-    }, 200);
-
-    return () => {
-      if (stageTimeout.current) clearTimeout(stageTimeout.current);
-      if (progressRef.current) clearInterval(progressRef.current);
-    };
-  }, [testing]);
 
   async function signInWithGoogle() {
     await signIn("google", { callbackUrl: "/submit" });
@@ -271,6 +205,8 @@ export function SubmitPageForm({ user }: Props) {
     }
 
     setTesting(true);
+    setPreparationStatus("Preparing your measurement request.");
+    autofill.reset();
     setTestError("");
     setSpeedResult(null);
     setSiteMeta(null);
@@ -279,11 +215,8 @@ export function SubmitPageForm({ user }: Props) {
     const favicon = getFaviconUrl(testUrl);
 
     try {
-      const prepared = await prepareWebsite(testUrl);
+      const prepared = await prepareWebsite(testUrl, setPreparationStatus);
       const speedData = prepared.mobile.result;
-
-      setProgress(100);
-      await new Promise((r) => setTimeout(r, 300));
 
       setSpeedResult({
         score: speedData.score,
@@ -321,12 +254,11 @@ export function SubmitPageForm({ user }: Props) {
       let description = "";
       if (prepared.metadata) {
         if (prepared.metadata.title) title = prepared.metadata.title.substring(0, 60);
-        if (prepared.metadata.description) description = prepared.metadata.description.substring(0, 200);
+        if (prepared.metadata.description) description = prepared.metadata.description.substring(0, 500);
       }
 
       setSiteMeta({ title, description, favicon, domain });
-      setName(title);
-      setDesc(description);
+      autofill.populate(prepared.metadata, testUrl);
     } catch (err) {
       setTestError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -335,7 +267,7 @@ export function SubmitPageForm({ user }: Props) {
   }
 
   async function handleUpgradeFromNudge() {
-    if (!validateCountry()) return;
+    if (!validateDetails()) return;
     // Save the full pending submission to sessionStorage before going to checkout
     sessionStorage.setItem("tfwPendingSubmit", JSON.stringify({
       url, name, desc, twitter, category, countryCode,
@@ -360,9 +292,11 @@ export function SubmitPageForm({ user }: Props) {
     d: { url: string; name: string; desc: string; twitter: string; category: string; countryCode: string | null; customFavicon: string; showOnLeaderboard: boolean; rawSpeedData: RawSpeedData | null },
     isProUpgrade = false,
   ) => {
-    if (!d.countryCode) {
-      setCountryError("Choose your product's country of origin to finish your submission.");
-      document.getElementById("submit-country")?.focus();
+    const validation = listingDetailsSchema.safeParse({ ...d, description: d.desc, twitterHandle: d.twitter, faviconUrl: d.customFavicon });
+    if (!validation.success) {
+      setSubmitError(validation.error.issues[0]?.message ?? "Complete the required website details.");
+      if (!d.countryCode) setCountryError("Choose your product's country of origin to finish your submission.");
+      document.getElementById(`submit-${validation.error.issues[0]?.path[0] === "countryCode" ? "country" : String(validation.error.issues[0]?.path[0])}`)?.focus();
       return;
     }
     setSubmitting(true);
@@ -375,7 +309,7 @@ export function SubmitPageForm({ user }: Props) {
           description: d.desc,
           twitterHandle: d.twitter || undefined,
           category: d.category,
-          countryCode: d.countryCode,
+          countryCode: validation.data.countryCode,
           faviconUrl: d.customFavicon || undefined,
           isListed: d.showOnLeaderboard,
         });
@@ -396,7 +330,7 @@ export function SubmitPageForm({ user }: Props) {
 
   async function handleSubmit(e?: React.FormEvent) {
     if (e) e.preventDefault();
-    if (!validateCountry()) return;
+    if (!validateDetails()) return;
     setShowNudge(false);
     setSubmitting(true);
     setSubmitError("");
@@ -431,7 +365,7 @@ export function SubmitPageForm({ user }: Props) {
 
   async function handleVerifyAndSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!validateCountry()) return;
+    if (!validateDetails()) return;
     const slug = slugify(name) || slugify(getDomain(url));
     setVerifyError("");
 
@@ -460,22 +394,29 @@ export function SubmitPageForm({ user }: Props) {
     await handleSubmit();
   }
 
-  function validateCountry() {
-    if (countryCode) return true;
-    setCountryError("Choose your product's country of origin.");
-    document.getElementById("submit-country")?.focus();
+  function validateDetails() {
+    const result = listingDetailsSchema.safeParse({ url, name, description: desc, twitterHandle: twitter, category, countryCode, faviconUrl: customFavicon });
+    if (result.success) { setCountryError(""); return true; }
+    const issue = result.error.issues[0];
+    setSubmitError(issue.message);
+    if (result.error.issues.some(value => value.path[0] === "countryCode")) setCountryError("Choose your product's country of origin.");
+    document.getElementById(`submit-${issue.path[0] === "countryCode" ? "country" : String(issue.path[0])}`)?.focus();
     return false;
   }
 
   function resetAll() {
+    autofill.reset();
     setUrl("");
     setSpeedResult(null);
     setRawSpeedData(null);
     setSiteMeta(null);
     setName("");
     setDesc("");
+    setCategory(findCategory(searchParams.get("category") ?? "")?.slug ?? "");
     setCountryCode(null);
     setCountryError("");
+    setBadgeVerified(false);
+    setVerifyError("");
     setCustomFavicon("");
     setShowOnLeaderboard(true);
     setSubmitted(false);
@@ -597,11 +538,12 @@ export function SubmitPageForm({ user }: Props) {
         )}
         <div className="bg-bg-main border border-border rounded-[14px] p-6">
           <div className="mb-1.5">
-            <label className="block text-[0.8rem] font-semibold text-text-secondary mb-1.5">
-              Website URL
+            <label htmlFor="submit-url" className="block text-[0.8rem] font-semibold text-text-secondary mb-1.5">
+              Website URL <span className="font-normal">(required)</span>
             </label>
             <input
               type="url"
+              id="submit-url" name="url" autoComplete="url" inputMode="url" required maxLength={4096} spellCheck={false} autoCapitalize="none"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && !testing && runTest()}
@@ -636,24 +578,12 @@ export function SubmitPageForm({ user }: Props) {
               </div>
             </div>
             <div className="max-w-full mx-auto">
-              <div className="h-1.5 bg-bg-card rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-accent to-accent-bright rounded-full transition-all duration-300 ease-out"
-                  style={{ width: `${progress}%` }}
-                />
-              </div>
-              <div className="flex justify-between mt-2.5">
-                <span className="text-[0.78rem] text-text-secondary">
-                  {ANALYSIS_STAGES[currentStage]}...
-                </span>
-                <span className="text-[0.7rem] text-text-muted font-mono">
-                  {Math.round(progress)}%
-                </span>
+              <div role="status" aria-live="polite" className="flex items-center justify-center gap-2.5 text-[0.78rem] text-text-secondary">
+                <span aria-hidden="true" className="h-4 w-4 shrink-0 rounded-full border-2 border-accent/25 border-t-accent motion-safe:animate-spin" />
+                <span>{preparationStatus}</span>
               </div>
               <p className="text-[0.7rem] text-text-muted mt-3 text-center">
-                {progress > 85
-                  ? "Almost done, computing your final score"
-                  : "This usually takes 30-60 seconds"}
+                We’ll show your results when both device measurements are complete.
               </p>
             </div>
           </div>
@@ -710,7 +640,7 @@ export function SubmitPageForm({ user }: Props) {
             />
           </div>
           <div className="min-w-0">
-            <div className="font-bold text-[0.95rem]">{siteMeta?.title}</div>
+            <div className="font-bold text-[0.95rem]">{name || siteMeta?.title}</div>
             <div className="font-mono text-[0.75rem] text-text-muted truncate">{url}</div>
           </div>
           <button
@@ -752,6 +682,8 @@ export function SubmitPageForm({ user }: Props) {
             handleVerifyAndSubmit(e);
           }
         }}>
+          <AutofillDetails loading={autofill.loading} notice={autofill.notice} disabled={submitting || verifying}
+            onFill={() => { setSubmitError(""); setBadgeVerified(false); void autofill.refresh(url); }} />
           {/* Submitting as */}
           <div className="flex items-center gap-2.5 bg-bg-card border border-border rounded-lg px-3.5 py-2.5 mb-3.5">
             {user.avatarUrl ? (
@@ -767,25 +699,27 @@ export function SubmitPageForm({ user }: Props) {
 
           <div className="grid grid-cols-2 gap-3 mb-3.5 max-[480px]:grid-cols-1">
             <div>
-              <label className="block text-[0.75rem] font-semibold text-text-secondary mb-1">
-                Website Name
+              <label htmlFor="submit-name" className="block text-[0.75rem] font-semibold text-text-secondary mb-1">
+                Website Name <span className="font-normal">(required)</span>
               </label>
               <input
                 type="text"
+                id="submit-name" name="name" autoComplete="organization" minLength={2} maxLength={60}
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => { autofill.edit("name"); setName(e.target.value); setBadgeVerified(false); setSubmitError(""); }}
                 required
                 className="w-full px-3 py-2 rounded-lg bg-bg-card border border-border text-text-primary text-[0.82rem] font-body outline-none transition-colors focus:border-accent placeholder:text-text-muted"
               />
             </div>
             <div>
-              <label className="block text-[0.75rem] font-semibold text-text-secondary mb-1">
+              <label htmlFor="submit-twitterHandle" className="block text-[0.75rem] font-semibold text-text-secondary mb-1">
                 X handle <span className="font-normal text-text-muted">(optional)</span>
               </label>
               <input
                 type="text"
+                id="submit-twitterHandle" name="twitterHandle" autoComplete="off" maxLength={30} pattern="@?[a-zA-Z0-9_]*"
                 value={twitter}
-                onChange={(e) => setTwitter(e.target.value)}
+                onChange={(e) => { setTwitter(e.target.value); setSubmitError(""); }}
                 placeholder="@username"
                 className="w-full px-3 py-2 rounded-lg bg-bg-card border border-border text-text-primary text-[0.82rem] font-mono outline-none transition-colors focus:border-accent placeholder:text-text-muted"
               />
@@ -793,21 +727,22 @@ export function SubmitPageForm({ user }: Props) {
           </div>
 
           <div className="mb-3.5">
-            <label className="block text-[0.75rem] font-semibold text-text-secondary mb-1">
-              Short Description
+            <label htmlFor="submit-description" className="block text-[0.75rem] font-semibold text-text-secondary mb-1">
+              Short Description <span className="font-normal">(required)</span>
             </label>
-            <input
-              type="text"
+            <textarea
+              id="submit-description" name="description" required minLength={10} rows={3} aria-describedby="submit-description-help"
               value={desc}
-              onChange={(e) => setDesc(e.target.value)}
+              onChange={(e) => { autofill.edit("description"); setDesc(e.target.value); setSubmitError(""); }}
               placeholder="What does your site do?"
-              maxLength={200}
+              maxLength={500}
               className="w-full px-3 py-2 rounded-lg bg-bg-card border border-border text-text-primary text-[0.82rem] font-body outline-none transition-colors focus:border-accent placeholder:text-text-muted"
             />
+            <p id="submit-description-help" className="mt-1 text-[0.68rem] text-text-secondary">10–500 characters. {desc.length}/500</p>
           </div>
 
           <div className="mb-3.5">
-            <label className="block text-[0.75rem] font-semibold text-text-secondary mb-1">
+            <label htmlFor="submit-faviconUrl" className="block text-[0.75rem] font-semibold text-text-secondary mb-1">
               Logo / Favicon URL <span className="font-normal text-text-muted">(optional)</span>
             </label>
             <div className="flex items-center gap-3">
@@ -821,8 +756,9 @@ export function SubmitPageForm({ user }: Props) {
               </div>
               <input
                 type="url"
+                id="submit-faviconUrl" name="faviconUrl" autoComplete="off" maxLength={4096}
                 value={customFavicon}
-                onChange={(e) => setCustomFavicon(e.target.value)}
+                onChange={(e) => { autofill.edit("faviconUrl"); setCustomFavicon(e.target.value); setSubmitError(""); }}
                 placeholder="https://yoursite.com/logo.png"
                 className="flex-1 px-3 py-2 rounded-lg bg-bg-card border border-border text-text-primary text-[0.82rem] font-mono outline-none transition-colors focus:border-accent placeholder:text-text-muted"
               />
@@ -832,8 +768,8 @@ export function SubmitPageForm({ user }: Props) {
             </p>
           </div>
 
-          <CategorySelect id="submit-category" value={category} onChange={setCategory} />
-          <CountrySelect id="submit-country" value={countryCode} onChange={(code) => { setCountryCode(code); setCountryError(""); }} disabled={submitting || verifying} error={countryError} />
+          <CategorySelect id="submit-category" value={category} onChange={(value) => { autofill.edit("category"); setCategory(value); setSubmitError(""); }} />
+          <CountrySelect id="submit-country" value={countryCode} onChange={(code) => { setCountryCode(code); setCountryError(""); setSubmitError(""); }} disabled={submitting || verifying} error={countryError} />
 
           {/* Leaderboard visibility toggle — only for Pro users (free always listed) */}
           {user?.isPro && (

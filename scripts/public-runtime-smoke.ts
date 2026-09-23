@@ -75,8 +75,12 @@ try {
   await run(["scripts/verify-public.mjs"], env);
   phase = "authenticated-browser";
   await run(["scripts/verify-private.mjs"], { ...env, SMOKE_ADMIN_USER_ID: user, SMOKE_FOUNDER_USER_ID: collaborator, SMOKE_PRIVATE_USER_ID: privateUser, SMOKE_SITE_ID: site, SMOKE_FOUNDER_SLUG: "smoke-collaborator" });
+  phase = "submit-form";
+  await run(["scripts/verify-submit.mjs"], { ...env, SMOKE_ADMIN_USER_ID: user });
   phase = "bounded-load";
   await run(["scripts/verify-load.mjs"], env);
+  phase = "performance-interactions";
+  await run(["scripts/verify-performance.mjs"], env);
   phase = "lighthouse";
   if (process.env.SMOKE_LIGHTHOUSE === "true") await run(["scripts/verify-lighthouse.mjs"], env);
 } catch {

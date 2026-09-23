@@ -94,8 +94,10 @@ export class ScreenshotRepository {
     });
   }
   async objectsToDelete(): Promise<{ object_key: string; visibility: "public" | "private" }[]> {
+    // An upload can finish after capture expiry. Keep its ledger until the
+    // abandoned-upload grace and lease checks pass, including expired captures.
     return this.sql<{ object_key: string; visibility: "public" | "private" }[]>`SELECT o.object_key,o.visibility FROM screenshot_objects o
-      JOIN screenshot_captures c ON c.id=o.capture_id WHERE c.expires_at<=now() OR
+      JOIN screenshot_captures c ON c.id=o.capture_id WHERE (o.committed=true AND c.expires_at<=now()) OR
       (o.committed=false AND o.created_at<now()-interval '10 minutes' AND (c.lease_token IS DISTINCT FROM o.lease_token OR c.lease_until<=now()))
       ORDER BY o.created_at LIMIT 16`;
   }

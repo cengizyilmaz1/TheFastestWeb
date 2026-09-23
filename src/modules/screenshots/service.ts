@@ -7,11 +7,12 @@ import { backgroundJobs, jobEvents, sites, siteScreenshots, type BackgroundJob }
 import { requestScreenshot, getScreenshot, type ScreenshotResponse } from "@/infrastructure/screenshots/client";
 import { normalizePublicUrl } from "@/lib/security/public-url";
 import { AppError } from "@/lib/http/errors";
+import { PUBLIC_SCREENSHOT_LIFECYCLES } from "./policy";
 
 const profile = z.object({ device: z.enum(["desktop", "mobile"]).default("desktop"), mode: z.enum(["viewport", "fullpage"]).default("viewport"),
   history: z.enum(["none", "daily", "weekly", "monthly"]).default("daily") }).strict();
 const payloadSchema = profile.extend({ siteId: z.uuid(), sourceUrl: z.string().max(2048) }).strict();
-const publicLifecycle = ["active"] as const;
+const publicLifecycle = PUBLIC_SCREENSHOT_LIFECYCLES;
 function matchesSource(current: string, expected: string): boolean {
   try { return normalizePublicUrl(current) === expected; } catch { return false; }
 }

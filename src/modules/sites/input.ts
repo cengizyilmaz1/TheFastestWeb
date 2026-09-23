@@ -1,19 +1,10 @@
 import { z } from "zod";
 import { normalizePublicUrl } from "@/lib/security/public-url";
 import { AppError } from "@/lib/http/errors";
-import { categorySlugs } from "@/modules/catalog/categories";
-import { isCountryCode } from "@/modules/catalog/countries";
-
-const countryCodeSchema = z.string({ error: "Choose your product's country of origin." })
-  .refine(isCountryCode, "Choose your product's country of origin.");
+import { countryCodeSchema, listingFields } from "./listing-fields";
 
 export const submissionSchema = z.object({
-  url: z.string().trim().min(1).max(4096),
-  name: z.string().trim().min(2).max(60),
-  description: z.string().trim().min(10).max(500),
-  twitterHandle: z.string().trim().max(30).regex(/^@?[a-zA-Z0-9_]*$/).optional(),
-  category: z.enum(categorySlugs),
-  faviconUrl: z.string().max(4096).optional(),
+  ...listingFields,
   isListed: z.boolean().default(true),
   testResultId: z.uuid(),
   desktopTestResultId: z.uuid().optional(),

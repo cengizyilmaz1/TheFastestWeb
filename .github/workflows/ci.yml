@@ -86,7 +86,9 @@ jobs:
           path: |
             test-results/public-smoke/
             test-results/private-smoke/
+            test-results/submit-smoke/
             test-results/load-smoke.json
+            test-results/performance-interactions.json
       - name: Remove disposable Redis fixture
         if: always()
         run: docker rm --force --volumes tfw-ci-redis || true

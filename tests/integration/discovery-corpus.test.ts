@@ -30,7 +30,7 @@ describe("public discovery pagination on PostgreSQL", () => {
     expect(new Set(records.flat().map((row) => row.slug)).size).toBe(401);
     expect(JSON.stringify(records)).not.toMatch(/owner_name|ownerId|Never export|Private unpublished|hidden-/);
     const xml = await sitemapIndex();
-    expect(xml).toContain("/sitemaps/sites/2.xml"); expect(xml).not.toContain("/sitemaps/sites/3.xml");
+    expect(xml).toContain("/sitemap-sites-3.xml"); expect(xml).not.toContain("/sitemap-sites-4.xml");
     for (const [page, expected] of [[0, 200], [1, 200], [2, 1]]) {
       expect((await sitemapDocument("sites", page)).match(/<url>/g)).toHaveLength(expected);
       expect((await referencePart("sites", page))!.body.match(/Canonical report:/g)).toHaveLength(expected);

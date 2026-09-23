@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 import { submissionSchema, publicationSchema } from "./input";
 const valid = { url: "https://example.com", name: "Example", description: "A real website description.", category: "other", testResultId: "a4327a71-13e8-4f65-bdfc-c5d8ad16f8b1" };
 describe("submission contract", () => {
+  it.each([{ name: "" }, { name: " " }, { name: "a" }, { description: " " }, { description: "short" }, { category: "" }, { url: " " }])("requires complete public listing details: %j", (invalid) => {
+    expect(submissionSchema.safeParse({ ...valid, ...invalid }).success).toBe(false);
+  });
+  it("accepts omitted external handles and custom assets and trims required text", () => {
+    expect(submissionSchema.parse({ ...valid, name: "  Example  ", description: "  A real website description.  " })).toMatchObject({ name: "Example", description: "A real website description." });
+  });
   it("requires a server-issued test ID and rejects arbitrary score fields", () => {
     expect(submissionSchema.safeParse(valid).success).toBe(true);
     for (const extra of [{ speedData: { score: 100 } }, { score: 100 }, { tier: "pro" }, { ownerId: "someone-else" }, { badgeVerified: true }]) {

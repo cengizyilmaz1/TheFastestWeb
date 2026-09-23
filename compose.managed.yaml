@@ -136,6 +136,7 @@ services:
     environment:
       <<: *job-environment
       SCHEDULER_ENABLED: ${SCHEDULER_ENABLED:-false}
+      SCREENSHOTS_ENABLED: ${SCREENSHOTS_ENABLED:-false}
       SCHEDULER_INTERVAL_SECONDS: ${SCHEDULER_INTERVAL_SECONDS:-60}
       SCHEDULER_HEALTH_PORT: ${SCHEDULER_HEALTH_PORT:-3002}
     command: ["node", "dist/jobs/scheduler.cjs"]

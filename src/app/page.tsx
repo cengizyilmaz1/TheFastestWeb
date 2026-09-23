@@ -1,5 +1,6 @@
 import { pageMetadata } from "@/lib/seo/metadata";
 import Link from "next/link";
+import Image from "next/image";
 import { Suspense } from "react";
 import { unstable_cache } from "next/cache";
 import { LeaderboardTable } from "@/components/leaderboard/LeaderboardTable";
@@ -31,7 +32,7 @@ export const revalidate = 300;
 const getSites = unstable_cache(
   async (): Promise<LegacyLeaderboardSite[]> => {
     const db = getDb();
-    if (!db) return [];
+    if (!db) throw new Error("Leaderboard database unavailable");
 
     const result = await db
       .select(legacyLeaderboardProjection)
@@ -40,9 +41,6 @@ const getSites = unstable_cache(
       .orderBy(...legacyLeaderboardOrder())
       .limit(50);
 
-    // Throw on empty so unstable_cache doesn't store the failure —
-    // next request will retry the DB instead of serving cached [].
-    if (result.length === 0) throw new Error("getSites: empty result");
     return result;
   },
   ["original-public-leaderboard-sites"],
@@ -52,50 +50,37 @@ const getSites = unstable_cache(
 const getStats = unstable_cache(
   async (): Promise<{ total: number; avgTop10: number }> => {
     const db = getDb();
-    if (db) {
-      try {
-        const [{ count }] = await db
-          .select({ count: sql<number>`count(*)::int` })
-          .from(sites)
-          .where(publiclyActive());
-
-        const top10 = await db
-          .select({ score: sites.currentScore })
-          .from(sites)
-          .where(publiclyActive())
-          .orderBy(desc(sites.currentScore))
-          .limit(10);
-
-        const avg = top10.length > 0
-          ? top10.reduce((sum, r) => sum + r.score, 0) / top10.length
-          : 0;
-
-        return { total: count, avgTop10: Math.round(avg * 10) / 10 };
-      } catch {
-        // fallback below
-      }
-    }
-    return { total: 0, avgTop10: 0 };
+    if (!db) throw new Error("Leaderboard database unavailable");
+    const [counts, top10] = await Promise.all([
+      db.select({ count: sql<number>`count(*)::int` }).from(sites).where(publiclyActive()),
+      db.select({ score: sites.currentScore }).from(sites).where(publiclyActive())
+        .orderBy(desc(sites.currentScore)).limit(10),
+    ]);
+    const avg = top10.length > 0
+      ? top10.reduce((sum, row) => sum + row.score, 0) / top10.length
+      : 0;
+    return { total: counts[0].count, avgTop10: Math.round(avg * 10) / 10 };
   },
   ["leaderboard-stats"],
   { revalidate: 300 }
 );
 
-async function LeaderboardSection() {
-  let siteList: LegacyLeaderboardSite[] = [];
-  try {
-    siteList = await getSites();
-  } catch {
-    // DB error — render empty table, client will load via /api/sites
-  }
+function LeaderboardSection({ siteList, total, unavailable }: { siteList: LegacyLeaderboardSite[]; total: number | undefined; unavailable: boolean }) {
   const jsonLd = { ...webPageSchema({ path: "/", name: "Website speed rankings", description: SITE_DESCRIPTION, type: "CollectionPage" }),
     mainEntity: { "@type": "ItemList", itemListOrder: "https://schema.org/ItemListOrderDescending", numberOfItems: siteList.length,
       itemListElement: siteList.map((site, index) => ({ "@type": "ListItem", position: index + 1, name: site.name, url: siteUrl(`/site/${encodeURIComponent(site.slug)}`) })) } };
-  return <><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(jsonLd) }} /><LeaderboardTable initialSites={siteList} /></>;
+  return <><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(jsonLd) }} /><LeaderboardTable initialSites={siteList} initialHasMore={total === undefined ? undefined : total > siteList.length} initialError={unavailable} /></>;
 }
 
 export default async function HomePage() {
-  const stats = await getStats();
+  // Start independent cached reads together. Render the table with the hero so
+  // a late empty Suspense boundary cannot move the footer through the viewport.
+  // Failure fallbacks live outside the data cache: an outage must not become a
+  // cached zero count or an empty directory for the next five minutes.
+  const [stats, listing] = await Promise.all([getStats().catch(() => null), getSites().then(
+    siteList => ({ siteList, unavailable: false }),
+    () => ({ siteList: [] as LegacyLeaderboardSite[], unavailable: true }),
+  )]);
 
   return (
     <>
@@ -161,10 +146,12 @@ export default async function HomePage() {
                 rel="noopener noreferrer"
                 title={`@${handle}`}
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
+                <Image
                   src={`/avatars/${handle}.${ext}`}
                   alt={handle}
+                  width={28}
+                  height={28}
+                  sizes="28px"
                   className="w-7 h-7 rounded-full border-2 border-bg-deep object-cover hover:scale-110 transition-transform"
                 />
               </a>
@@ -179,23 +166,21 @@ export default async function HomePage() {
         <div className="flex items-center gap-1.5 text-[0.8rem] text-text-muted">
           <div className="w-1.5 h-1.5 rounded-full bg-green animate-pulse-dot" />
           <strong className="text-text-secondary font-mono font-semibold">
-            {stats.total.toLocaleString()}
+            {stats ? stats.total.toLocaleString() : "—"}
           </strong>
           &nbsp;websites indexed
         </div>
         <div className="flex items-center gap-1.5 text-[0.8rem] text-text-muted">
           <div className="w-1.5 h-1.5 rounded-full bg-green animate-pulse-dot" />
           <strong className="text-text-secondary font-mono font-semibold">
-            {stats.avgTop10}
+            {stats ? stats.avgTop10 : "—"}
           </strong>
           &nbsp;avg top-10 score
         </div>
       </div>
 
       {/* Leaderboard */}
-      <Suspense fallback={null}>
-        <LeaderboardSection />
-      </Suspense>
+      <LeaderboardSection siteList={listing.siteList} total={stats?.total} unavailable={listing.unavailable} />
 
     </>
   );

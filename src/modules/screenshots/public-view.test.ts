@@ -21,7 +21,7 @@ describe("public screenshot publication", () => {
 
   it.each([
     { isListed: false }, { archivedAt: new Date("2026-09-19") },
-    ...["verified", "unreachable", "redirected", "parked", "pending", "rejected"].map((lifecycle) => ({ lifecycle })),
+    ...["unreachable", "redirected", "parked", "pending", "rejected"].map((lifecycle) => ({ lifecycle })),
     { status: "expired" }, { status: "removed" }, { contentType: "image/jpeg" },
   ])("hides a capture when its publication state is %j", (state) => {
     expect(publicScreenshot({ ...ready, ...state }, config, now)).toBeNull();
@@ -32,6 +32,11 @@ describe("public screenshot publication", () => {
       expect(publicScreenshot({ ...ready, siteUrl }, config, now)).toBeNull();
     }
     expect(publicScreenshot({ ...ready, siteUrl: "https://example.com/?utm_source=directory#preview" }, config, now)).not.toBeNull();
+  });
+
+  it("also publishes verified listings that remain publicly listed", () => {
+    expect(publicScreenshot({ ...ready, lifecycle: "verified" }, config, now)).not.toBeNull();
+    expect(publicScreenshot({ ...ready, lifecycle: "verified", isListed: false }, config, now)).toBeNull();
   });
 
   it.each([

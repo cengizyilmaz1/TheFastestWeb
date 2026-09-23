@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { AdPurchaseModal } from "@/components/ads/AdPurchaseModal";
+import dynamic from "next/dynamic";
+
+const AdPurchaseModal = dynamic(() => import("@/components/ads/AdPurchaseModal").then(module => module.AdPurchaseModal));
 
 interface AdCTAProps {
   position?: "left" | "right";
@@ -21,7 +23,7 @@ export function AdCTA({ position }: AdCTAProps) {
           Advertise
         </div>
       </button>
-      <AdPurchaseModal open={modalOpen} onClose={() => setModalOpen(false)} preferredPosition={position} />
+      {modalOpen && <AdPurchaseModal open onClose={() => setModalOpen(false)} preferredPosition={position} />}
     </>
   );
 }

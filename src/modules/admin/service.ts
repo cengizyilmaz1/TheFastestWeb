@@ -11,6 +11,7 @@ import { recordAnalyticsEvent } from "@/modules/analytics/events";
 import { enqueueNotification } from "@/modules/notifications/service";
 import { categorySlugs } from "@/modules/catalog/categories";
 import { changeSitePrimaryCategory, readSiteCategoryState } from "./site-category";
+import { enqueueInitialScreenshot } from "@/modules/screenshots/initial";
 
 type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 const reason = z.string().trim().min(8).max(500);
@@ -131,7 +132,10 @@ export async function executeAdminAction(actor: AdminActor, raw: unknown, token:
     if (action.action === "site.lifecycle") {
       const [published] = await tx.update(sites).set({ lifecycle: action.lifecycle, isListed: action.lifecycle === "active",
         archivedAt: action.lifecycle === "archived" ? sql`now()` : null }).where(eq(sites.id, action.siteId))
-        .returning({ ownerId: sites.ownerId, name: sites.name, slug: sites.slug });
+        .returning();
+      if (published && action.lifecycle === "active" && (before?.lifecycle !== "active" || before?.is_listed !== true || before?.archived_at)) {
+        await enqueueInitialScreenshot(tx, published);
+      }
       if (action.lifecycle === "active" && before?.lifecycle !== "active" && published?.ownerId) {
         await enqueueNotification({ userId: published.ownerId, type: "site_approved", eventKey: `admin:${preview.nonce}:published`,
           variables: { siteName: published.name.slice(0, 200), actionPath: `/site/${encodeURIComponent(published.slug)}` } }, tx);

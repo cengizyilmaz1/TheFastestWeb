@@ -1,8 +1,6 @@
 import { and, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { sites, speedTests, users, verifiedSpeedTests, categories, countries, technologies, founders, siteCategories, siteTechnologies, founderSites, siteSocialLinks, backgroundJobs, jobEvents } from "@/db/schema";
-import { getEnv } from "@/config/env";
-import { randomUUID } from "node:crypto";
+import { sites, speedTests, users, verifiedSpeedTests, categories, countries, technologies, founders, siteCategories, siteTechnologies, founderSites, siteSocialLinks, backgroundJobs } from "@/db/schema";
 import { getVerifiedBadge } from "@/infrastructure/browser/badge-verification";
 import { AppError } from "@/lib/http/errors";
 import { slugify } from "@/lib/utils";
@@ -16,6 +14,7 @@ import { loadSiteMetadata, type SiteMetadata } from "./metadata";
 import { UnsafeUrlError } from "@/lib/security/public-url";
 import { legacyCategory } from "@/modules/catalog/categories";
 import { isCountryCode } from "@/modules/catalog/countries";
+import { enqueueInitialScreenshot } from "@/modules/screenshots/initial";
 
 export async function createListing(userId: string, input: SubmissionInput) {
   if ((input.preparationId && !input.countryCode) || (input.countryCode && !isCountryCode(input.countryCode))) {
@@ -162,11 +161,7 @@ export async function createListing(userId: string, input: SubmissionInput) {
         testedAt: desktopProof.createdAt, sampleCount: 2, metricsSource: "lab" });
       await tx.update(verifiedSpeedTests).set({ siteId: site.id }).where(eq(verifiedSpeedTests.id, desktopProof.id));
     }
-    if (input.isListed && getEnv().SCREENSHOTS_ENABLED) {
-      const [capture] = await tx.insert(backgroundJobs).values({ siteId: site.id, queue: "screenshots", kind: "site.screenshot.capture", jobKey: `screenshot:${site.id}:initial`,
-        payload: { siteId: site.id, sourceUrl: url, device: "desktop", mode: "viewport", history: "daily" }, correlationId: randomUUID(), maxAttempts: getEnv().JOB_MAX_ATTEMPTS }).returning();
-      await tx.insert(jobEvents).values({ jobId: capture.id, event: "scheduled", actor: "service", attempt: 0 });
-    }
+    await enqueueInitialScreenshot(tx, site);
     return site;
   });
 }

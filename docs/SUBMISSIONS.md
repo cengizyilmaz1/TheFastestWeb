@@ -2,9 +2,15 @@
 
 The submission page has three steps: submit a URL, review editable details and measurements, then publish. A URL does not create a public listing by itself. Google authentication links the preparation and its measurement proofs to the account.
 
+Website URL, name (2–60 characters), description (10–500 characters), category and country of origin are required. Browser and publication API share the same text/category/country rules; whitespace-only details fail before publication or checkout. X handles and custom favicon URLs remain optional. Category starts unselected unless a valid category was supplied by navigation or suggested by website evidence; country is always an explicit choice.
+
+Preparation fills the website name, description, suggested category and favicon where available. **Auto-fill from website** can refresh these suggestions through the authenticated, rate-limited metadata endpoint and its existing public-address/DNS/redirect protections. Edited fields, including fields the user deliberately cleared, are preserved. Responses from an earlier request or URL are ignored; failed lookups permit manual entry. The signed-in account supplies identity and an existing X handle, never a guessed product country.
+
 ## Durable preparation
 
 `POST /api/submissions` validates the origin, authenticates the account, applies per-account and global Redis quotas, and inserts a `submission.prepare` job into the PostgreSQL outbox. Repeated requests for the same account and normalized URL reuse an active or recently completed preparation for fifteen minutes. The performance worker processes it through the existing leased job ledger. The page polls the owner-only status endpoint; there is no simulated percentage or invented measurement.
+
+While waiting, both submission forms show an indeterminate indicator and the returned queue state. A device is marked ready only when its current server-issued proof is present. Queue waits and incomplete preparation never advance an invented percentage or imply that the final score has been calculated.
 
 Preparation performs the following bounded work:
 

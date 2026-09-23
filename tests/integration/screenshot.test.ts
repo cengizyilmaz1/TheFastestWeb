@@ -121,6 +121,44 @@ describe("durable central screenshot jobs", () => {
     await cleanExpiredCaptures(repository, storage);
     expect((await repository.find(config.clients[0].id, receipt.id))?.status).toBe("expired");
   });
+  it("keeps expired upload ledgers until both the lease and upload grace have elapsed", async () => {
+    const receipt = await repository.create(config.clients[0], prepareCapture({ url: request.url, visibility: "public" }), randomUUID());
+    let releaseUpload!: () => void, uploadStarted!: () => void;
+    const uploading = new Promise<void>((resolve) => { uploadStarted = resolve; });
+    const heldUpload = new Promise<void>((resolve) => { releaseUpload = resolve; });
+    const delayedStorage: ScreenshotStorage = { ...storage, put: async (input) => {
+      if (input.visibility === "public") { uploadStarted(); await heldUpload; }
+      return storage.put(input);
+    } };
+    const processing = createCaptureProcessor(config, repository, async () => images, delayedStorage)(receipt.id);
+    try {
+      await uploading;
+      await owner`UPDATE screenshot_captures SET expires_at=now()-interval '1 second' WHERE id=${receipt.id}`;
+      await owner`UPDATE screenshot_objects SET created_at=now()-interval '11 minutes' WHERE capture_id=${receipt.id}`;
+      await cleanExpiredCaptures(repository, storage);
+      expect(storage.remove).not.toHaveBeenCalled();
+      expect(await owner`SELECT object_key FROM screenshot_objects WHERE capture_id=${receipt.id}`).toHaveLength(2);
+
+      // Losing the lease does not make a recent, still-running PUT safe to delete.
+      await owner`UPDATE screenshot_objects SET created_at=now() WHERE capture_id=${receipt.id}`;
+      await owner`UPDATE screenshot_captures SET lease_until=now()-interval '1 second' WHERE id=${receipt.id}`;
+      await cleanExpiredCaptures(repository, storage);
+      expect(storage.remove).not.toHaveBeenCalled();
+      expect(await owner`SELECT object_key FROM screenshot_objects WHERE capture_id=${receipt.id}`).toHaveLength(2);
+    } finally {
+      releaseUpload();
+      await processing;
+    }
+    // The late upload cannot commit, but its ledger survives to reclaim both buckets.
+    expect((await repository.find(config.clients[0].id, receipt.id))?.status).not.toBe("ready");
+    await owner`UPDATE screenshot_objects SET created_at=now()-interval '11 minutes' WHERE capture_id=${receipt.id}`;
+    await cleanExpiredCaptures(repository, storage);
+    expect(storage.remove).toHaveBeenCalledTimes(2);
+    expect(storage.remove).toHaveBeenCalledWith(expect.stringMatching(/\.jpg$/), "private");
+    expect(storage.remove).toHaveBeenCalledWith(expect.stringMatching(/\.webp$/), "public");
+    expect(await owner`SELECT object_key FROM screenshot_objects WHERE capture_id=${receipt.id}`).toHaveLength(0);
+    expect((await repository.find(config.clients[0].id, receipt.id))?.status).toBe("expired");
+  });
   it("rejects corrupted persisted requests before rendering or provider writes", async () => {
     const receipt = await repository.create(config.clients[0], request, randomUUID());
     await owner`UPDATE screenshot_captures SET request='{"url":"http://127.0.0.1"}'::jsonb WHERE id=${receipt.id}`;
@@ -128,6 +166,24 @@ describe("durable central screenshot jobs", () => {
     await createCaptureProcessor(config, repository, capture, storage)(receipt.id);
     expect(capture).not.toHaveBeenCalled(); expect(storage.put).not.toHaveBeenCalled();
     expect((await repository.find(config.clients[0].id, receipt.id))?.error_code).toBe("INVALID_REQUEST");
+  });
+  it("settles later deletion batches and expires other captures when an earlier object cannot be deleted", async () => {
+    const receipts = [];
+    for (let index = 0; index < 4; index++) {
+      const receipt = await repository.create(config.clients[0], prepareCapture({ url: `https://example.com/cleanup-${index}` }), randomUUID());
+      await createCaptureProcessor(config, repository, async () => images, storage)(receipt.id);
+      receipts.push(receipt);
+    }
+    await owner`UPDATE screenshot_captures SET expires_at=now()-interval '1 second'`;
+    const [blocked] = await repository.objectsToDelete();
+    const remove = vi.fn(async (key: string) => { if (key === blocked.object_key) throw new Error("Synthetic denied object"); });
+    await expect(cleanExpiredCaptures(repository, { ...storage, remove })).rejects.toThrow("cleanup incomplete");
+    expect(remove).toHaveBeenCalledTimes(8);
+    expect(await repository.objectsToDelete()).toEqual([blocked]);
+    const [counts] = await owner`SELECT count(*) FILTER(WHERE status='expired')::integer AS expired FROM screenshot_captures`;
+    expect(counts.expired).toBe(3);
+    await cleanExpiredCaptures(repository, storage);
+    expect(await owner`SELECT id FROM screenshot_captures WHERE status='expired'`).toHaveLength(receipts.length);
   });
   it("recovers lost Redis deliveries and never recaptures a terminal DB result", async () => {
     const receipt = await repository.create(config.clients[0], request, randomUUID());

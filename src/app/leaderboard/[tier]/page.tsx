@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { Metadata } from "next";
+import { cache } from "react";
 import Link from "next/link";
 import { getDb } from "@/db/index";
 import { sites } from "@/db/schema";
@@ -38,7 +39,7 @@ const TIERS: Record<string, { minScore: number; exactScore?: number; label: stri
   },
 };
 
-async function getSitesByTier(tier: string): Promise<LegacyLeaderboardSite[]> {
+const getSitesByTier = cache(async (tier: string): Promise<LegacyLeaderboardSite[]> => {
   const db = getDb();
   if (!db) return [];
   const config = TIERS[tier];
@@ -53,7 +54,7 @@ async function getSitesByTier(tier: string): Promise<LegacyLeaderboardSite[]> {
   } catch {
     return [];
   }
-}
+});
 
 export async function generateStaticParams() {
   return Object.keys(TIERS).map((tier) => ({ tier }));

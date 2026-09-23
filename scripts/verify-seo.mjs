@@ -75,11 +75,12 @@ const disallowed = [...robots.matchAll(/^Disallow:\s*(\S+)\s*$/gm)].map((match) 
 record("indexing-controls", demo ? { robots: /^Disallow: \/\s*$/m.test(robots), sitemap: sitemap.includes("<sitemapindex") && !sitemap.includes("<loc>") }
   : { robots: robots.includes(`Sitemap: ${canonicalOrigin}/sitemap.xml`),
     observableNoindex: ["/auth/login", "/badge-preview", "/email-preview", "/links"].every((path) => !disallowed.some((prefix) => path.startsWith(prefix))),
-    sitemap: sitemap.includes("/sitemaps/pages/0.xml") && !/\/sitemaps\/(technologies|countries|weekly|monthly)\//.test(sitemap) });
+    sitemap: sitemap.includes("/sitemap-pages-1.xml") && !sitemap.includes("/sitemaps/") });
 const indexedUrls = new Set();
 for (const match of sitemap.matchAll(/<loc>(.*?)<\/loc>/g)) {
   const child = new URL(match[1]);
-  if (child.origin !== canonicalOrigin || !/^\/sitemaps\/(pages|sites|blog|categories|founders)\/(0|[1-9]\d*)\.xml$/.test(child.pathname)) {
+  const filename = /^\/sitemap-(pages|sites|blog|categories|founders)-([1-9]\d*)\.xml$/.exec(child.pathname);
+  if (child.origin !== canonicalOrigin || !filename) {
     record("sitemap-child", { canonicalChild: false }); continue;
   }
   const response = await fetch(new URL(child.pathname, base), { signal: AbortSignal.timeout(45_000) });
@@ -90,6 +91,9 @@ for (const match of sitemap.matchAll(/<loc>(.*?)<\/loc>/g)) {
     bounded: entries.length > 0 && entries.length <= 200, unique,
     canonicalPublic: entries.every((entry) => new URL(entry).origin === canonicalOrigin && !/^\/(profile|api|auth|admin)(\/|$)/.test(new URL(entry).pathname)),
   });
+  const legacyPath = `/sitemaps/${filename[1]}/${Number(filename[2]) - 1}.xml`;
+  const legacy = await fetch(new URL(legacyPath, base), { redirect: "manual", signal: AbortSignal.timeout(45_000) });
+  record(legacyPath, { permanentRedirect: legacy.status === 301, canonicalTarget: legacy.headers.get("location") === child.href });
 }
 for (const path of ["/llms.txt", "/llms-full.txt", "/llms/catalog.md"]) {
   const response = await fetch(new URL(path, base), { signal: AbortSignal.timeout(45_000) });

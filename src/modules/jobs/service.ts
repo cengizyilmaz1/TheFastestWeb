@@ -15,6 +15,7 @@ import { processPaymentWebhook } from "@/modules/payments/service";
 import { deliverNotificationEmail } from "@/modules/notifications/service";
 import { processPaymentAnalytics } from "@/infrastructure/analytics/datafast";
 import { processSiteScreenshotJob } from "@/modules/screenshots/service";
+import { enqueueExpiringScreenshots } from "@/modules/screenshots/initial";
 import { processSubmissionPreparation } from "@/modules/submissions/service";
 import { finalizePreviousPeriods } from "@/modules/rankings/service";
 import { evaluateSiteAwards } from "@/modules/awards/service";
@@ -136,7 +137,7 @@ export async function scheduleDailyProductJobs():Promise<{scheduled:number}> {
     const inserted=await tx.insert(backgroundJobs).values(jobs.map(job=>({...job,maxAttempts:getEnv().JOB_MAX_ATTEMPTS,
       correlationId:getCorrelationId() ?? randomUUID()}))).onConflictDoNothing({target:backgroundJobs.jobKey}).returning();
     if(inserted.length) await tx.insert(jobEvents).values(inserted.map(job=>event(job,"scheduled")));
-    return {scheduled:inserted.length};
+    return {scheduled:inserted.length + await enqueueExpiringScreenshots(tx,day)};
   });
 }
 

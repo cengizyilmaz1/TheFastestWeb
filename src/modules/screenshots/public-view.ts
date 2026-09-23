@@ -1,9 +1,10 @@
-import { and, desc, eq, gt, isNull, lte } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, lte } from "drizzle-orm";
 import { getEnv } from "@/config/env";
 import { getDb } from "@/db";
 import { sites, siteScreenshots } from "@/db/schema";
 import { logger } from "@/infrastructure/logging/logger";
 import { normalizePublicUrl } from "@/lib/security/public-url";
+import { allowsPublicScreenshot, PUBLIC_SCREENSHOT_LIFECYCLES } from "./policy";
 
 type ScreenshotCandidate = {
   siteUrl: string;
@@ -30,7 +31,7 @@ export function publicScreenshot(
   config: PublicationConfig,
   now = new Date(),
 ): PublicScreenshot | null {
-  if (!candidate.isListed || candidate.archivedAt !== null || candidate.lifecycle !== "active" ||
+  if (!candidate.isListed || candidate.archivedAt !== null || !allowsPublicScreenshot(candidate.lifecycle) ||
     candidate.status !== "ready" || candidate.contentType !== "image/webp") return null;
 
   const capturedAt = candidate.capturedAt.getTime();
@@ -70,7 +71,7 @@ export async function getLatestPublicScreenshot(siteId: string): Promise<PublicS
       width: siteScreenshots.width, height: siteScreenshots.height,
       capturedAt: siteScreenshots.capturedAt, retentionUntil: siteScreenshots.retentionUntil,
     }).from(siteScreenshots).innerJoin(sites, eq(siteScreenshots.siteId, sites.id))
-      .where(and(eq(sites.id, siteId), eq(sites.isListed, true), isNull(sites.archivedAt), eq(sites.lifecycle, "active"),
+      .where(and(eq(sites.id, siteId), eq(sites.isListed, true), isNull(sites.archivedAt), inArray(sites.lifecycle, [...PUBLIC_SCREENSHOT_LIFECYCLES]),
         eq(siteScreenshots.status, "ready"), eq(siteScreenshots.contentType, "image/webp"),
         gt(siteScreenshots.retentionUntil, now), lte(siteScreenshots.capturedAt, new Date(now.getTime() + 60_000))))
       .orderBy(desc(siteScreenshots.capturedAt)).limit(50);

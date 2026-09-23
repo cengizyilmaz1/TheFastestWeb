@@ -35,8 +35,8 @@ describe("published website screenshot history", () => {
     await expect(scheduleScreenshot(pending.id, randomUUID())).rejects.toMatchObject({ code: "NOT_FOUND" });
     expect(mocks.request).not.toHaveBeenCalled();
   });
-  it("persists the receipt across polling, refunds waiting attempts and stores one verified image", async () => {
-    const site = await listing(), receipt = randomUUID();
+  it.each(["active", "verified"])("persists %s listing receipts across polling, refunds waiting attempts and stores one verified image", async (lifecycle) => {
+    const site = await listing(lifecycle), receipt = randomUUID();
     const job = await scheduleScreenshot(site.id, site.owner);
     expect((await scheduleScreenshot(site.id, site.owner)).id).toBe(job.id);
     mocks.request.mockResolvedValue({ id: receipt, status: "pending" });

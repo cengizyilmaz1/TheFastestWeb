@@ -7,18 +7,25 @@ import { closeQueues, readQueueCounts } from "@/infrastructure/queue/queues";
 import { operateJob, publicJob } from "@/modules/jobs/service";
 import { readJobOperations } from "@/modules/jobs/operations";
 import { AppError } from "@/lib/http/errors";
+import { backfillInitialScreenshots, previewInitialScreenshots } from "@/modules/screenshots/initial";
 
 /** Private operator command. There is deliberately no public admin HTTP endpoint. */
 async function main() {
   validateRuntimeEnv("worker");
   const [command = "status", id, ...extra] = process.argv.slice(2);
-  if (extra.length || !["status", "inspect", "retry", "requeue", "cancel"].includes(command) ||
-    (command !== "status" && !z.uuid().safeParse(id).success) || (command === "status" && id)) {
-    throw new AppError("INVALID_REQUEST", "Usage: queue-admin status | inspect UUID | retry UUID | requeue UUID | cancel UUID", 400);
+  const noId = command === "status" || command === "screenshots-preview";
+  const backfill = command === "screenshots-backfill";
+  if (extra.length || !["status", "inspect", "retry", "requeue", "cancel", "screenshots-preview", "screenshots-backfill"].includes(command) ||
+    (noId ? Boolean(id) : backfill ? !/^(?:[1-9]|1\d|2[0-5])$/.test(id ?? "") : !z.uuid().safeParse(id).success)) {
+    throw new AppError("INVALID_REQUEST", "Usage: queue-admin status | inspect UUID | retry UUID | requeue UUID | cancel UUID | screenshots-preview | screenshots-backfill 1..25", 400);
   }
   const db = getDb();
   if (!db) throw new AppError("DATABASE_UNAVAILABLE", "Database is unavailable.", 503);
-  if (command === "status") {
+  if (command === "screenshots-preview") {
+    process.stdout.write(JSON.stringify(await previewInitialScreenshots()) + "\n");
+  } else if (backfill) {
+    process.stdout.write(JSON.stringify(await backfillInitialScreenshots(Number(id))) + "\n");
+  } else if (command === "status") {
     const operations = await readJobOperations();
     let transport: unknown;
     try { transport = await readQueueCounts(); }

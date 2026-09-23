@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { ProNudgeModal } from "@/components/submit/ProNudgeModal";
 import { SpeedGauge } from "@/components/speed-test/SpeedGauge";
@@ -11,6 +11,9 @@ import { prepareWebsite, publishWebsite } from "./submission-client";
 import { startProCheckout } from "@/components/pricing/checkout-client";
 import { CategorySelect } from "./CategorySelect";
 import { CountrySelect } from "./CountrySelect";
+import { listingDetailsSchema } from "@/modules/sites/listing-fields";
+import { useListingAutofill } from "./useListingAutofill";
+import { AutofillDetails } from "./AutofillDetails";
 
 interface SubmitModalProps {
   onClose: () => void;
@@ -39,21 +42,6 @@ interface AuthUser {
   isPro: boolean;
 }
 
-const ANALYSIS_STAGES = [
-  "Connecting to speed testing service",
-  "Loading page in a real browser",
-  "Rendering above-the-fold content",
-  "Measuring First Contentful Paint",
-  "Measuring Largest Contentful Paint",
-  "Analyzing Layout Shift",
-  "Calculating Blocking Time",
-  "Evaluating Interactivity",
-  "Computing Speed Index",
-  "Analyzing performance metrics",
-  "Computing weighted score",
-  "Generating final score",
-];
-
 export function SubmitModal({ onClose }: SubmitModalProps) {
   // Auth
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
@@ -63,11 +51,7 @@ export function SubmitModal({ onClose }: SubmitModalProps) {
   const [testing, setTesting] = useState(false);
   const [testError, setTestError] = useState("");
 
-  // Progress
-  const [currentStage, setCurrentStage] = useState(0);
-  const [progress, setProgress] = useState(0);
-  const stageTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const progressRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [preparationStatus, setPreparationStatus] = useState("Preparing your measurement request.");
 
   // Results
   const [speedResult, setSpeedResult] = useState<SpeedResult | null>(null);
@@ -78,7 +62,7 @@ export function SubmitModal({ onClose }: SubmitModalProps) {
   const [name, setName] = useState("");
   const [desc, setDesc] = useState("");
   const [twitter, setTwitter] = useState("");
-  const [category, setCategory] = useState("other");
+  const [category, setCategory] = useState("");
   const [countryCode, setCountryCode] = useState<string | null>(null);
   const [countryError, setCountryError] = useState("");
   const [showOnLeaderboard, setShowOnLeaderboard] = useState(true);
@@ -92,6 +76,7 @@ export function SubmitModal({ onClose }: SubmitModalProps) {
   const [submitError, setSubmitError] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [showNudge, setShowNudge] = useState(false);
+  const autofill = useListingAutofill({ name: setName, description: setDesc, category: setCategory });
 
   // Check auth on mount via Auth.js session endpoint + Pro status
   useEffect(() => {
@@ -107,6 +92,7 @@ export function SubmitModal({ onClose }: SubmitModalProps) {
             avatar: sessionData.user.image || "",
             isPro: meData?.isPro ?? false,
           });
+          if (typeof meData?.twitterHandle === "string") setTwitter(current => current || meData.twitterHandle);
         }
         setAuthChecked(true);
       })
@@ -129,48 +115,6 @@ export function SubmitModal({ onClose }: SubmitModalProps) {
     };
   }, [handleKeyDown]);
 
-  // Progress animation
-  useEffect(() => {
-    if (!testing) {
-      setCurrentStage(0);
-      setProgress(0);
-      if (stageTimeout.current) clearTimeout(stageTimeout.current);
-      if (progressRef.current) clearInterval(progressRef.current);
-      return;
-    }
-
-    let stage = 0;
-    setCurrentStage(0);
-    setProgress(0);
-
-    function advanceStage() {
-      if (stage < ANALYSIS_STAGES.length - 1) {
-        stage++;
-        setCurrentStage(stage);
-        stageTimeout.current = setTimeout(advanceStage, 1500 + Math.random() * 2000);
-      }
-    }
-    stageTimeout.current = setTimeout(advanceStage, 2000);
-
-    progressRef.current = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 98) return 98;
-        const inc =
-          prev < 30 ? 1.2 :
-          prev < 60 ? 0.8 :
-          prev < 85 ? 0.4 :
-          prev < 92 ? 0.2 :
-          0.05;
-        return Math.min(prev + inc, 98);
-      });
-    }, 200);
-
-    return () => {
-      if (stageTimeout.current) clearTimeout(stageTimeout.current);
-      if (progressRef.current) clearInterval(progressRef.current);
-    };
-  }, [testing]);
-
   async function signInWithGoogle() {
     await signIn("google", { callbackUrl: "/submit" });
   }
@@ -189,17 +133,16 @@ export function SubmitModal({ onClose }: SubmitModalProps) {
     }
 
     setTesting(true);
+    setPreparationStatus("Preparing your measurement request.");
+    autofill.reset();
     setTestError("");
 
     const domain = getDomain(testUrl);
     const favicon = getFaviconUrl(testUrl);
 
     try {
-      const prepared = await prepareWebsite(testUrl);
+      const prepared = await prepareWebsite(testUrl, setPreparationStatus);
       const speedData = prepared.mobile.result;
-
-      setProgress(100);
-      await new Promise((r) => setTimeout(r, 300));
 
       setSpeedResult({
         score: speedData.score,
@@ -237,11 +180,10 @@ export function SubmitModal({ onClose }: SubmitModalProps) {
       let description = "";
       if (prepared.metadata) {
         if (prepared.metadata.title) title = prepared.metadata.title.substring(0, 60);
-        if (prepared.metadata.description) description = prepared.metadata.description.substring(0, 200);
+        if (prepared.metadata.description) description = prepared.metadata.description.substring(0, 500);
       }
       setSiteMeta({ title, description, favicon });
-      setName(title);
-      setDesc(description);
+      autofill.populate(prepared.metadata, testUrl);
     } catch (err) {
       setTestError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -250,7 +192,7 @@ export function SubmitModal({ onClose }: SubmitModalProps) {
   }
 
   async function handleProCheckout() {
-    if (!validateCountry()) return;
+    if (!validateDetails()) return;
     sessionStorage.setItem("tfwPendingSubmit", JSON.stringify({
       url, name, desc: desc, twitter, category, countryCode, showOnLeaderboard,
       speedResult, rawSpeedData,
@@ -261,7 +203,7 @@ export function SubmitModal({ onClose }: SubmitModalProps) {
   }
 
   async function handleVerifyAndSubmit() {
-    if (!validateCountry()) return;
+    if (!validateDetails()) return;
     const slug = slugify(name) || slugify(getDomain(url));
     setVerifyError("");
 
@@ -292,7 +234,7 @@ export function SubmitModal({ onClose }: SubmitModalProps) {
 
   async function handleSubmit(e?: React.FormEvent) {
     if (e) e.preventDefault();
-    if (!validateCountry()) return;
+    if (!validateDetails()) return;
     setShowNudge(false);
     setSubmitting(true);
     setSubmitError("");
@@ -321,10 +263,13 @@ export function SubmitModal({ onClose }: SubmitModalProps) {
     }
   }
 
-  function validateCountry() {
-    if (countryCode) return true;
-    setCountryError("Choose your product's country of origin.");
-    document.getElementById("submit-modal-country")?.focus();
+  function validateDetails() {
+    const result = listingDetailsSchema.safeParse({ url, name, description: desc, twitterHandle: twitter, category, countryCode });
+    if (result.success) { setCountryError(""); return true; }
+    const issue = result.error.issues[0];
+    setSubmitError(issue.message);
+    if (result.error.issues.some(value => value.path[0] === "countryCode")) setCountryError("Choose your product's country of origin.");
+    document.getElementById(`submit-modal-${issue.path[0] === "countryCode" ? "country" : String(issue.path[0])}`)?.focus();
     return false;
   }
 
@@ -445,7 +390,9 @@ export function SubmitModal({ onClose }: SubmitModalProps) {
 
               {/* ── URL Input ── */}
               <div>
+                <label htmlFor="submit-modal-url" className="mb-1.5 block text-[0.75rem] font-semibold text-text-secondary">Website URL (required)</label>
                 <input
+                  id="submit-modal-url" name="url" autoComplete="url" inputMode="url" required maxLength={4096} spellCheck={false} autoCapitalize="none"
                   type="url"
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
@@ -466,20 +413,11 @@ export function SubmitModal({ onClose }: SubmitModalProps) {
               {/* Progress */}
               {testing && (
                 <div className="mt-5 animate-fade-in-up">
-                  <div className="h-1.5 bg-bg-card rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-accent to-accent-bright rounded-full transition-all duration-300 ease-out"
-                      style={{ width: `${progress}%` }}
-                    />
+                  <div role="status" aria-live="polite" className="flex items-center gap-2.5 text-[0.75rem] text-text-secondary">
+                    <span aria-hidden="true" className="h-4 w-4 shrink-0 rounded-full border-2 border-accent/25 border-t-accent motion-safe:animate-spin" />
+                    <span>{preparationStatus}</span>
                   </div>
-                  <div className="flex justify-between mt-2">
-                    <span className="text-[0.75rem] text-text-secondary">
-                      {ANALYSIS_STAGES[currentStage]}...
-                    </span>
-                    <span className="text-[0.68rem] text-text-muted font-mono">
-                      {Math.round(progress)}%
-                    </span>
-                  </div>
+                  <p className="mt-2 text-[0.7rem] text-text-muted">We’ll show your results when both device measurements are complete.</p>
                 </div>
               )}
 
@@ -518,6 +456,8 @@ export function SubmitModal({ onClose }: SubmitModalProps) {
                     handleVerifyAndSubmit();
                   }
                 }}>
+                  <AutofillDetails loading={autofill.loading} notice={autofill.notice} disabled={submitting || verifying}
+                    onFill={() => { setSubmitError(""); setBadgeVerified(false); void autofill.refresh(url); }} />
                   {/* User badge */}
                   <div className="flex items-center gap-2 bg-bg-card border border-border rounded-lg px-3 py-2 mb-3 text-[0.78rem]">
                     {authUser!.avatar ? (
@@ -534,21 +474,22 @@ export function SubmitModal({ onClose }: SubmitModalProps) {
 
                   <div className="grid grid-cols-2 gap-2.5 mb-2.5">
                     <div>
-                      <label className="block text-[0.7rem] font-semibold text-text-muted mb-0.5">Website Name</label>
-                      <input type="text" value={name} onChange={(e) => setName(e.target.value)} required className="w-full px-2.5 py-2 rounded-lg bg-bg-card border border-border text-text-primary text-[0.8rem] font-body outline-none focus:border-accent" />
+                      <label htmlFor="submit-modal-name" className="block text-[0.7rem] font-semibold text-text-muted mb-0.5">Website Name (required)</label>
+                      <input type="text" id="submit-modal-name" name="name" autoComplete="organization" minLength={2} maxLength={60} value={name} onChange={(e) => { autofill.edit("name"); setName(e.target.value); setBadgeVerified(false); setSubmitError(""); }} required className="w-full px-2.5 py-2 rounded-lg bg-bg-card border border-border text-text-primary text-[0.8rem] font-body outline-none focus:border-accent" />
                     </div>
                     <div>
-                      <label className="block text-[0.7rem] font-semibold text-text-muted mb-0.5">X handle <span className="font-normal">(optional)</span></label>
-                      <input type="text" value={twitter} onChange={(e) => setTwitter(e.target.value)} placeholder="@username" className="w-full px-2.5 py-2 rounded-lg bg-bg-card border border-border text-text-primary text-[0.8rem] font-mono outline-none focus:border-accent placeholder:text-text-muted" />
+                      <label htmlFor="submit-modal-twitterHandle" className="block text-[0.7rem] font-semibold text-text-muted mb-0.5">X handle <span className="font-normal">(optional)</span></label>
+                      <input type="text" id="submit-modal-twitterHandle" name="twitterHandle" autoComplete="off" maxLength={30} pattern="@?[a-zA-Z0-9_]*" value={twitter} onChange={(e) => { setTwitter(e.target.value); setSubmitError(""); }} placeholder="@username" className="w-full px-2.5 py-2 rounded-lg bg-bg-card border border-border text-text-primary text-[0.8rem] font-mono outline-none focus:border-accent placeholder:text-text-muted" />
                     </div>
                   </div>
                   <div className="mb-2.5">
-                    <label className="block text-[0.7rem] font-semibold text-text-muted mb-0.5">Description</label>
-                    <input type="text" value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="What does your site do?" maxLength={200} className="w-full px-2.5 py-2 rounded-lg bg-bg-card border border-border text-text-primary text-[0.8rem] font-body outline-none focus:border-accent placeholder:text-text-muted" />
+                    <label htmlFor="submit-modal-description" className="block text-[0.7rem] font-semibold text-text-muted mb-0.5">Description (required)</label>
+                    <textarea id="submit-modal-description" name="description" required minLength={10} rows={3} aria-describedby="submit-modal-description-help" value={desc} onChange={(e) => { autofill.edit("description"); setDesc(e.target.value); setSubmitError(""); }} placeholder="What does your site do?" maxLength={500} className="w-full px-2.5 py-2 rounded-lg bg-bg-card border border-border text-text-primary text-[0.8rem] font-body outline-none focus:border-accent placeholder:text-text-muted" />
+                    <p id="submit-modal-description-help" className="mt-1 text-[0.68rem] text-text-secondary">10–500 characters. {desc.length}/500</p>
                   </div>
 
-                  <CategorySelect id="submit-modal-category" value={category} onChange={setCategory} />
-                  <CountrySelect id="submit-modal-country" value={countryCode} onChange={(code) => { setCountryCode(code); setCountryError(""); }} disabled={submitting || verifying} error={countryError} />
+                  <CategorySelect id="submit-modal-category" value={category} onChange={(value) => { autofill.edit("category"); setCategory(value); setSubmitError(""); }} />
+                  <CountrySelect id="submit-modal-country" value={countryCode} onChange={(code) => { setCountryCode(code); setCountryError(""); setSubmitError(""); }} disabled={submitting || verifying} error={countryError} />
 
                   {/* Leaderboard toggle — Pro only */}
                   {authUser?.isPro && (

@@ -1,58 +1,26 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import type { LegacyLeaderboardSite } from "@/modules/sites/legacy-view";
 import { LeaderboardRow } from "./LeaderboardRow";
-
-type SortBy = "score" | "loadtime";
-
-function parseLoadTime(lt: string | null): number {
-  if (!lt) return Infinity;
-  const match = lt.match(/([\d.]+)\s*s/);
-  return match ? parseFloat(match[1]) : Infinity;
-}
+import { createLeaderboardController, type LeaderboardSort } from "./leaderboard-client";
 
 interface LeaderboardTableProps {
   initialSites: LegacyLeaderboardSite[];
   allowLoadMore?: boolean;
   rankingOffset?: number;
   allowSort?: boolean;
+  initialHasMore?: boolean;
+  initialError?: boolean;
 }
 
-export function LeaderboardTable({ initialSites, allowLoadMore = true, rankingOffset = 0, allowSort = true }: LeaderboardTableProps) {
-  const [allSites, setAllSites] = useState<LegacyLeaderboardSite[]>(initialSites);
-  const [loading, setLoading] = useState(false);
-  const [hasMore, setHasMore] = useState(allowLoadMore && initialSites.length >= 20);
-  const [sortBy, setSortBy] = useState<SortBy>("score");
-
-  const sortedSites = useMemo(() => {
-    const copy = [...allSites];
-    if (sortBy === "score") {
-      copy.sort((a, b) => b.currentScore - a.currentScore);
-    } else {
-      copy.sort((a, b) => parseLoadTime(a.currentLoadTime ?? null) - parseLoadTime(b.currentLoadTime ?? null));
-    }
-    return copy;
-  }, [allSites, sortBy]);
-
-  async function loadMore() {
-    setLoading(true);
-    try {
-      const resp = await fetch(`/api/sites?offset=${allSites.length}&limit=20`);
-      if (resp.ok) {
-        const data = await resp.json();
-        setAllSites((prev) => [...prev, ...data.sites]);
-        setHasMore(data.hasMore);
-      }
-    } catch {
-      // silently fail
-    } finally {
-      setLoading(false);
-    }
-  }
+export function LeaderboardTable({ initialSites, allowLoadMore = true, rankingOffset = 0, allowSort = true, initialHasMore, initialError }: LeaderboardTableProps) {
+  const [controller] = useState(() => createLeaderboardController({ sites: initialSites, hasMore: initialHasMore, error: initialError }, allowLoadMore));
+  const { sites: sortedSites, sort: sortBy, loading, hasMore, error } = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
+  useEffect(() => () => controller.dispose(), [controller]);
 
   return (
-    <section className="bg-bg-main border border-border rounded-[14px] overflow-hidden mx-5 mb-10">
+    <section aria-busy={loading} className="bg-bg-main border border-border rounded-[14px] overflow-hidden mx-5 mb-10">
       <div className="flex items-center justify-between gap-4 px-5 pt-[18px] pb-3.5">
         <div className="font-display font-[800] text-[1.25rem] flex items-center gap-2 shrink-0">
           Leaderboard
@@ -61,7 +29,7 @@ export function LeaderboardTable({ initialSites, allowLoadMore = true, rankingOf
           <select
             aria-label="Sort leaderboard"
             value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as SortBy)}
+            onChange={(e) => { void controller.sort(e.target.value as LeaderboardSort); }}
             className="px-3 pr-7 py-1.5 rounded-lg bg-bg-card border border-border text-text-primary text-[0.8rem] font-body font-medium cursor-pointer appearance-none bg-[url('data:image/svg+xml,%253Csvg%2520width%3D%252710%2527%2520height%3D%25276%2527%2520viewBox%3D%25270%25200%252010%25206%2527%2520fill%3D%2527none%2527%2520xmlns%3D%2527http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%2527%253E%253Cpath%2520d%3D%2527M1%25201L5%25205L9%25201%2527%2520stroke%3D%2527%2523A89F91%2527%2520stroke-width%3D%25271.5%2527%2520stroke-linecap%3D%2527round%2527%2F%253E%253C%2Fsvg%253E')] bg-no-repeat bg-[right_10px_center] transition-colors hover:border-border-light"
           >
             <option value="score">Speed Score</option>
@@ -102,20 +70,25 @@ export function LeaderboardTable({ initialSites, allowLoadMore = true, rankingOf
           </tr>
         </thead>
         <tbody>
+          {sortedSites.length === 0 && <tr><td colSpan={6} className="px-5 py-10 text-center text-sm text-text-secondary">
+            {loading ? "Loading leaderboard..." : error ? "Results are temporarily unavailable." : "No published websites yet."}
+          </td></tr>}
           {sortedSites.map((site, i) => (
             <LeaderboardRow key={site.id} site={site} rank={rankingOffset + i + 1} />
           ))}
         </tbody>
       </table>
       </div>
-      {hasMore && (
+      <p role="status" className="sr-only">{loading ? "Loading leaderboard results." : `${sortedSites.length} websites loaded.`}</p>
+      {(hasMore || error) && (
         <div className="py-3.5 px-5 text-center border-t border-border">
+          {error && <p role="alert" className="mb-3 text-sm text-text-secondary">{error}</p>}
           <button
-            onClick={loadMore}
+            onClick={() => { void (error ? controller.retry() : controller.loadMore()); }}
             disabled={loading}
             className="py-2.5 px-7 rounded-[10px] bg-bg-card border border-border text-text-secondary font-semibold text-[0.82rem] cursor-pointer transition-all duration-200 font-body hover:bg-bg-card-hover hover:text-text-primary hover:border-border-light disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? "Loading..." : "Load More Sites"}
+            {loading ? "Loading..." : error ? "Try again" : "Load More Sites"}
           </button>
         </div>
       )}

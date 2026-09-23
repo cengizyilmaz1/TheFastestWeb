@@ -77,7 +77,7 @@ Before public production launch, complete final-domain OAuth, provider sandbox/a
 - [Submission workflow](docs/SUBMISSIONS.md), [website identity and claims](docs/WEBSITE-IDENTITY.md), [founder collaborations](docs/FOUNDER-COLLABORATIONS.md)
 - [Measurement/ranking methodology](docs/METHODOLOGY.md), [awards and badges](docs/AWARDS-AND-BADGES.md), [comparison pages and journal](docs/COMPARE-AND-JOURNAL.md)
 - [Providers](docs/PROVIDERS.md), [payments](docs/PAYMENTS.md), [ad inventory](docs/ADS.md), [email](docs/EMAIL.md), [analytics](docs/ANALYTICS.md) and [administration](docs/ADMIN.md)
-- [Design system](docs/DESIGN.md), [SEO](docs/SEO.md) and [screenshot service](services/screenshot/README.md)
+- [Design system](docs/DESIGN.md), [loading performance](docs/PERFORMANCE.md), [SEO](docs/SEO.md) and [screenshot service](services/screenshot/README.md)
 - [Master-plan baseline and implementation notes](docs/ROADMAP.md); historical verification checkpoints: [M1](docs/MILESTONE-1.md), [M2](docs/MILESTONE-2.md)
 - [Retired local maintenance scripts](scripts/local/SCRIPTS.md)
 

@@ -48,14 +48,19 @@ export function createCaptureProcessor(config: ScreenshotConfig, repository: Scr
 
 export async function cleanExpiredCaptures(repository: ScreenshotRepository, storage: ScreenshotStorage = screenshotStorage) {
   const objects = await repository.objectsToDelete();
+  let failures = 0;
   // Four concurrent bounded R2 operations, at most four batches per sweep.
   // Failed deletion keeps its ledger row so the next sweep can retry it.
   for (let index = 0; index < objects.length; index += 4) {
-    await Promise.all(objects.slice(index, index + 4).map(async (object) => {
+    const outcomes = await Promise.allSettled(objects.slice(index, index + 4).map(async (object) => {
       await storage.remove(object.object_key, object.visibility);
       await repository.forgetObject(object.object_key);
     }));
+    failures += outcomes.filter((outcome) => outcome.status === "rejected").length;
   }
   for (const row of await repository.expired()) await repository.markExpired(row.id);
   await repository.prune();
+  // One failed object must not block later batches or expiry of unrelated captures.
+  // Failed rows stay in the ledger; report failure only after all bounded work settles.
+  if (failures) throw new Error("Screenshot retention cleanup incomplete");
 }
