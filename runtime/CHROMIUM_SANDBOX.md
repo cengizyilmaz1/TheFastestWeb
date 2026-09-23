@@ -1,6 +1,11 @@
 # Chromium container sandbox
 
-`chromium-seccomp.json` enables the Linux user namespaces needed by the pinned
+The source/build evidence below was recorded for Chrome **153.0.8010.36**.
+The current image pins Chrome **154.0.8037.57** with Puppeteer **25.12.0**.
+Run the smoke command below against the rebuilt image on the deployment host;
+the earlier result does not establish sandbox compatibility for a new browser.
+
+`chromium-seccomp.json` enables the Linux user namespaces verified with baseline
 Chrome for Testing **153.0.8010.36** on **Linux amd64**, while retaining the Docker
 syscall allowlist and Chromium's own renderer sandbox. Apply it only to browser
 services (`web` and `worker`). The scheduler does not need it.

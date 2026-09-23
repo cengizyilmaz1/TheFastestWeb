@@ -9,9 +9,11 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: "*",
       allow: "/",
-      // Crawlers must reach legacy profile URLs to observe their canonical 301.
-      // The route itself returns 404 for private or missing profiles.
-      disallow: ["/api/", "/auth/", "/admin", "/email-preview", "/badge-preview", "/links"],
+      // Public login/preview/legacy utility pages must be crawlable so their
+      // noindex metadata (or 404) can be observed. Authentication protects admin
+      // data; robots is only a crawl control for operational endpoints.
+      // Legacy profile redirects likewise remain reachable by crawlers.
+      disallow: ["/api/", "/admin"],
     },
     sitemap: `${siteConfig.url}/sitemap.xml`,
   };

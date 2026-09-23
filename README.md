@@ -72,7 +72,7 @@ Before public production launch, complete final-domain OAuth, provider sandbox/a
 
 - [Current launch handoff and remaining checks](docs/LAUNCH.md), [production routing and release evidence](runtime/PRODUCTION.md)
 - [Architecture](docs/ARCHITECTURE.md), [dependencies](docs/DEPENDENCIES.md), [security](docs/SECURITY.md) and [Google authentication](docs/AUTH.md)
-- [Database](docs/DATABASE.md), [migration](docs/MIGRATION.md), [queues and operations](docs/QUEUES.md)
+- [Database](docs/DATABASE.md), [migration](docs/MIGRATION.md), [queues and operations](docs/QUEUES.md), [daily operations](docs/DAILY-OPERATIONS.md)
 - [Coolify raw Compose](docs/COOLIFY-COMPOSE.md), [deployment](docs/DEPLOYMENT.md) and [runbook](docs/RUNBOOK.md)
 - [Submission workflow](docs/SUBMISSIONS.md), [website identity and claims](docs/WEBSITE-IDENTITY.md), [founder collaborations](docs/FOUNDER-COLLABORATIONS.md)
 - [Measurement/ranking methodology](docs/METHODOLOGY.md), [awards and badges](docs/AWARDS-AND-BADGES.md), [comparison pages and journal](docs/COMPARE-AND-JOURNAL.md)

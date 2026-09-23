@@ -16,13 +16,23 @@ export function startSchedulerLoop(tasks: SchedulerTasks, intervalMs: number, op
   let wake: (() => void) | undefined;
   const finished = (async () => {
     while (!closing) {
+      const started = Date.now();
       try {
         // A failing daily insert must not prevent previously saved jobs dispatching.
         const scheduling = await Promise.allSettled(options.generate===false ? [] : [tasks.scheduleDailyRetests(), tasks.scheduleMaintenance(),
           ...(tasks.scheduleDailyProductJobs ? [tasks.scheduleDailyProductJobs()] : [])]);
         if (scheduling.some((result) => result.status === "rejected")) logger.error({ event: "scheduler.schedule_failed", code: "SERVICE_UNAVAILABLE" });
-        await tasks.dispatchDueJobs();
+        const dispatch = await tasks.dispatchDueJobs();
         if (scheduling.every((result) => result.status === "fulfilled")) lastSuccess = Date.now();
+        const count = (value: unknown, key: string) => {
+          const valueCount = value && typeof value === "object" ? (value as Record<string, unknown>)[key] : undefined;
+          return typeof valueCount === "number" && Number.isSafeInteger(valueCount) && valueCount >= 0 ? valueCount : 0;
+        };
+        logger.info({ event: "scheduler.tick_completed", durationMs: Date.now() - started,
+          generationEnabled: options.generate !== false,
+          scheduled: scheduling.reduce((sum, result) => sum + (result.status === "fulfilled" ? count(result.value, "scheduled") : 0), 0),
+          dispatched: count(dispatch, "dispatched"),
+          schedulingFailures: scheduling.filter((result) => result.status === "rejected").length });
       } catch {
         logger.error({ event: "scheduler.tick_failed", code: "SERVICE_UNAVAILABLE" });
       }

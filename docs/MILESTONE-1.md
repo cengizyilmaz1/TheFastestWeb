@@ -31,7 +31,7 @@ Gerçek özel snapshot restore/migration denemesinde **444 kullanıcı,187 site,
 
 - Production zorunlu: DATABASE_URL, AUTH_SECRET, AUTH_GOOGLE_ID, AUTH_GOOGLE_SECRET, AUTH_TRUST_HOST=true; SITE_URL ve AUTH_URL aynı HTTPS origin.
 - Operasyon: MIGRATION_DATABASE_URL yalnız maintenance, POSTGRES_ADMIN_PASSWORD yalnız DB bootstrap.
-- Test entegrasyonları: GOOGLE_PSI_API_KEY, GOOGLE_PSI_API_KEY_BACKUP; CRON_SECRET yoksa cron401; UNAVATAR_API_KEY yoksa avatar unavailable.
+- Test entegrasyonları: GOOGLE_PSI_API_KEY, GOOGLE_PSI_API_KEY_BACKUP; eski HTTP cron emekliye ayrıldı (410), günlük işler BullMQ scheduler üzerinden çalışır; UNAVATAR_API_KEY yoksa avatar unavailable.
 - Runtime: DB_MAX_CONNECTIONS, DB_CONNECT_TIMEOUT_SECONDS, DB_IDLE_TIMEOUT_SECONDS, DB_STATEMENT_TIMEOUT_MS, LOG_LEVEL, CHROMIUM_EXECUTABLE_PATH. Docker port/host/TZ/sandbox yolunu sağlar.
 - Geçici email: ENABLE_LEGACY_RESEND=false, RESEND_API_KEY. Compose email'i kapalı tutar.
 - POLAR_* ve NEXT_PUBLIC_SITE_URL uygulama bağımlılığı kaldırıldı. Eski sağlayıcı secret'ları yeniden kullanılmadı.

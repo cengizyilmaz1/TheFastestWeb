@@ -35,6 +35,9 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            services/screenshot/package-lock.json
       - name: Create isolated Redis test credentials
         shell: bash
         run: |
@@ -57,13 +60,18 @@ jobs:
           echo 'Redis fixture did not become healthy.' >&2
           exit 1
       - run: npm ci
+      - name: Install standalone screenshot service dependencies
+        run: npm ci --prefix services/screenshot --omit=dev
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
       - run: npm run test:integration
       - run: npm audit
+      - name: Audit standalone screenshot service dependencies
+        run: npm audit --prefix services/screenshot --omit=dev
       - run: npm run build
       - run: npm run build:jobs
+      - run: npm run build:screenshot
       - name: Install browser for accessibility and runtime checks
         run: npx playwright install --with-deps chromium
       - name: Verify production runtime with isolated data

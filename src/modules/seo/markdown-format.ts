@@ -1,5 +1,5 @@
 import { siteConfig } from "@/config/site";
-import { recordedDate, siteUrl } from "@/lib/seo/metadata";
+import { publicationDates, siteUrl } from "@/lib/seo/metadata";
 import type { Post } from "@/lib/blog";
 import type { MarkdownDocument } from "./markdown-response";
 
@@ -24,12 +24,11 @@ export function markdownText(value: string) {
 }
 
 export function documentHeader(title: string, path: string, details: { author?: string; published?: string; updated?: string } = {}) {
-  const published = recordedDate(details.published);
-  const updated = recordedDate(details.updated);
+  const { datePublished: published, dateModified: updated } = publicationDates(details.published, details.updated);
   return [`# ${markdownText(title)}`, `Canonical source: ${siteUrl(path)}`, `Publisher: ${markdownText(siteConfig.name)}`,
     ...(details.author ? [`Author: ${markdownText(details.author)}`] : []),
     ...(published ? [`Published: ${published}`] : []),
-    ...(updated && (!published || updated >= published) ? [`Updated: ${updated}`] : [])].join("\n\n");
+    ...(updated ? [`Updated: ${updated}`] : [])].join("\n\n");
 }
 
 export function publicPageMarkdown(page: PublicPageContent): MarkdownDocument {

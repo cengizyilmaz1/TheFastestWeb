@@ -3,7 +3,7 @@ import { aboutPage } from "@/content/about";
 import { publicPages } from "@/content/public-pages";
 import { getAllPosts } from "@/lib/blog";
 import { AppError } from "@/lib/http/errors";
-import { recordedDate } from "@/lib/seo/metadata";
+import { publicationDates, recordedDate } from "@/lib/seo/metadata";
 import { getCategoryCounts } from "@/modules/catalog/public-categories";
 import { categoryPath } from "@/modules/catalog/categories";
 import { countPublicFounders, listPublicFounderDiscovery } from "@/modules/founders/discovery";
@@ -56,8 +56,8 @@ export async function sitemapDocument(section: SitemapSection, page: number) {
       entries = staticPaths.slice(offset, offset + sitemapPageSize).map((path) => ({ path, modified: content.find((entry) => entry.path === path)?.updated }));
     } else if (section === "blog") {
       entries = posts().slice(offset, offset + sitemapPageSize).map((post) => {
-        const published = recordedDate(post.date), updated = recordedDate(post.updated);
-        return { path: `/blog/${encodeURIComponent(post.slug)}`, modified: updated && (!published || updated >= published) ? updated : published };
+        const { datePublished, dateModified } = publicationDates(post.date, post.updated);
+        return { path: `/blog/${encodeURIComponent(post.slug)}`, modified: dateModified ?? datePublished };
       });
     } else if (section === "categories") {
       entries = (await populatedCategories()).slice(offset, offset + sitemapPageSize).map((category) => ({ path: categoryPath(category.slug) }));

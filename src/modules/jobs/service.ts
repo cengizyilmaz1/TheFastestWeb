@@ -143,12 +143,20 @@ export async function scheduleDailyProductJobs():Promise<{scheduled:number}> {
 /** Reconcile queued rows after Redis loss and running rows after lease expiry. */
 export async function dispatchDueJobs(): Promise<{ dispatched: number }> {
   const db = database();
-  const due = await db.select().from(backgroundJobs).where(and(
+  const ranked = db.$with("ranked_due_jobs").as(db.select({
+    id: backgroundJobs.id,
+    position: sql<number>`row_number() over (partition by ${backgroundJobs.queue} order by ${backgroundJobs.updatedAt}, ${backgroundJobs.id})`.as("position"),
+  }).from(backgroundJobs).where(and(
     lte(backgroundJobs.availableAt, sql`now()`),
     or(inArray(backgroundJobs.status, ["pending", "queued"]), and(eq(backgroundJobs.status, "running"), lte(backgroundJobs.leasedUntil, sql`now()`))),
-  )).orderBy(asc(backgroundJobs.updatedAt), asc(backgroundJobs.id)).limit(100);
+  )));
+  // Take turns across queues so a daily measurement backlog cannot delay payment
+  // events, email or maintenance until every older performance delivery rotates.
+  const due = await db.with(ranked).select({ job: backgroundJobs }).from(backgroundJobs)
+    .innerJoin(ranked, eq(backgroundJobs.id, ranked.id))
+    .orderBy(asc(ranked.position), asc(backgroundJobs.updatedAt), asc(backgroundJobs.id)).limit(100);
   let dispatched = 0;
-  for (const job of due) {
+  for (const { job } of due) {
     let delivery;
     try { delivery = validateQueueJob({ id: job.id, queue: job.queue, kind: job.kind, correlationId: job.correlationId }); }
     catch {
@@ -165,6 +173,11 @@ export async function dispatchDueJobs(): Promise<{ dispatched: number }> {
     await db.update(backgroundJobs).set({ status: "queued", updatedAt: sql`now()` })
       .where(and(eq(backgroundJobs.id, job.id), inArray(backgroundJobs.status, ["pending", "queued"]),
         lte(backgroundJobs.availableAt, sql`now()`), eq(backgroundJobs.attempts, job.attempts)));
+    // An expired running delivery can still hold a Bull lock until stalled-job
+    // recovery. Rotate it too, without changing its fenced lease or retry state.
+    if (job.status === "running") await db.update(backgroundJobs).set({ updatedAt: sql`now()` })
+      .where(and(eq(backgroundJobs.id, job.id), eq(backgroundJobs.status, "running"),
+        eq(backgroundJobs.leaseToken, job.leaseToken!), lte(backgroundJobs.leasedUntil, sql`now()`)));
     dispatched++;
   }
   return { dispatched };

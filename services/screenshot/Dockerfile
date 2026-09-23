@@ -16,7 +16,7 @@ COPY services/screenshot/package.json services/screenshot/package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev
 
 FROM base AS browser
-ARG CHROME_VERSION=153.0.8010.36
+ARG CHROME_VERSION=154.0.8037.57
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl unzip \
     && curl --fail --silent --show-error --location "https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}/linux64/chrome-linux64.zip" --output /tmp/chrome.zip \
     && unzip -q /tmp/chrome.zip -d /opt/chrome && chown root:root /opt/chrome/chrome-linux64/chrome_sandbox \

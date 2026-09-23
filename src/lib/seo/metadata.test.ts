@@ -25,6 +25,12 @@ describe("canonical metadata and truthful structured data", () => {
     expect(pageMetadata({ title: "Private", description: "Description", path: "/profile/id", index: false, follow: false }).robots).toEqual({ index: false, follow: false });
   });
 
+  it("keeps Googlebot and general follow directives consistent", () => {
+    vi.stubEnv("DEPLOYMENT_MODE", "production");
+    expect(pageMetadata({ title: "Page", description: "Description", path: "/", follow: false }).robots)
+      .toMatchObject({ index: true, follow: false, googleBot: { index: true, follow: false } });
+  });
+
   it("advertises Markdown only for supported public representations", () => {
     vi.stubEnv("SITE_URL", "https://example.invalid");
     expect(pageMetadata({ title: "About", description: "About", path: "/about" }).alternates).toEqual({

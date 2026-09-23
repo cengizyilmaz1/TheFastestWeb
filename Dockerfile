@@ -18,7 +18,7 @@ RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev
 FROM base AS browser
 # Must match the puppeteer-core version in package-lock.json.
 # Browser is downloaded only while building, never while handling a request.
-ARG CHROME_VERSION=153.0.8010.36
+ARG CHROME_VERSION=154.0.8037.57
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl unzip \
     && curl --fail --show-error --silent --location \

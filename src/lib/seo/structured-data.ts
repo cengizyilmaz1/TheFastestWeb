@@ -1,5 +1,5 @@
 import { siteConfig } from "@/config/site";
-import { recordedDate, siteUrl, SITE_DESCRIPTION } from "./metadata";
+import { publicationDates, recordedDate, siteUrl, SITE_DESCRIPTION } from "./metadata";
 
 export function identityGraph() {
   return {
@@ -33,14 +33,13 @@ export function webPageSchema({ path, name, description, type = "WebPage", modif
 
 export function articleSchema(post: { slug: string; title: string; description: string; date: string; updated?: string; author: string; coverImage: string }) {
   const path = `/blog/${encodeURIComponent(post.slug)}`;
-  const datePublished = recordedDate(post.date);
-  const dateModified = recordedDate(post.updated);
+  const { datePublished, dateModified } = publicationDates(post.date, post.updated);
   return { ...webPageSchema({ path, name: post.title, description: post.description,
     trail: [{ name: siteConfig.name, path: "/" }, { name: "Blog", path: "/blog" }, { name: post.title, path }] }),
     "@type": "BlogPosting", "@id": siteUrl(path) + "#article", headline: post.title,
     mainEntityOfPage: siteUrl(path), image: [siteUrl(post.coverImage)],
     ...(datePublished ? { datePublished } : {}),
-    ...(dateModified && (!datePublished || dateModified >= datePublished) ? { dateModified } : {}),
+    ...(dateModified ? { dateModified } : {}),
     author: post.author === siteConfig.name ? { "@id": siteUrl("/#organization"), "@type": "Organization", name: post.author }
       : { "@type": "Person", name: post.author, ...(post.author === siteConfig.ownerName ? { url: siteConfig.ownerUrl } : {}) },
   };

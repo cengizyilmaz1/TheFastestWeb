@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 const mocks = vi.hoisted(() => ({ config: { SITE_URL: "https://example.com/", AUTH_URL: undefined as string | undefined, NODE_ENV: "production" } }));
 vi.mock("@/config/env", () => ({ getEnv: () => mocks.config }));
-import { assertSameOrigin, isCronAuthorized, readJson } from "./request";
+import { assertSameOrigin, readJson } from "./request";
 
 beforeEach(() => { mocks.config.SITE_URL = "https://example.com/"; mocks.config.AUTH_URL = undefined; mocks.config.NODE_ENV = "production"; });
 describe("same-origin requests", () => {
@@ -14,20 +14,6 @@ describe("same-origin requests", () => {
   });
   it("does not trust an attacker-controlled request host in production", () => {
     expect(() => assertSameOrigin(new Request("https://attacker.example/api/submit", { headers: { origin: "https://attacker.example" } }))).toThrow(expect.objectContaining({ status: 403 }));
-  });
-});
-describe("cron authorization", () => {
-  const secret = "unit-test-only-".repeat(4);
-  it("fails closed for absent or incorrect credentials", () => {
-    expect(isCronAuthorized(null, undefined)).toBe(false);
-    expect(isCronAuthorized("Bearer undefined", undefined)).toBe(false);
-    expect(isCronAuthorized(`Bearer ${secret}`, undefined)).toBe(false);
-    expect(isCronAuthorized(null, secret)).toBe(false);
-    expect(isCronAuthorized("Bearer invalid", secret)).toBe(false);
-  });
-  it("accepts only an exact bearer secret", () => {
-    expect(isCronAuthorized(`Bearer ${secret}`, secret)).toBe(true);
-    expect(isCronAuthorized(`Bearer ${secret} `, secret)).toBe(false);
   });
 });
 it("rejects oversized input without trusting Content-Length", async () => {

@@ -70,7 +70,6 @@ const envSchema = z.object({
   AUTH_TRUST_HOST: flag,
   GOOGLE_PSI_API_KEY: optionalString,
   GOOGLE_PSI_API_KEY_BACKUP: optionalString,
-  CRON_SECRET: optionalString.refine((value) => !value || value.length >= 32, "Must contain at least 32 characters"),
   CHROMIUM_EXECUTABLE_PATH: optionalString,
   UNAVATAR_API_KEY: optionalString,
   LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal", "silent"]).default("info"),

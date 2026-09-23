@@ -1,10 +1,11 @@
-import { desc, eq, sql } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { validateRuntimeEnv } from "@/config/env";
 import { getDb, closeDb } from "@/db";
 import { backgroundJobs, jobEvents } from "@/db/schema";
 import { closeQueues, readQueueCounts } from "@/infrastructure/queue/queues";
 import { operateJob, publicJob } from "@/modules/jobs/service";
+import { readJobOperations } from "@/modules/jobs/operations";
 import { AppError } from "@/lib/http/errors";
 
 /** Private operator command. There is deliberately no public admin HTTP endpoint. */
@@ -18,15 +19,11 @@ async function main() {
   const db = getDb();
   if (!db) throw new AppError("DATABASE_UNAVAILABLE", "Database is unavailable.", 503);
   if (command === "status") {
-    const ledger = await db.execute(sql`SELECT queue,status,count(*)::integer AS count,
-      count(*) FILTER(WHERE status='pending' AND attempts>0)::integer AS retrying,
-      count(*) FILTER(WHERE status='pending' AND available_at>now())::integer AS delayed,
-      count(*) FILTER(WHERE status='failed')::integer AS dead_letter
-      FROM background_jobs GROUP BY queue,status ORDER BY queue,status`);
+    const operations = await readJobOperations();
     let transport: unknown;
     try { transport = await readQueueCounts(); }
     catch { transport = { errorCode: "SERVICE_UNAVAILABLE" }; }
-    process.stdout.write(JSON.stringify({ ledger, transport }) + "\n");
+    process.stdout.write(JSON.stringify({ ...operations, transport }) + "\n");
   } else if (command === "inspect") {
     const [job] = await db.select().from(backgroundJobs).where(eq(backgroundJobs.id, id));
     if (!job) throw new AppError("NOT_FOUND", "Job not found.", 404);

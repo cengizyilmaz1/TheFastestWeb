@@ -5,19 +5,20 @@ import type { PSIResult } from "@/lib/pagespeed";
 import { AppError } from "@/lib/http/errors";
 import { cleanupIntegrationDatabase, fixtureSql, prepareIntegrationDatabase, resetIntegrationData } from "./database";
 
-const mocks = vi.hoisted(() => ({ psi: vi.fn(), metadata: vi.fn(), screenshot: vi.fn(), publish: vi.fn(), auth: vi.fn(), limit: vi.fn(), secret: "synthetic-cron-secret-for-local-integration-tests" }));
+const mocks = vi.hoisted(() => ({ psi: vi.fn(), metadata: vi.fn(), screenshot: vi.fn(), publish: vi.fn(), auth: vi.fn(), limit: vi.fn() }));
 vi.mock("@/modules/sites/metadata", () => ({ loadSiteMetadata: mocks.metadata }));
 vi.mock("@/lib/pagespeed", () => ({ runPageSpeedTest: mocks.psi, METHODOLOGY_VERSION: "psi-v1-single-mobile" }));
 vi.mock("@/infrastructure/queue/queues", () => ({ publishJob: mocks.publish }));
 vi.mock("@/modules/security/rate-limit", () => ({ enforceRateLimit: mocks.limit }));
 vi.mock("@/modules/screenshots/service", () => ({ processSiteScreenshotJob: mocks.screenshot }));
 vi.mock("@/auth", () => ({ auth: mocks.auth }));
-vi.mock("@/config/env", () => ({ getEnv: () => ({ CRON_SECRET: mocks.secret, JOB_MAX_ATTEMPTS: 3, SITE_URL: "https://example.com", NODE_ENV: "test" }) }));
+vi.mock("@/config/env", () => ({ getEnv: () => ({ JOB_MAX_ATTEMPTS: 3, SITE_URL: "https://example.com", NODE_ENV: "test", SCHEDULER_ENABLED: true, SCHEDULER_INTERVAL_SECONDS: 60, PSI_REQUESTS_PER_DAY: 1000 }) }));
 import { GET } from "@/app/api/cron/retest/route";
 import { POST } from "@/app/api/sites/[slug]/retest/route";
 import { GET as readJob } from "@/app/api/jobs/[id]/route";
 import { scheduleDailyRetests, scheduleMaintenance, scheduleManualRetest, processBackgroundJob, dispatchDueJobs, operateJob } from "@/modules/jobs/service";
 import { ProviderQuotaError } from "@/modules/jobs/provider-budget";
+import { readJobOperations } from "@/modules/jobs/operations";
 import { startSchedulerLoop } from "@/infrastructure/queue/scheduler-loop";
 
 const measurement: PSIResult = {
@@ -26,7 +27,7 @@ const measurement: PSIResult = {
   tbtScore: 0.99, ttiScore: null, siScore: 0.99,
   fcp: "0.7 s", lcp: "1.2 s", clsDisplay: "0.02", tbt: "10 ms", tti: "Unavailable", si: "1.0 s", loadTime: "1.2 s", rawResponse: {},
 };
-const request = () => new NextRequest("https://example.com/api/cron/retest", { headers: { authorization: `Bearer ${mocks.secret}` } });
+const request = () => new NextRequest("https://example.com/api/cron/retest", { headers: { authorization: `Bearer ${"legacy-secret-".repeat(4)}` } });
 
 async function fixture() {
   const owner = randomUUID(), first = randomUUID(), second = randomUUID();
@@ -103,12 +104,13 @@ describe("durable retesting with real PostgreSQL transactions", () => {
     expect(mocks.psi).not.toHaveBeenCalled();
     expect((await processBackgroundJob(job.id)).status).toBe("succeeded");expect(mocks.psi).toHaveBeenCalledTimes(2);
   });
-  it("rejects unauthorized cron and returns202 without measuring inside HTTP", async () => {
+  it("retires cron without creating jobs even when legacy callers send credentials", async () => {
     await fixture();
-    expect((await GET(new NextRequest("https://example.com/api/cron/retest"), undefined)).status).toBe(401);
+    expect((await GET(new NextRequest("https://example.com/api/cron/retest"), undefined)).status).toBe(410);
     const response = await GET(request(), undefined);
-    expect(response.status).toBe(202);
-    expect(await response.json()).toEqual({ status: "accepted", scheduled: 4, maintenance: 1 });
+    expect(response.status).toBe(410);
+    expect(await response.json()).toMatchObject({ status: "retired" });
+    expect(await fixtureSql()`SELECT id FROM background_jobs`).toHaveLength(0);
     expect(mocks.psi).not.toHaveBeenCalled();
     expect(mocks.publish).not.toHaveBeenCalled();
   });
@@ -248,6 +250,57 @@ describe("durable retesting with real PostgreSQL transactions", () => {
     expect(await dispatchDueJobs()).toEqual({ dispatched: 4 });
     expect((await jobFor(first)).status).toBe("queued");
     expect(await dispatchDueJobs()).toEqual({ dispatched: 4 });
+  });
+  it("dispatches transactional queues in the first batch despite older performance backlog", async () => {
+    await fixtureSql()`INSERT INTO background_jobs(queue,kind,job_key,payload,updated_at)
+      SELECT 'performance','site.performance.daily','backlog:'||n,'{}',now()-interval '1 day' FROM generate_series(1,150) n`;
+    await scheduleMaintenance();
+    const webhook = randomUUID(), email = randomUUID();
+    await fixtureSql()`INSERT INTO background_jobs(id,queue,kind,job_key,payload)
+      VALUES(${webhook},'webhooks','payment.webhook','webhook-fixture','{}'),
+        (${email},'emails','email.deliver','email-fixture','{}')`;
+    expect(await dispatchDueJobs()).toEqual({ dispatched: 100 });
+    const deliveries = mocks.publish.mock.calls.map(([job]) => job);
+    expect(deliveries.slice(0,4).map(job => job.queue).sort()).toEqual(["emails","maintenance","performance","webhooks"]);
+    expect(deliveries).toContainEqual(expect.objectContaining({ id: webhook }));
+    expect(deliveries).toContainEqual(expect.objectContaining({ id: email }));
+    expect(await fixtureSql()`SELECT id FROM background_jobs WHERE status='pending'`).toHaveLength(53);
+  });
+  it("rotates expired running deliveries without changing their leases or starving pending work", async () => {
+    await fixtureSql()`INSERT INTO background_jobs(queue,kind,job_key,payload,status,attempts,lease_token,leased_until,updated_at)
+      SELECT 'maintenance','maintenance.cleanup','expired:'||n,'{}','running',1,gen_random_uuid(),
+        now()-interval '5 minutes',now()-interval '10 minutes' FROM generate_series(1,100) n`;
+    await scheduleMaintenance();
+    const [pending] = await fixtureSql()`SELECT id FROM background_jobs WHERE status='pending'`;
+    const leases = await fixtureSql()`SELECT id,lease_token,leased_until,attempts FROM background_jobs WHERE status='running' ORDER BY id`;
+    expect(await dispatchDueJobs()).toEqual({ dispatched: 100 });
+    expect(mocks.publish.mock.calls.some(([job]) => job.id === pending.id)).toBe(false);
+    expect(await fixtureSql()`SELECT id,lease_token,leased_until,attempts FROM background_jobs WHERE status='running' ORDER BY id`).toEqual(leases);
+    mocks.publish.mockClear();
+    expect(await dispatchDueJobs()).toEqual({ dispatched: 100 });
+    expect(mocks.publish.mock.calls[0][0].id).toBe(pending.id);
+  });
+  it("reports daily evidence, overdue work and provider/email failures without private payloads", async () => {
+    const { first } = await fixture();
+    await scheduleDailyRetests();
+    await fixtureSql()`INSERT INTO speed_tests(site_id,score,strategy,methodology_version,sample_count,metrics_source)
+      VALUES(${first},90,'mobile','psi-v2-two-sample',2,'lab'),(${first},90,'desktop','psi-v2-two-sample',1,'lab')`;
+    await fixtureSql()`INSERT INTO provider_usage(day,provider,used) VALUES((now() AT TIME ZONE 'UTC')::date,'pagespeed',604)`;
+    await fixtureSql()`INSERT INTO background_jobs(queue,kind,job_key,payload,status,attempts,lease_token,leased_until)
+      VALUES('maintenance','maintenance.cleanup','expired-status','{}','running',1,gen_random_uuid(),now()-interval '1 minute')`;
+    await fixtureSql()`INSERT INTO email_deliveries(event_key,template,recipient,status,last_error_code)
+      VALUES('email-status','test-only','private-recipient@example.invalid','failed','UPSTREAM_UNAVAILABLE')`;
+    const report = await readJobOperations();
+    expect(report.daily).toMatchObject({ eligible_sites: 2, mobile_measured: 1, desktop_measured: 0 });
+    expect(report.ledger).toContainEqual(expect.objectContaining({ queue: "performance", status: "pending", due: 4 }));
+    const pending = report.ledger.find(row => row.queue === "performance" && row.status === "pending");
+    expect(new Date(String(pending?.oldest_due_at)).getTime()).toBeLessThanOrEqual(Date.now());
+    expect(report.ledger).toContainEqual(expect.objectContaining({ queue: "maintenance", status: "running", expired_leases: 1 }));
+    expect(report.providerUsage).toEqual([expect.objectContaining({ provider: "pagespeed", used: 604 })]);
+    expect(report.emailDeliveries).toEqual([expect.objectContaining({ status: "failed", last_error_code: "UPSTREAM_UNAVAILABLE", count: 1 })]);
+    expect(report.policy).toEqual({ psiRequestsPerDay: 1000 });
+    expect(JSON.stringify(report)).not.toContain("private-recipient");
+    expect(JSON.stringify(report)).not.toContain("payload");
   });
   it("maintenance retains accounts, sites, measurements and job idempotency records", async () => {
     const { first } = await fixture();

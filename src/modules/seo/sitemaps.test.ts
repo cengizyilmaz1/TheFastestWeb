@@ -20,6 +20,18 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllEnvs(); vi.resetAllMocks(); });
 
 describe("sectioned canonical sitemaps", () => {
+  it("lets crawlers observe utility noindex directives and legacy redirects", () => {
+    const controls = robots();
+    expect(controls.sitemap).toBe("https://example.invalid/sitemap.xml");
+    const rules = Array.isArray(controls.rules) ? controls.rules : [controls.rules];
+    const restrictions = rules.flatMap((rule) => rule.disallow ?? []);
+    for (const path of ["/auth/login", "/badge-preview", "/email-preview", "/links", "/profile/legacy-id"]) {
+      expect(restrictions.some((prefix) => path.startsWith(prefix))).toBe(false);
+    }
+    expect(restrictions.some((prefix) => "/api/jobs".startsWith(prefix))).toBe(true);
+    expect(restrictions.some((prefix) => "/admin".startsWith(prefix))).toBe(true);
+  });
+
   it("retains public static routes, recorded content dates and rejects out-of-range pages", async () => {
     const xml = await sitemapDocument("pages", 0);
     expect(paths(xml)).toEqual(["/", "/test", "/submit", "/pricing", "/advertise", "/about", "/blog", "/privacy", "/terms", "/categories", "/leaderboard/perfect", "/leaderboard/90-plus", "/leaderboard/80-plus"]);

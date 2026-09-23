@@ -63,9 +63,10 @@ production, and select database 0–15 without query parameters. Use TLS when
 connecting across hosts; the supplied Redis service lives on the private Docker
 backend network. All processes must use the same `QUEUE_PREFIX` (default `tfw`).
 
-`GOOGLE_PSI_API_KEY`, `GOOGLE_PSI_API_KEY_BACKUP`, `CRON_SECRET` (at least 32
-characters when set) and `UNAVATAR_API_KEY` enable their respective integrations.
-Absence of `CRON_SECRET` must keep the retest endpoint closed. All supplied legacy
+`GOOGLE_PSI_API_KEY`, `GOOGLE_PSI_API_KEY_BACKUP` and `UNAVATAR_API_KEY` enable their
+respective integrations. The old `/api/cron/retest` endpoint is retired; the
+independent scheduler generates durable jobs for BullMQ workers. The endpoint always
+returns HTTP 410 and never creates jobs. All supplied legacy
 credentials must be replaced with credentials belonging to the new owner.
 
 Legacy Polar checkout/webhooks are retired and accept no `POLAR_*` credentials.
@@ -217,7 +218,7 @@ plan; all restored jobs require ledger validation before execution.
 
 ## Linux browser
 
-Chrome for Testing **153.0.8010.36** is paired with Puppeteer **25.11.0**, according
+Chrome for Testing **154.0.8037.57** is paired with Puppeteer **25.12.0**, according
 to the [official supported-browser table](https://pptr.dev/supported-browsers).
 The exact archive is fetched into `/opt/chrome` during image build.
 `CHROMIUM_EXECUTABLE_PATH` and `CHROME_DEVEL_SANDBOX` point to the installed binary

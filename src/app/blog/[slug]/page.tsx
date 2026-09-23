@@ -7,7 +7,7 @@ import { compileMDX } from "next-mdx-remote/rsc";
 import { PageHeading, PageShell, SectionHeading } from "@/components/content/PageShell";
 import { getAllPosts, getPost, getRelatedPosts } from "@/lib/blog";
 import { BLOG_CATEGORIES, headingIds, type TableOfContentsEntry } from "@/lib/blog-content";
-import { pageMetadata, recordedDate } from "@/lib/seo/metadata";
+import { pageMetadata, publicationDates } from "@/lib/seo/metadata";
 import { articleSchema } from "@/lib/seo/structured-data";
 import { safeJsonLd } from "@/lib/seo/json-ld";
 
@@ -21,8 +21,9 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const { slug } = await params;
   const post = getPost(slug);
   if (!post) notFound();
+  const { datePublished, dateModified } = publicationDates(post.date, post.updated);
   return { ...pageMetadata({ title: post.title, description: post.description, path: `/blog/${encodeURIComponent(slug)}`,
-    type: "article", publishedTime: recordedDate(post.date), modifiedTime: recordedDate(post.updated), image: post.coverImage }), authors: [{ name: post.author }] };
+    type: "article", publishedTime: datePublished, modifiedTime: dateModified, image: post.coverImage }), authors: [{ name: post.author }] };
 }
 
 export default async function BlogPostPage({ params }: { params: Promise<{ slug: string }> }) {
@@ -32,7 +33,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
   const related = getRelatedPosts(slug);
   const tableOfContents: TableOfContentsEntry[] = [];
   const { content } = await compileMDX({ source: post.content, options: { mdxOptions: { rehypePlugins: [headingIds(tableOfContents)] } } });
-  const published = recordedDate(post.date), updated = recordedDate(post.updated);
+  const { datePublished: published, dateModified: updated } = publicationDates(post.date, post.updated);
   const formatDate = (date: string) => new Date(date).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
 
   return (
@@ -53,8 +54,8 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           </div>
         </PageHeading>
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-text-secondary -mt-5 mb-7">
-          {published && <p>Published <time dateTime={published}>{formatDate(post.date)}</time></p>}
-          {updated && <p>Updated <time dateTime={updated}>{formatDate(post.updated!)}</time></p>}
+          {published && <p>Published <time dateTime={published}>{formatDate(published)}</time></p>}
+          {updated && <p>Updated <time dateTime={updated}>{formatDate(updated)}</time></p>}
         </div>
         <div className="relative aspect-[1200/630] overflow-hidden rounded-2xl border border-border mb-10">
           <Image src={post.coverImage} alt={post.coverAlt} fill sizes="(max-width: 1100px) 100vw, calc(100vw - 460px)" className="object-cover" />

@@ -22,7 +22,7 @@ export function pageMetadata({ title, description, path, index = true, follow = 
     title: { absolute: fullTitle }, description,
     alternates: { canonical: siteUrl(path), ...(markdownPath ? { types: { "text/markdown": siteUrl(markdownPath) } } : {}) },
     robots: { index: indexable, follow: follow && !siteConfig.isDemo,
-      ...(indexable ? { googleBot: { index: true, follow: true, "max-image-preview": "large", "max-snippet": -1, "max-video-preview": -1 } } : {}) },
+      ...(indexable ? { googleBot: { index: true, follow, "max-image-preview": "large", "max-snippet": -1, "max-video-preview": -1 } } : {}) },
     openGraph: { title: fullTitle, description, url: siteUrl(path), siteName: siteConfig.name, locale: "en_US", type,
       ...(type === "article" && publishedTime ? { publishedTime } : {}),
       ...(type === "article" && modifiedTime ? { modifiedTime } : {}),
@@ -36,4 +36,12 @@ export function recordedDate(value: string | Date | null | undefined): string | 
   if (!value) return undefined;
   const date = value instanceof Date ? value : new Date(value);
   return Number.isFinite(date.getTime()) ? date.toISOString() : undefined;
+}
+
+/** Keep HTML, social metadata, structured data and exports on the same chronology. */
+export function publicationDates(published?: string | Date | null, modified?: string | Date | null) {
+  const datePublished = recordedDate(published);
+  const candidate = recordedDate(modified);
+  const dateModified = candidate && (!datePublished || candidate >= datePublished) ? candidate : undefined;
+  return { datePublished, dateModified };
 }

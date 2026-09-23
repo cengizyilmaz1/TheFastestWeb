@@ -3,7 +3,7 @@ import { aboutPage } from "@/content/about";
 import { publicPages } from "@/content/public-pages";
 import { getAllPosts, getPost } from "@/lib/blog";
 import { AppError } from "@/lib/http/errors";
-import { recordedDate, siteUrl } from "@/lib/seo/metadata";
+import { publicationDates, recordedDate, siteUrl } from "@/lib/seo/metadata";
 import { categoryCatalog, categoryPath, findCategory } from "@/modules/catalog/categories";
 import { getCategoryListing } from "@/modules/catalog/public-categories";
 import { articleMarkdown, documentHeader, markdownText, measurementGuidance, publicPageMarkdown } from "./markdown-format";
@@ -66,14 +66,16 @@ function blogMarkdown(): MarkdownDocument {
     canonicalPath: "/blog",
     body: [documentHeader("Website performance journal", "/blog"),
       "Published guides about page loading, lab measurements and website performance. Each article retains its original byline and publication date; a redesign does not make an older guide newly updated.",
-      ...posts.map((post) => [
-        `## ${markdownLink(post.title, `/blog/${post.slug}`)}`,
-        markdownText(post.description), `Author: ${markdownText(post.author)}`,
-        ...(recordedDate(post.date) ? [`Published: ${recordedDate(post.date)}`] : []),
-        ...(post.updated && recordedDate(post.updated) && (!recordedDate(post.date) || recordedDate(post.updated)! >= recordedDate(post.date)!)
-          ? [`Updated: ${recordedDate(post.updated)}`] : []),
-        `Canonical article: ${siteUrl(`/blog/${post.slug}`)}`,
-      ].join("\n\n")),
+      ...posts.map((post) => {
+        const { datePublished, dateModified } = publicationDates(post.date, post.updated);
+        return [
+          `## ${markdownLink(post.title, `/blog/${post.slug}`)}`,
+          markdownText(post.description), `Author: ${markdownText(post.author)}`,
+          ...(datePublished ? [`Published: ${datePublished}`] : []),
+          ...(dateModified ? [`Updated: ${dateModified}`] : []),
+          `Canonical article: ${siteUrl(`/blog/${post.slug}`)}`,
+        ].join("\n\n");
+      }),
     ].join("\n\n"),
   };
 }

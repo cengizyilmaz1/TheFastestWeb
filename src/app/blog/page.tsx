@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowRight, ArrowUpRight } from "@phosphor-icons/react/dist/ssr";
 import { PageHeading, PageShell } from "@/components/content/PageShell";
 import { getPaginatedPosts, POSTS_PER_PAGE, getAllPosts, type PostMeta } from "@/lib/blog";
@@ -9,16 +10,25 @@ import { pageMetadata, recordedDate, siteUrl } from "@/lib/seo/metadata";
 import { webPageSchema } from "@/lib/seo/structured-data";
 import { safeJsonLd } from "@/lib/seo/json-ld";
 
-type Props = { searchParams: Promise<{ page?: string }> };
+type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
-export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
+async function archive({ searchParams }: Props) {
   const query = await searchParams;
-  const requested = Number.parseInt(query.page ?? "1", 10);
-  const { currentPage } = getPaginatedPosts(Number.isNaN(requested) ? 1 : requested);
+  const value = query.page;
+  if (value !== undefined && (typeof value !== "string" || !/^[1-9]\d*$/.test(value))) notFound();
+  const requested = value === undefined ? 1 : Number(value);
+  if (!Number.isSafeInteger(requested)) notFound();
+  const result = getPaginatedPosts(requested);
+  // Do not serve the last page as an unlimited set of nonexistent archive URLs.
+  if (requested !== result.currentPage) notFound();
+  return { ...result, query, path: requested === 1 ? "/blog" : `/blog?page=${requested}` };
+}
+
+export async function generateMetadata(props: Props): Promise<Metadata> {
+  const { currentPage, query, path, total } = await archive(props);
   return pageMetadata({ title: currentPage === 1 ? "Website speed guides" : `Website speed guides, page ${currentPage}`,
     description: "Practical guides to PageSpeed Insights, website loading performance and Core Web Vitals, with explanations of the metrics behind each score.",
-    path: currentPage === 1 ? "/blog" : `/blog?page=${currentPage}`,
-    index: Object.keys(query).every((key) => key === "page") && (!query.page || (/^[1-9]\d*$/.test(query.page) && requested === currentPage)) });
+    path, index: total > 0 && Object.keys(query).every((key) => key === "page") });
 }
 
 function PostDetails({ post }: { post: PostMeta }) {
@@ -30,13 +40,10 @@ function PostDetails({ post }: { post: PostMeta }) {
   </div>;
 }
 
-export default async function BlogPage({ searchParams }: Props) {
-  const params = await searchParams;
-  const page = Number.parseInt(params.page ?? "1", 10);
-  const { posts, totalPages, currentPage } = getPaginatedPosts(Number.isNaN(page) ? 1 : page);
+export default async function BlogPage(props: Props) {
+  const { posts, totalPages, currentPage, query: params, path } = await archive(props);
   const totalPosts = getAllPosts().length;
   const [featured, ...remaining] = posts;
-  const path = currentPage === 1 ? "/blog" : `/blog?page=${currentPage}`;
   const jsonLd = { ...webPageSchema({ path, name: "Website speed guides", description: "Guides to website speed, PageSpeed Insights and Core Web Vitals.", type: "CollectionPage",
     trail: [{ name: "TheFastestWeb", path: "/" }, { name: "Blog", path }] }),
     mainEntity: { "@type": "ItemList", numberOfItems: posts.length, itemListElement: posts.map((post, index) => ({ "@type": "ListItem", position: (currentPage - 1) * POSTS_PER_PAGE + index + 1, name: post.title, url: siteUrl(`/blog/${encodeURIComponent(post.slug)}`) })) } };

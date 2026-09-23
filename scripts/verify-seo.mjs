@@ -14,8 +14,9 @@ function content(node) { return (node.childNodes || []).map((child) => child.val
 function sameUrl(actual, expected) {
   try { return new URL(actual).href === new URL(expected).href; } catch { return false; }
 }
-async function document(path) {
-  const response = await fetch(new URL(path, base), { redirect: "manual", signal: AbortSignal.timeout(45_000) });
+async function document(path, userAgent) {
+  const response = await fetch(new URL(path, base), { redirect: "manual", signal: AbortSignal.timeout(45_000),
+    ...(userAgent ? { headers: { "User-Agent": userAgent } } : {}) });
   const html = await response.text(), all = nodes(parse(html));
   const meta = (name) => all.find((node) => node.tagName === "meta" && (attr(node, "name") === name || attr(node, "property") === name));
   const canonicals = all.filter((node) => node.tagName === "link" && attr(node, "rel") === "canonical").map((node) => attr(node, "href"));
@@ -55,6 +56,12 @@ if (pageTwo) {
   const page = await document(pageTwo);
   record("/blog?page=2", { status: page.response.status === 200, ownCanonical: page.canonicals.length === 1 && page.canonicals[0] === new URL("/blog?page=2", canonicalOrigin).href });
 }
+// HTML-limited crawlers receive blocking metadata, so a missing archive must
+// resolve before streaming and return a real 404 rather than a cloned last page.
+for (const path of ["/blog?page=0", "/blog?page=01", "/blog?page=2suffix", "/blog?page=1&page=2", "/blog?page=999999"]) {
+  const page = await document(path, "Bingbot");
+  record(path, { status: page.response.status === 404, noindex: page.meta("robots")?.includes("noindex") });
+}
 for (const path of ["/auth/login", "/badge-preview", "/links"]) {
   const page = await document(path);
   record(path, { status: page.response.status === 200, privateIndexing: page.meta("robots")?.includes("noindex") });
@@ -64,8 +71,11 @@ record("/privacy (preferences)", { status: preferences.response.status === 200, 
   noindex: preferences.meta("robots")?.includes("noindex"), referrer: preferences.meta("referrer") === "no-referrer" });
 const robots = await fetch(new URL("/robots.txt", base)).then((response) => response.text());
 const sitemap = await fetch(new URL("/sitemap.xml", base)).then((response) => response.text());
+const disallowed = [...robots.matchAll(/^Disallow:\s*(\S+)\s*$/gm)].map((match) => match[1]);
 record("indexing-controls", demo ? { robots: /^Disallow: \/\s*$/m.test(robots), sitemap: sitemap.includes("<sitemapindex") && !sitemap.includes("<loc>") }
-  : { robots: robots.includes(`Sitemap: ${canonicalOrigin}/sitemap.xml`), sitemap: sitemap.includes("/sitemaps/pages/0.xml") && !/\/sitemaps\/(technologies|countries|weekly|monthly)\//.test(sitemap) });
+  : { robots: robots.includes(`Sitemap: ${canonicalOrigin}/sitemap.xml`),
+    observableNoindex: ["/auth/login", "/badge-preview", "/email-preview", "/links"].every((path) => !disallowed.some((prefix) => path.startsWith(prefix))),
+    sitemap: sitemap.includes("/sitemaps/pages/0.xml") && !/\/sitemaps\/(technologies|countries|weekly|monthly)\//.test(sitemap) });
 const indexedUrls = new Set();
 for (const match of sitemap.matchAll(/<loc>(.*?)<\/loc>/g)) {
   const child = new URL(match[1]);
