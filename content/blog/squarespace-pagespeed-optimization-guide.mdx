@@ -1,115 +1,137 @@
 ---
 title: "Squarespace PageSpeed Optimization Guide"
-description: "Squarespace controls most of its own infrastructure, but there are still practical steps you can take to improve your PageSpeed score. Here's what works."
+description: "A practical Squarespace performance guide for page size, images, fonts, embeds, custom code, Core Web Vitals, and safe measurement."
 date: "2026-03-23"
+updated: "2026-09-25"
 ---
 
-Squarespace is a fully hosted website builder like Wix, but with a stronger emphasis on design quality. Because Squarespace controls the platform, your optimization options are limited compared to self-hosted solutions -- but there are still meaningful improvements you can make.
+Squarespace operates the hosting and core platform, so most site owners should focus on the content and integrations they control. Large pages, oversized media, too many fonts, video embeds, third-party widgets, and custom code can still create slow or unstable experiences.
 
-## Understanding Squarespace's Performance Baseline
+This guide separates changes available in Squarespace from infrastructure advice that belongs to self-hosted sites.
 
-Squarespace uses Fastly as its CDN and delivers assets globally. The infrastructure is solid. The issue is that Squarespace templates load substantial amounts of JavaScript and CSS to support their design system, animations, and e-commerce features -- regardless of whether you use all those features on a given page.
+### Table of contents
 
-Typical Squarespace mobile scores range from 50-75. Getting above 75 requires deliberate optimization.
+- [Measure representative pages](#article-measure-representative-pages)
+- [Reduce page weight and complexity](#article-reduce-page-weight-and-complexity)
+- [Prepare images before upload](#article-prepare-images-before-upload)
+- [Control video and embedded content](#article-control-video-and-embedded-content)
+- [Simplify fonts and visual effects](#article-simplify-fonts-and-visual-effects)
+- [Audit custom code and third parties](#article-audit-custom-code-and-third-parties)
+- [Diagnose each Core Web Vital](#article-diagnose-each-core-web-vital)
+- [Publish with a regression checklist](#article-publish-with-a-regression-checklist)
 
-## What You Can Control
+## Measure representative pages
 
-### 1. Optimize Images (Your Biggest Lever)
+Begin with the live custom-domain URL in a private browser window. Test the home page and the heaviest real templates: a gallery, product, portfolio, event, or long landing page. A light home page does not describe the experience of a media-heavy page.
 
-Squarespace automatically converts uploaded images to WebP and serves them responsively. But it can only work with what you provide.
+Use PageSpeed Insights for field and lab context, then open the browser Network and Performance panels. Record:
 
-- **Compress before uploading.** Squarespace's compression is good but not perfect. Running your images through Squoosh or TinyPNG first helps.
-- **Keep images under 500KB before uploading.** Smaller source images result in smaller output.
-- **For banners and hero images:** Aim for under 300KB after compression. Hero images are almost always your LCP element.
-- **Use the Image Block settings.** In the block editor, set explicit aspect ratios and focal points to prevent unexpected cropping that loads excess image area.
+- transferred bytes and request count;
+- the largest image, font, video, and script responses;
+- LCP, CLS, FCP, and main-thread work;
+- whether field data is URL-level or origin-level;
+- mobile and desktop results separately.
 
-### 2. Minimize Custom Code Injection
+Squarespace notes that generic testing tools can report issues that owners cannot directly change in a managed CMS. Treat each audit as a lead to investigate, not a command to install another optimizer. The [PageSpeed score guide](/blog/what-is-a-good-pagespeed-score) explains why a stable real-user experience matters more than chasing one perfect lab run.
 
-Squarespace allows code injection through Settings > Advanced > Code Injection. Every script you add here loads on every page.
+## Reduce page weight and complexity
 
-- Remove any scripts you're no longer using
-- Move third-party scripts from the `<head>` injection to the footer injection (runs after page load)
-- If you have Google Analytics, use Squarespace's built-in Google Analytics integration instead of manually injecting the GA script -- the built-in version is deferred automatically
+Squarespace's [page-size guidance](https://support.squarespace.com/hc/en-us/articles/360022529371-Reducing-your-page-size-for-faster-loading) recommends keeping pages at 5 MB or less, while also noting that smaller pages are safer for cellular connections. That is a platform recommendation, not a guarantee that every page below the limit will be fast.
 
-### 3. Reduce Third-Party Integrations
+Use the Network panel to sort responses by size. Then reduce the page deliberately:
 
-Each connected service (chat, scheduling, reviews) adds JavaScript. Squarespace's own integrations (like Acuity Scheduling) are somewhat optimized, but third-party embeds are not.
+- split a page that covers several independent topics;
+- use blog excerpts rather than full articles on an index page;
+- remove duplicate or decorative sections that do not help the visitor;
+- limit gallery items and distribute large portfolios across useful pages;
+- replace a wall of embeds with lightweight links or preview images;
+- remove hidden blocks that still produce downloadable resources.
 
-If a widget doesn't directly generate leads or revenue, consider removing it.
+Do not split content merely to create more page views. Each new page should have a clear purpose and navigation path.
 
-### 4. Limit Animations and Effects
+## Prepare images before upload
 
-Squarespace's scroll animations and entrance effects look polished but add JavaScript overhead. In **Design > Site Styles**, you can often disable:
+Squarespace generates responsive image variants, but the source asset still matters. Its current [image formatting guidance](https://support.squarespace.com/hc/en-us/articles/206542517-Formatting-images-for-display-on-the-web) recommends web-ready dimensions and files of 500 KB or less where possible, and explains that uploaded site images are displayed as WebP unless that option is disabled.
 
-- Scroll effects (parallax)
-- Entrance animations
-- Page transitions
+For each image:
 
-Disabling these is one of the most impactful changes you can make to TBT on Squarespace.
+1. Crop it to the aspect ratio used by the design.
+2. Resize it for its largest real display size rather than exporting a camera original.
+3. Compress it while checking visible quality.
+4. Use WebP where it suits the content and workflow.
+5. Add useful alternative text when the image conveys information.
+6. Keep the original file outside Squarespace as a source asset.
 
-### 5. Streamline Your Pages
+Prioritize the image that becomes LCP. A large background image, slideshow, or banner can delay meaningful rendering. Avoid autoplaying a carousel solely to display one important message. On product and gallery pages, remove near-duplicate images and keep the sequence useful.
 
-Long pages with many section types load more assets. A page with a gallery, a blog feed, a map, and an e-commerce listing block loads JavaScript for all of those features.
+Do not lazy-load or hide the likely LCP content through unsupported custom code. Squarespace controls parts of its image delivery, so verify the rendered production HTML before copying generic code snippets.
 
-For your most important pages (homepage, landing pages), keep the structure focused. Every feature block you add has a JavaScript cost.
+## Control video and embedded content
 
-### 6. Use Fewer Fonts
+Video players, maps, scheduling tools, social feeds, forms, and reviews can introduce extra origins, JavaScript, iframes, and layout movement. Test a page before and after adding each embed.
 
-Squarespace lets you use Google Fonts and Typekit. Each font family at each weight is a separate network request. Limit your site to 2 font families, each at 2-3 weights maximum.
+For nonessential media below the fold, consider a poster image and a clear link or click-to-load interaction. Spread several videos across relevant pages when that improves the information structure. Reserve space for the final iframe so its arrival does not move surrounding content.
 
-In **Design > Fonts**, set fewer font pairings and reduce the number of active weights.
+Background video deserves extra scrutiny on mobile. Ask whether motion is essential to comprehension, whether a static image could serve small screens, and whether the media respects reduced-motion preferences. Check bandwidth and battery cost, not only visual polish.
 
-## What You Can't Control on Squarespace
+## Simplify fonts and visual effects
 
-- The JavaScript and CSS that Squarespace's templates load by default
-- Server response time and infrastructure decisions
-- Font loading strategy (`font-display` is controlled by Squarespace)
-- Core template rendering pipeline
-- HTTP headers and caching policies
+Squarespace's [slow-site guidance](https://support.squarespace.com/hc/en-us/articles/206545657-My-site-is-loading-slowly) recommends limiting the number of fonts. Every family, weight, and style can add a request and delay text rendering.
 
-This is the fundamental trade-off of fully hosted platforms: ease of use in exchange for performance control.
+Use a small typography system:
 
-## Realistic Score Expectations
+- one or two font families;
+- only the weights used by visible components;
+- a system fallback that is reasonably close in shape;
+- restrained letter effects and animations;
+- no duplicate font loaded by both the platform and custom code.
 
-| Page Type | Expected Mobile Score |
-|---|---|
-| Simple landing page (minimal blocks) | 60-75 |
-| Homepage with gallery | 50-65 |
-| Blog post | 60-78 |
-| E-commerce product page | 45-62 |
-| Page with scheduling/booking | 45-60 |
+Visual effects can also create main-thread and rendering work. Remove scroll effects, parallax, animations, or repeated transitions that do not help the task. Test on an actual mid-range phone, where animation cost is easier to notice than on a development machine.
 
-Above 80 on mobile is achievable but requires a very minimal page with few integrations.
+## Audit custom code and third parties
 
-## Squarespace vs Competitors on Speed
+Code injection, custom CSS, tag managers, consent tools, chat, analytics, affiliate scripts, and marketing pixels are part of the production performance budget. Squarespace recommends temporarily removing custom code while diagnosing a slow site. Save it safely and change one dependency at a time.
 
-Squarespace and Wix are comparable in terms of what you can achieve. Both are slower than:
+For each script, document:
 
-- Self-hosted frameworks (Next.js, Nuxt, Astro, SvelteKit)
-- WordPress with aggressive optimization
-- Webflow (which gives you more control over the code output)
+- its owner and business purpose;
+- which pages require it;
+- when it loads and whether consent applies;
+- its network and main-thread cost;
+- how to test its critical behavior;
+- how to roll it back.
 
-But they're easier to manage without a developer.
+Do not add `async`, `defer`, or a delay wrapper without understanding dependencies. A script that loads faster but breaks forms, consent, commerce, or analytics integrity is not an optimization. Remove stale campaign tags and integrations that no longer have an owner.
 
-## When to Consider Migrating
+## Diagnose each Core Web Vital
 
-If PageSpeed is consistently hurting your Google rankings or your conversion rate, and you've hit the ceiling of what Squarespace allows, consider:
+### LCP
 
-- **Webflow:** More performance control, similar visual design approach
-- **WordPress:** Full control, requires more technical management
-- **Astro or SvelteKit:** Developer-focused, very fast out of the box
+Identify the actual LCP element in PageSpeed Insights or DevTools. If it is an image, reduce its transfer size and avoid hiding it behind a slideshow or animation. If it is text, inspect font loading and render-blocking custom resources. Platform response time and connection conditions also contribute, but content changes cannot fix a platform incident.
 
-For most Squarespace users -- small businesses, portfolios, restaurants, service providers -- the performance trade-off is acceptable. A score of 65-72 on mobile is not ideal, but it's not disqualifying either.
+### CLS
 
-## Quick Checklist
+Reserve space for images, video, embeds, cookie banners, announcement bars, and commerce widgets. Avoid inserting content above what the visitor is already reading. Use the [CLS repair guide](/blog/what-is-cls-and-how-to-fix-it) to distinguish load-time shifts from shifts caused by later interaction.
 
-- [ ] Images compressed before upload (under 500KB)
-- [ ] Hero/banner images under 300KB
-- [ ] Scroll effects and entrance animations disabled
-- [ ] Code injection audited and cleaned up
-- [ ] Analytics using Squarespace's native integration (not manual script)
-- [ ] Unused integrations removed
-- [ ] Fonts limited to 2 families, 2-3 weights each
-- [ ] Pages use only necessary section blocks
+### INP
 
-[Test your Squarespace site](/test) to see your current PageSpeed score and identify which metrics need the most attention.
+Test navigation, menus, accordions, product controls, forms, and embedded widgets. Long tasks from custom and third-party scripts can delay feedback. Remove unused scripts first, reduce complex effects, and ask vendors for supported loading options.
+
+Core Web Vitals use field data when available. PageSpeed's Lighthouse run is useful for diagnosis, but it cannot reproduce every visitor, device, network, consent state, or interaction.
+
+## Publish with a regression checklist
+
+Before publishing a large redesign, duplicate the site or use the available preview workflow and test important pages and forms. After publishing, compare the same URLs and wait for field trends rather than declaring success from one run.
+
+Verify that:
+
+- high-traffic pages remain within a deliberate page-weight budget;
+- hero and product images are cropped, compressed, and appropriately sized;
+- galleries, videos, and embeds are limited to what the page needs;
+- fonts and weights are intentional;
+- custom code has an owner and a rollback path;
+- dynamic widgets have reserved space;
+- forms, commerce, consent, analytics, and accessibility still work;
+- mobile and desktop field trends are monitored separately.
+
+You can compare published site measurements on [IndieTools Speed](/speed). Use those records to spot change, then return to the exact Squarespace page and resource responsible for the regression.

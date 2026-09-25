@@ -1,60 +1,116 @@
 ---
 title: "Does Page Speed Affect SEO Rankings?"
-description: "How Core Web Vitals relate to Google Search, why Lighthouse scores differ from field data, and how to prioritize performance improvements."
+description: "How Core Web Vitals relate to Google Search, why Lighthouse scores differ from field data, and how to prioritize performance improvements without ranking promises."
 date: "2026-03-28"
-updated: "2026-09-20"
+updated: "2026-09-25"
 ---
 
-Yes, website performance matters for SEO. Google says its ranking systems use Core Web Vitals, but good measurements do not guarantee a higher position. Search relevance and the wider page experience still matter. [Google's page experience guidance](https://developers.google.com/search/docs/appearance/page-experience) explains that relationship.
+Page speed can affect SEO, but the precise answer is more useful than the slogan. Google says its core ranking systems use Core Web Vitals and other signals aligned with page experience. Google also says good scores do not guarantee a top position, and relevant content can still rank when its page experience is weaker.
 
-## Does a faster page always rank higher?
+That means performance work should improve the experience people receive and remove a possible disadvantage. It should not replace search intent, useful content, crawlability, internal links, or authority.
 
-No. Google can show highly relevant content even when its page experience needs improvement. Better page experience can help when several results are useful, but that is not a rule that the fastest page wins. Google's guidance does not provide a formula that converts milliseconds or a performance score into ranking positions. [Read how Google describes page experience in Search](https://developers.google.com/search/docs/appearance/page-experience).
+### Table of contents
 
-Our recommendation is to treat performance work as one part of improving a useful, accessible website. Do not promise a particular ranking increase from a speed change alone.
+- [What Google actually says](#article-what-google-actually-says)
+- [Which speed data relates to Search](#article-which-speed-data-relates-to-search)
+- [Why a Lighthouse score is not a ranking score](#article-why-a-lighthouse-score-is-not-a-ranking-score)
+- [How to prioritize performance for SEO](#article-how-to-prioritize-performance-for-seo)
+- [How to measure whether a change worked](#article-how-to-measure-whether-a-change-worked)
+- [Common misconceptions](#article-common-misconceptions)
 
-## Which measurements should you use?
+## What Google actually says
 
-The current Core Web Vitals cover loading, responsiveness and visual stability:
+Google's current [page experience guidance](https://developers.google.com/search/docs/appearance/page-experience) makes four points that matter here:
 
-- **Largest Contentful Paint (LCP):** when the largest visible content appears. The good threshold is 2.5 seconds or less.
-- **Interaction to Next Paint (INP):** how quickly a page responds visually to interaction. The good threshold is 200 milliseconds or less.
-- **Cumulative Layout Shift (CLS):** unexpected movement of page content. The good threshold is 0.1 or less.
+1. Core Web Vitals are used by Google's ranking systems.
+2. There is no single page experience signal.
+3. Page experience is generally assessed at page level, although some site-wide assessments exist.
+4. Passing a report or third-party test does not guarantee higher rankings.
 
-Assess these targets at the 75th percentile, separately for mobile and desktop. When sufficient measurements are available, all three should meet their targets. This is a performance assessment, not a search ranking guarantee. [The Web Vitals guide](https://web.dev/articles/vitals) explains the metrics and thresholds.
+Google Search still tries to return the most relevant, helpful result. When several pages satisfy a query well, a better experience can contribute to success. The documentation does not provide a fixed ranking boost, a guaranteed position change, or a formula that turns milliseconds into rankings.
 
-Google recommends using Search Console's Core Web Vitals report to understand how your pages perform and identify opportunities to improve them. [Core Web Vitals and Google Search](https://developers.google.com/search/docs/appearance/core-web-vitals) links the relevant measurement tools.
+Performance also matters outside ranking systems. A page that responds reliably, presents its main content promptly, and remains stable is easier to read and use. Those outcomes are worth pursuing even when a ranking change cannot be isolated.
 
-## Is a Lighthouse score the same as Core Web Vitals?
+## Which speed data relates to Search
 
-No. PageSpeed Insights combines two different views: Lighthouse runs a controlled lab test, while the Chrome User Experience Report (CrUX) supplies historical measurements from real users. A 0–100 lab performance score does not certify that a page passes its field assessment. [About PageSpeed Insights](https://developers.google.com/speed/docs/insights/v5/about) describes both datasets.
+Core Web Vitals are field metrics designed to describe real user experience:
 
-CrUX data in PageSpeed Insights covers a trailing 28-day period. Some URLs lack enough samples; the tool may show origin-level data instead, or no field data at all. Check which scope the report uses. Missing data does not establish either a pass or a failure. [PageSpeed Insights field-data documentation](https://developers.google.com/speed/docs/insights/v5/about#real-user-experience-data) explains these limits.
+- **Largest Contentful Paint (LCP)** describes loading performance.
+- **Interaction to Next Paint (INP)** describes interaction responsiveness.
+- **Cumulative Layout Shift (CLS)** describes visual stability.
 
-Lab tests help investigate problems and compare changes under similar conditions. A standard Lighthouse navigation test reports Total Blocking Time (TBT); it does not measure field INP. Reducing blocking work can help responsiveness, but TBT and INP are different measurements. [Web Vitals: lab tools](https://web.dev/articles/vitals) explains this distinction.
+The assessment uses the 75th percentile for each metric across the relevant population. See [What Are Core Web Vitals?](/blog/what-are-core-web-vitals) for the thresholds and measurement details.
 
-## Does mobile-first indexing make desktop performance irrelevant?
+Google's Chrome UX Report, usually called CrUX, aggregates eligible Chrome user experiences over a rolling period. PageSpeed Insights can show URL-level field data when the page has enough samples. If URL data is unavailable, it may show origin-level data, and a lower-traffic site may have no CrUX field section at all. Missing CrUX data does not prove that a page is fast or slow.
 
-Mobile-first indexing describes Google's use of the mobile version of a site's content for indexing and ranking. It is not a statement that one mobile Lighthouse score represents every visitor or all desktop performance. Keep important content and metadata accessible on mobile, and inspect performance for both device groups. [Google's mobile-first indexing documentation](https://developers.google.com/search/docs/crawling-indexing/mobile/mobile-sites-mobile-first-indexing) sets out the content requirements.
+Your own real-user monitoring can provide more detailed and timely data, including visitors outside the CrUX population. Search Console groups similar URLs in its Core Web Vitals report, so use it to find affected templates, then diagnose representative URLs more closely.
 
-## What about engagement and crawl budget?
+## Why a Lighthouse score is not a ranking score
 
-Use your own engagement and conversion measurements to judge whether an optimization helped visitors. A change in bounce rate, scrolling or session duration does not by itself establish why a search position changed. We recommend treating those measurements as product evidence rather than converting them into promised ranking gains.
+Lighthouse runs a page in a controlled lab environment. Its performance score is currently a weighted combination of five lab metrics: FCP, Speed Index, LCP, TBT, and CLS. The [Lighthouse scoring documentation](https://developer.chrome.com/docs/lighthouse/performance/performance-scoring/) explains that the score can vary with test conditions and that the weights change over time.
 
-Server performance can also affect crawling. Google adjusts crawl capacity in response to server health, response times and errors, while crawl demand is a separate consideration. Faster responses do not guarantee that more pages will be crawled or indexed. [Google's crawl-budget guidance](https://developers.google.com/crawling/docs/crawl-budget) explains both constraints.
+Lighthouse is useful because it gives reproducible diagnostics before enough real users encounter a change. It can identify late LCP discovery, render-blocking resources, long main-thread tasks, and missing image dimensions. It cannot reproduce every user's device, network, cache, interaction, geography, or account state.
 
-That guidance mainly concerns large or frequently changing sites and sites with substantial discovery/indexing issues. If your pages are already crawled promptly, Google recommends maintaining your sitemap and checking the Page Indexing report rather than treating crawl budget as the first problem to solve. [See who the crawl-budget guide is for](https://developers.google.com/crawling/docs/crawl-budget).
+The distinction is especially important for responsiveness. A page-load Lighthouse run has no real user interaction, so it cannot measure field INP. It reports TBT as a useful lab diagnostic that can correlate with responsiveness problems. TBT is not a substitute for field INP and is not itself a Core Web Vital.
 
-## How should you prioritize fixes?
+A Lighthouse score of 100 therefore means that one lab run produced metric values at the top of its scoring curves. It does not prove that all users pass Core Web Vitals, and a score below 100 is not evidence of a search penalty. Read [How to Get a 100 PageSpeed Score](/blog/how-to-get-100-pagespeed-score) for a careful treatment of that lab goal.
 
-Start with the metric and page template causing a real problem. LCP deserves attention when content appears late; responsiveness and layout stability may need different work. Avoid assuming LCP always contributes the most to the overall lab score: Lighthouse uses a weighted combination of metrics, and its weights can change between versions. Use the diagnostics from the version that produced your report. [Chrome's performance-scoring documentation](https://developer.chrome.com/docs/lighthouse/performance/performance-scoring) explains the calculation.
+## How to prioritize performance for SEO
 
-Our practical workflow is:
+Start with affected pages and user journeys, not a site-wide average.
 
-1. Review available field data and note whether it describes one URL, a group of pages or an entire origin.
-2. Compare mobile and desktop separately. Identify affected templates and the people using them.
-3. Run lab tests to diagnose those pages, keeping test conditions consistent when comparing changes.
-4. Fix the observed bottleneck, then check that the change improves the intended measurement without introducing another problem.
-5. Record deployment dates and inspect subsequent field results. A rolling historical dataset will not immediately contain only post-deployment visits.
+### 1. Confirm the data source
 
-[Test your site's speed](/test) to inspect a lab result on TheFastestWeb. Compare its date and device with earlier runs, and use the field-data tools above to assess real-user Core Web Vitals.
+Check whether the result is URL-level or origin-level, mobile or desktop, field or lab, and which date range it covers. Do not compare a mobile CrUX percentile directly with a desktop Lighthouse run.
+
+### 2. Group pages by template
+
+Product, category, article, checkout, and account pages often have different bottlenecks. If Search Console identifies a URL group, test several real examples from that template, including a heavy and a typical page.
+
+### 3. Fix the failing user experience
+
+For LCP, determine whether the delay comes from server response, discovery, download, or rendering. For INP, inspect long tasks and interaction handlers using field attribution and DevTools traces. For CLS, identify the exact element that moved and reserve or stabilize its space.
+
+### 4. Protect relevance and functionality
+
+Do not remove useful content or essential functionality merely to raise a score. Optimize how it is delivered: render meaningful HTML, defer non-critical work, compress media, reduce unnecessary JavaScript, and cache with correct freshness rules.
+
+### 5. Prevent regressions
+
+Test representative pages in CI, monitor production field data, and record deployments alongside metric changes. Performance is a maintained property, not a one-time project.
+
+## How to measure whether a change worked
+
+Use a layered workflow:
+
+- run Lighthouse several times under the same conditions and compare a median or representative run;
+- inspect Chrome DevTools Performance traces to verify the intended mechanism changed;
+- deploy safely and watch server timing, errors, and resource delivery;
+- wait for enough real-user data to evaluate the field effect;
+- annotate Search Console and analytics timelines so unrelated content, seasonality, and algorithm changes are not mistaken for causation.
+
+Ranking movement alone cannot prove that a speed change caused it. Search results change for many reasons. A stronger conclusion combines a verified technical improvement, improved field metrics, stable indexing, and an appropriately controlled observation period.
+
+You can use [IndieTools Speed](/speed) to review published performance measurements and their dates. For a broader testing workflow, see [How to Check Website Speed](/blog/how-to-check-website-speed).
+
+## Common misconceptions
+
+### "Google uses my PageSpeed score directly"
+
+Google's public documentation points to Core Web Vitals and broader page experience, not the Lighthouse performance number as a direct ranking score.
+
+### "A green score guarantees better rankings"
+
+It does not. Google explicitly says that good Core Web Vitals and third-party tool results do not guarantee top rankings.
+
+### "No CrUX data means the page fails"
+
+It usually means the URL or origin does not meet CrUX eligibility or sample requirements. Use lab tests and your own field monitoring while data accumulates.
+
+### "Only the homepage needs to be fast"
+
+Google says its systems generally evaluate page experience at page level. Test the landing pages people actually find in Search, especially high-value templates and slower long-tail pages.
+
+### "Performance is only an SEO task"
+
+Performance affects the product experience regardless of search traffic. Treat SEO visibility as one reason to maintain it, alongside accessibility, usability, reliability, and operating efficiency.

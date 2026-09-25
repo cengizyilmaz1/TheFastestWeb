@@ -3,6 +3,13 @@ import { resolve } from "node:path";
 import next from "next";
 import { createShutdown } from "./shutdown.mjs";
 import { EnvironmentError, validateRuntimeEnv } from "./env.mjs";
+import {
+  createLegacyRedirectConsumer,
+  createBoundedCutoverLogger,
+  cutoverLogFields,
+  loadLegacyRedirectManifest,
+  writeLegacyRedirectResponse,
+} from "./legacy-redirects.mjs";
 
 const log = (event, details = {}) => process.stdout.write(JSON.stringify({
   level: /failed|timeout|invalid_port/.test(event) ? 50 : 30,
@@ -22,6 +29,25 @@ const app = next({ dev: false, dir: resolve(import.meta.dirname, ".."), hostname
 
 try {
   const env = validateRuntimeEnv();
+  const redirectManifest = env.TFW_REDIRECT_CUTOVER_ENABLED
+    ? await loadLegacyRedirectManifest({
+        path: env.TFW_REDIRECT_MANIFEST_PATH,
+        expectedDigest: env.TFW_REDIRECT_MANIFEST_DIGEST,
+      })
+    : null;
+  const redirectCutover = redirectManifest
+    ? createLegacyRedirectConsumer(redirectManifest)
+    : null;
+  const logRedirectDecision = redirectManifest
+    ? createBoundedCutoverLogger(log)
+    : null;
+  if (redirectManifest) {
+    log("redirect_cutover.ready", {
+      manifest: redirectManifest.manifestDigest.slice(0, 16),
+      routes: redirectManifest.rules.length,
+      images: redirectManifest.badges.length,
+    });
+  }
   process.env.NEXTAUTH_URL = env.AUTH_URL ?? env.SITE_URL;
   process.env.NEXTAUTH_SECRET = env.AUTH_SECRET;
   // The standalone artifact includes a normal generated next.config.js.
@@ -33,6 +59,14 @@ try {
       response.writeHead(503, { "Cache-Control": "no-store", Connection: "close" });
       response.end("Service is stopping.");
       return;
+    }
+    if (redirectCutover) {
+      const decision = redirectCutover.resolve(request.url || "/");
+      if (decision.type !== "pass") {
+        logRedirectDecision(cutoverLogFields(decision, redirectManifest.manifestDigest));
+        writeLegacyRedirectResponse(request, response, decision);
+        return;
+      }
     }
     void handle(request, response).catch(() => {
       log("runtime.request_failed");

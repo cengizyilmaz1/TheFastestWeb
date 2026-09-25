@@ -1,171 +1,165 @@
 ---
 title: "Next.js Performance Optimization Guide"
-description: "Next.js gives you a great starting point for performance, but there's plenty that can go wrong. Here's how to get the most out of your Next.js site's PageSpeed score."
+description: "A Next.js 16 guide to images, Server and Client Components, Cache Components, fonts, scripts, bundles, and repeatable performance testing."
 date: "2026-03-18"
+updated: "2026-09-25"
 ---
 
-Next.js is one of the fastest frameworks available out of the box. Server-side rendering, automatic code splitting, and built-in image optimization give you a solid foundation. But there's still plenty that can slow things down.
+Next.js provides useful performance primitives, but their defaults do not remove the need for measurement. A page can use the App Router and still be slow because of a late LCP image, a broad client boundary, uncached data, third-party scripts, or expensive rendering.
 
-Here's a practical guide to squeezing the best PageSpeed scores out of a Next.js site.
+This guide targets Next.js 16. Caching and image APIs changed across recent versions, so check the matching documentation when maintaining an older application.
 
-## Use the Image Component Correctly
+### Table of contents
 
-The `<Image>` component from `next/image` is one of the most impactful performance features in Next.js. It automatically serves WebP, resizes images for the requesting device, and lazy-loads below-the-fold images.
+- [Measure the production route](#article-measure-the-production-route)
+- [Optimize images for their actual layout](#article-optimize-images-for-their-actual-layout)
+- [Keep the client boundary small](#article-keep-the-client-boundary-small)
+- [Choose an explicit caching model](#article-choose-an-explicit-caching-model)
+- [Load fonts and scripts intentionally](#article-load-fonts-and-scripts-intentionally)
+- [Inspect the production bundle](#article-inspect-the-production-bundle)
+- [Treat Turbopack as a build tool](#article-treat-turbopack-as-a-build-tool)
+- [Use a release checklist](#article-use-a-release-checklist)
 
-But it only works well if you use it properly.
+## Measure the production route
 
-**Always set `priority` on your LCP image:**
+Test the exact route and state users receive. Record whether it is static, cached, streamed, or rendered per request; whether the visitor is signed in; and which cookies, experiments, and third parties are active.
+
+Use a repeated Lighthouse lab test for a controlled baseline, then inspect Chrome DevTools Performance and Network panels for the cause. Field Core Web Vitals answer a different question and should be monitored separately. [How to Check Website Speed](/blog/how-to-check-website-speed) describes the complete workflow.
+
+Instrument server work as well. A slow route can spend time in proxy logic, authentication, database queries, upstream `fetch()` calls, cache misses, or React rendering before the browser receives useful HTML.
+
+## Optimize images for their actual layout
+
+The `next/image` component can generate responsive image URLs, reserve intrinsic space, and lazy-load images by default. It still needs accurate dimensions and layout information.
 
 ```tsx
 import Image from "next/image";
+import dashboard from "./dashboard.png";
 
-<Image
-  src="/hero.webp"
-  width={1200}
-  height={630}
-  alt="Hero"
-  priority
-/>
-```
-
-Without `priority`, Next.js lazy-loads the image, which will hurt your LCP score significantly.
-
-**Never use `fill` on above-the-fold images without a sized container.** The browser needs to know the dimensions upfront to avoid layout shifts.
-
-## Load Scripts the Right Way
-
-The `<Script>` component gives you fine-grained control over when third-party scripts load.
-
-```tsx
-import Script from "next/script";
-
-// Loads after the page is interactive
-<Script src="https://analytics.example.com/script.js" strategy="lazyOnload" />
-
-// Loads after hydration but before lazyOnload
-<Script src="..." strategy="afterInteractive" />
-
-// Injects into the document head (use sparingly)
-<Script src="..." strategy="beforeInteractive" />
-```
-
-For Google Analytics, always use `afterInteractive` or `lazyOnload`. Never load it with `beforeInteractive` unless you have a specific reason.
-
-## Enable Turbopack in Development
-
-Next.js 15+ ships with Turbopack as the default dev bundler. If you're still on Webpack, switch:
-
-```json
-{
-  "scripts": {
-    "dev": "next dev --turbopack"
-  }
+export function ProductHero() {
+  return (
+    <Image
+      src={dashboard}
+      alt="Product dashboard showing weekly revenue and active users"
+      sizes="(max-width: 768px) 100vw, 1100px"
+      preload
+    />
+  );
 }
 ```
 
-Turbopack doesn't affect production builds yet, but faster dev builds mean faster iteration.
+In Next.js 16, `priority` is deprecated in favor of `preload`. Reserve `preload` for the image that is genuinely likely to become LCP; the [Image API documentation](https://nextjs.org/docs/app/api-reference/components/image) cautions against combining it with loading or fetch-priority controls. Most below-the-fold images should keep the default lazy behavior.
 
-## Use React Server Components for Static Content
+For `fill`, give the parent a defined layout and supply a realistic `sizes` value. Without `sizes`, the browser may select a larger candidate than the rendered image needs. Restrict remote image sources, and configure cache behavior to match how often source images can change.
 
-App Router lets you render components on the server with zero client-side JavaScript. If a component doesn't need interactivity, make it a Server Component (the default in App Router).
+If LCP is still late, inspect the LCP phases. An optimized image cannot overcome slow server response, client-only discovery, a redirect chain, or render delay from CSS and JavaScript.
 
-Every kilobyte of JavaScript you don't ship to the client is a direct TBT reduction.
+## Keep the client boundary small
+
+App Router pages and layouts use Server Components by default. Add `"use client"` only at a boundary that needs state, effects, event handlers, or browser APIs. Everything imported beneath that boundary becomes part of the client module graph.
 
 ```tsx
-// This runs on the server, ships zero JS to the client
-export default async function BlogList() {
-  const posts = await getPosts();
-  return <ul>{posts.map(p => <li key={p.id}>{p.title}</li>)}</ul>;
+// app/products/[slug]/page.tsx
+import { BuyButton } from "./buy-button";
+
+export default async function ProductPage({ params }: PageProps<"/products/[slug]">) {
+  const { slug } = await params;
+  const product = await getProduct(slug);
+
+  return (
+    <main>
+      <h1>{product.name}</h1>
+      <p>{product.description}</p>
+      <BuyButton productId={product.id} />
+    </main>
+  );
 }
 ```
 
-Only add `"use client"` at the top of files that genuinely need browser APIs or React state.
+Keep data loading and static presentation on the server when appropriate, and pass serializable props to focused interactive components. Do not move an entire page to the client just because one button needs an event handler.
 
-## Analyze Your Bundle
+Server Components can reduce client JavaScript, but they do not automatically make server work fast. Parallelize independent data requests, remove request waterfalls, select only needed data, and stream sections only when the loading experience is coherent.
 
-Install the bundle analyzer to see exactly what's in your JavaScript bundle:
+## Choose an explicit caching model
 
-```bash
-npm install @next/bundle-analyzer
+Next.js 16 has two documented caching models. Do not mix snippets without knowing which one the application uses.
+
+### With Cache Components enabled
+
+Cache Components are opt-in through `cacheComponents: true`. Cached functions or components use the `use cache` directive with APIs such as `cacheLife` and `cacheTag`:
+
+```tsx
+import { cacheLife, cacheTag } from "next/cache";
+
+export async function getCatalog() {
+  "use cache";
+  cacheLife("hours");
+  cacheTag("catalog");
+
+  return db.product.findMany({ where: { published: true } });
+}
 ```
 
-```js
-// next.config.js
-const withBundleAnalyzer = require("@next/bundle-analyzer")({
-  enabled: process.env.ANALYZE === "true",
+After a catalog mutation, use `revalidateTag("catalog", "max")` when stale-while-revalidate behavior is acceptable, or `updateTag("catalog")` inside a Server Action for immediate read-your-own-writes behavior. The current [revalidation guide](https://nextjs.org/docs/app/getting-started/revalidating) documents those semantics.
+
+### Without Cache Components
+
+In the previous model, `fetch()` is not cached by default. Opt individual requests into caching and revalidation only when their data can be shared safely. The [previous-model caching guide](https://nextjs.org/docs/app/guides/caching-without-cache-components) documents the supported options.
+
+In either model, define freshness from product requirements. Never cache authorization-dependent or account-specific output as if it were public. For self-hosted multiple instances, verify that cache storage and invalidation behave consistently across processes and deployments.
+
+## Load fonts and scripts intentionally
+
+`next/font` downloads supported font assets at build time and serves them from the application domain. Use only the families, subsets, weights, and styles required by the design. Variable fonts can reduce the number of font files when they cover the needed range.
+
+```tsx
+import { Geist } from "next/font/google";
+
+const geist = Geist({
+  subsets: ["latin"],
+  display: "swap",
 });
-module.exports = withBundleAnalyzer({});
 ```
 
-```bash
-ANALYZE=true npm run build
-```
+The [font optimization guide](https://nextjs.org/docs/app/getting-started/fonts) describes self-hosting and layout integration. Font optimization reduces avoidable network and layout costs, but verify the actual fallback and rendered weights; do not assume every custom font combination produces zero movement.
 
-Look for large dependencies you only use a small part of. Common culprits:
+Use `next/script` according to when the feature is needed. `afterInteractive` is suitable for scripts that should load after hydration; `lazyOnload` can delay lower-priority code until browser idle time. `beforeInteractive` is for narrowly defined critical scripts and should not become the default for analytics.
 
-- `moment.js` (use `date-fns` instead, much smaller)
-- Icon libraries importing all icons (import only what you use)
-- Full `lodash` instead of individual functions
+Measure each third party with consent and production settings enabled. A deferred script can still create long tasks after it downloads.
 
-## Use `next/font` for Custom Fonts
+## Inspect the production bundle
 
-Loading fonts from Google Fonts directly adds a render-blocking request. `next/font` downloads fonts at build time and serves them from your own domain with zero layout shift:
+Build the application in production mode and inspect what reaches the client. Next.js supports `@next/bundle-analyzer`, but a bundle visualization is only the start.
 
-```tsx
-import { Inter } from "next/font/google";
+Look for:
 
-const inter = Inter({ subsets: ["latin"], display: "swap" });
-```
+- a client boundary that imports a large server-capable subtree;
+- duplicate packages or multiple versions;
+- whole-library imports when a focused entry point exists;
+- editors, charts, maps, or media tools loaded before use;
+- locale data and polyfills unnecessary for the target browsers;
+- third-party scripts outside the module bundle.
 
-This eliminates the external font request, removes FOUT, and improves both FCP and CLS.
+Use dynamic imports for genuinely optional client features, and show an accessible loading state when delayed. Do not split tiny modules indiscriminately; extra chunks and request coordination also have cost.
 
-## Implement Proper Caching
+## Treat Turbopack as a build tool
 
-Use `revalidate` in your server components and route handlers to cache responses at the edge:
+Turbopack is the stable default for both `next dev` and `next build` in Next.js 16. The [Next.js 16 upgrade guide](https://nextjs.org/docs/app/guides/upgrading/version-16) documents the change; the `--turbopack` flag is no longer required.
 
-```tsx
-export const revalidate = 3600; // revalidate every hour
-```
+Faster builds and refreshes improve development and delivery workflows, but enabling Turbopack does not by itself make a page's runtime metrics better. Runtime performance still depends on the emitted client code, server behavior, assets, caching, and third parties. If the project relies on unsupported webpack plugins, review compatibility before switching rather than assuming equivalent output.
 
-For static pages that rarely change, use:
+## Use a release checklist
 
-```tsx
-export const revalidate = false; // cache indefinitely until next deploy
-```
+Before shipping a Next.js performance change, verify:
 
-Cached pages respond from Vercel's edge network in milliseconds, giving you near-perfect TTFB.
+- the Server and Client Component boundary matches real interactivity;
+- the LCP image is discoverable, correctly sized, and not lazy-loaded;
+- only one intentional LCP candidate uses preload behavior;
+- the application uses one documented caching model with safe invalidation;
+- fonts contain only needed variants;
+- third-party scripts have an explicit loading strategy;
+- production bundles and request waterfalls were inspected;
+- repeated lab runs improved under equivalent conditions;
+- field Core Web Vitals remain the production measure of real experience.
 
-## Avoid Client-Side Data Fetching for Initial Content
-
-If your page fetches data on the client with `useEffect`, the user sees a blank/loading state while waiting. This hurts LCP and makes the page feel slow.
-
-Move data fetching to Server Components:
-
-```tsx
-// Instead of useEffect + useState
-export default async function Page() {
-  const data = await fetchData(); // runs on server
-  return <Component data={data} />;
-}
-```
-
-## Minimize Middleware
-
-Next.js middleware runs on every request. If your middleware does heavy work (database queries, complex logic), it adds latency to every page load.
-
-Keep middleware lean. Use it only for authentication checks and redirects, not for data fetching.
-
-## What a Well-Optimized Next.js Site Looks Like
-
-The best-performing Next.js sites on [TheFastestWeb](/leaderboard/perfect) typically have:
-
-- Server Components for all static and data-fetching logic
-- `priority` on hero images
-- `lazyOnload` for all analytics and third-party scripts
-- `next/font` for typography
-- Aggressive `revalidate` caching on data-heavy pages
-- Bundle sizes under 100KB of JavaScript for the initial page load
-
-You don't need all of these on day one. Start with the image and script fixes, they have the highest impact for the least effort.
-
-[Test your Next.js site](/test) to see where you stand right now.
+Review dated measurements on [IndieTools Speed](/speed). For framework trade-offs, continue with [Next.js vs Nuxt: Which Is Faster?](/blog/nextjs-vs-nuxt-speed); for score interpretation, see [What Is a Good PageSpeed Score?](/blog/what-is-a-good-pagespeed-score).

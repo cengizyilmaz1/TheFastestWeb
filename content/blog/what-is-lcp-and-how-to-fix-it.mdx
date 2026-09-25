@@ -1,92 +1,133 @@
 ---
 title: "What Is LCP and How to Fix It"
-description: "Largest Contentful Paint is one of the most important Core Web Vitals. Here's what it measures, why it matters, and how to improve it."
+description: "Learn how Largest Contentful Paint is measured, diagnose its four phases, and improve the main content load without relying on generic score tips."
 date: "2026-03-22"
+updated: "2026-09-25"
 ---
 
-Largest Contentful Paint (LCP) measures how long it takes for the largest visible element on your page to load. It's one of Google's three Core Web Vitals and counts for 25% of your PageSpeed score.
+Largest Contentful Paint (LCP) measures when the largest eligible image, text block, or video poster visible in the initial viewport finishes rendering. It is one of the three Core Web Vitals, alongside Interaction to Next Paint (INP) and Cumulative Layout Shift (CLS).
 
-A good LCP score is under 2.5 seconds. Above 4 seconds is considered poor and will hurt your rankings.
+Google classifies an LCP of **2.5 seconds or less as good**, more than 2.5 seconds through 4 seconds as needing improvement, and more than 4 seconds as poor. Evaluate the 75th percentile separately for mobile and desktop rather than judging a page by its fastest visit.
 
-## What Counts as the LCP Element?
+Improving LCP starts with identifying the actual LCP element and the phase consuming the time. Compressing every image is not a complete diagnosis.
 
-Google measures whichever of these is largest in the viewport when the page loads:
+## Table of contents
 
-- Hero images or background images
-- Large text blocks (headlines)
-- Video poster images
-- Images inside `<img>` tags
+- [What LCP measures](#article-what-lcp-measures)
+- [How to measure LCP correctly](#article-how-to-measure-lcp-correctly)
+- [Break LCP into four phases](#article-break-lcp-into-four-phases)
+- [Reduce Time to First Byte](#article-reduce-time-to-first-byte)
+- [Make the LCP resource discoverable](#article-make-the-lcp-resource-discoverable)
+- [Shorten resource load time](#article-shorten-resource-load-time)
+- [Remove element render delay](#article-remove-element-render-delay)
+- [Handle text and client-rendered LCP elements](#article-handle-text-and-client-rendered-lcp-elements)
+- [Validate the result](#article-validate-the-result)
 
-Most of the time, it's your hero image or the main headline at the top of the page.
+## What LCP measures
 
-## Why LCP Matters for SEO
+Eligible candidates include images loaded through `<img>`, poster images for `<video>`, text-containing block elements, and some CSS background images. The browser reports the largest candidate seen so far, so the LCP element can change while the page loads. An image may also be downloaded before it is painted if CSS, JavaScript, a font, or an animation keeps it hidden.
 
-Google uses Core Web Vitals as a ranking factor. A slow LCP tells Google that your page feels slow to users, which can push you down in search results. Sites with LCP under 2.5 seconds consistently outrank those above 4 seconds for the same keywords.
+LCP is concerned with loading experience. It does not tell you whether the page remains visually stable or responds quickly after it appears. Read it with the other [Core Web Vitals](/blog/what-are-core-web-vitals), and treat the Lighthouse performance score as a diagnostic summary rather than the goal itself.
 
-## Common Causes of Poor LCP
+## How to measure LCP correctly
 
-### Slow Server Response
+[PageSpeed Insights](https://pagespeed.web.dev/) can show two distinct views:
 
-If your server takes a long time to respond (high TTFB), LCP will always be slow no matter how optimized your images are. Fix your server first.
+- Chrome UX Report field data describes eligible real Chrome visits over a rolling 28-day period.
+- Lighthouse lab data is one simulated load that helps reproduce a problem and inspect diagnostics.
 
-### Unoptimized Images
+Field data should guide the outcome; lab data and traces should guide the investigation. Test the exact page template that matters because the home page, product page, article, and authenticated application can have different LCP elements.
 
-Large, uncompressed images are the most common cause. A 2MB hero image will take seconds to load on a typical connection.
+In Chrome DevTools, record a Performance trace with a cold cache and inspect the LCP marker. Note the element, its resource URL, request start, response timing, and paint time. Repeat under equivalent conditions. A single run can move because of server load, network routing, cache state, or third-party responses.
 
-**Fix:** Compress images to WebP format. Aim for under 100KB for images that aren't full-bleed. Use responsive images with `srcset`.
+Use [IndieTools Speed](/speed) to follow measured page performance over time, but keep release annotations so a change in the chart can be connected to a deploy, campaign, or content update.
 
-### Render-Blocking Resources
+## Break LCP into four phases
 
-JavaScript and CSS that block rendering delay when the browser can even start painting the page.
+Google's [LCP optimization guidance](https://web.dev/articles/optimize-lcp) divides the metric into four parts:
 
-**Fix:** Move critical CSS inline. Defer non-critical JavaScript with `defer` or `async`.
+1. **Time to First Byte:** navigation start until the first byte of HTML arrives.
+2. **Resource load delay:** first byte of HTML until the LCP resource request begins.
+3. **Resource load duration:** the time required to transfer the LCP resource.
+4. **Element render delay:** resource completion until the element is painted.
 
-### Images Not Preloaded
+For a text LCP element there may be no separate image request, but server, font, stylesheet, and rendering delays still matter. Compare phases instead of applying a universal millisecond budget. The largest phase usually identifies the first useful intervention.
 
-If your LCP image is loaded via CSS or discovered late in parsing, the browser starts downloading it too late.
+## Reduce Time to First Byte
 
-**Fix:** Add a preload hint in your `<head>`:
+No browser optimization can recover time spent waiting for the document. If TTFB dominates:
+
+- inspect application traces and slow database or upstream requests;
+- cache public HTML where its freshness rules allow it;
+- avoid serial server-side requests needed only for secondary content;
+- place compute and cached content near the audience;
+- reuse connections and avoid unnecessary redirects;
+- measure authenticated and uncached routes separately from public cached pages.
+
+Do not hide a server delay by moving essential content into client-side JavaScript. That may make HTML arrive sooner while delaying resource discovery and meaningful rendering.
+
+## Make the LCP resource discoverable
+
+An image in the initial HTML can be discovered earlier than one inserted after hydration or referenced only by late CSS. For a likely LCP image:
+
+- render it in the server-generated markup;
+- do not apply `loading="lazy"`;
+- provide responsive `srcset` and an accurate `sizes` value;
+- use `fetchpriority="high"` selectively when the browser would otherwise give it the wrong priority;
+- preload it only when it is genuinely late-discovered.
 
 ```html
-<link rel="preload" as="image" href="/hero.webp" />
+<img
+  src="/images/launch-hero-1280.avif"
+  srcset="/images/launch-hero-640.avif 640w,
+          /images/launch-hero-1280.avif 1280w"
+  sizes="100vw"
+  width="1280"
+  height="720"
+  fetchpriority="high"
+  alt="Product dashboard showing the launch timeline"
+>
 ```
 
-In Next.js, add `priority` to your LCP image:
+Do not mark several images high priority. Competing high-priority downloads can delay the real LCP resource. Confirm the request order in the Network panel after changing priorities.
 
-```tsx
-<Image src="/hero.webp" priority alt="Hero" />
-```
+## Shorten resource load time
 
-### Lazy-Loaded LCP Image
+Serve an image close to its rendered dimensions instead of asking a narrow mobile viewport to download a desktop original. Use an appropriate modern format and a quality setting that preserves the subject. Responsive variants usually matter more than converting one oversized file to a new extension.
 
-Never lazy-load your LCP image. If you have `loading="lazy"` on your hero image, remove it immediately.
+Keep the image URL stable and cacheable. A CDN can reduce distance and origin work, but it cannot correct an unnecessarily large source or an inaccurate `sizes` attribute. Inspect the transferred bytes on representative mobile and desktop viewports.
 
-## How to Find Your LCP Element
+For a video poster, optimize the poster as a first-class image. Loading the complete video early is rarely necessary for rendering its initial poster and can compete with critical resources.
 
-1. Open Chrome DevTools
-2. Go to the Performance tab
-3. Record a page load
-4. Look for the "LCP" marker in the timeline
+## Remove element render delay
 
-Or run your URL through [Google PageSpeed Insights](https://pagespeed.web.dev/) and scroll to the "Diagnostics" section. It will highlight exactly which element is your LCP and why it's slow.
+When the resource finishes early but LCP occurs much later, investigate the main thread and presentation path:
 
-## LCP Targets
+- remove reveal animations that begin with the hero invisible;
+- reduce render-blocking CSS to what the initial view needs;
+- defer unrelated scripts without breaking their dependency order;
+- split long JavaScript tasks and avoid synchronous work during startup;
+- render essential copy and media on the server where practical;
+- avoid waiting for a carousel or component library to initialize before showing the first slide.
 
-| Score | LCP |
-|---|---|
-| Good | Under 2.5s |
-| Needs improvement | 2.5s to 4s |
-| Poor | Over 4s |
+The [First Contentful Paint guide](/blog/what-is-fcp-and-how-to-fix-it) is useful when the whole page starts late. If FCP is early but LCP is late, focus on the LCP resource and its render path instead of broad changes.
 
-## Quick Checklist
+## Handle text and client-rendered LCP elements
 
-- [ ] Hero image is WebP, under 100KB
-- [ ] LCP image has `priority` (Next.js) or `<link rel="preload">`
-- [ ] No `loading="lazy"` on the LCP image
-- [ ] TTFB is under 800ms
-- [ ] Critical CSS is inlined or loaded early
-- [ ] No render-blocking scripts above the fold
+A large heading can become the LCP element. If a web font delays it, preload only the required font file when appropriate, serve WOFF2, limit variants, and choose a `font-display` strategy that matches the design. A fallback font can paint sooner, but large metric differences between fallback and final fonts may introduce layout shift.
 
-Fixing LCP is usually the highest-impact change you can make to your PageSpeed score. Most sites can go from a 4-second LCP to under 2 seconds with just image optimization and a preload hint.
+For client-rendered applications, inspect the initial response. If the principal content is absent until JavaScript fetches data and hydrates the page, the browser cannot paint it early. Server rendering or static generation can make the main content and its image URL discoverable sooner. Keep client-side code for behavior that actually needs it.
 
-Want to see your current LCP score? [Test your site for free](/test) and we'll show you your full Core Web Vitals breakdown.
+## Validate the result
+
+After each change:
+
+1. Run several equivalent Lighthouse tests and compare the LCP phase breakdown.
+2. Inspect a DevTools trace to confirm the intended request starts earlier or renders sooner.
+3. Test narrow and wide viewports, cold and warm caches, and an ordinary mobile device.
+4. Check CLS and interaction behavior for regressions.
+5. Monitor field LCP after enough real visits enter the reporting window.
+
+A lab improvement is evidence that the change affects the tested conditions. The production result is confirmed when representative field data improves without sacrificing usability, image quality, or another Core Web Vital.
+
+Google's current [LCP reference](https://web.dev/articles/lcp) remains the authoritative definition and threshold source. Use it when browser behavior or eligible element rules change.

@@ -1,113 +1,168 @@
 ---
 title: "What Is FCP and How to Fix It"
-description: "First Contentful Paint measures how quickly your page shows its first piece of content. It's worth 10% of your PageSpeed score and affects how fast your site feels."
+description: "A practical First Contentful Paint guide covering current thresholds, TTFB, render-blocking resources, fonts, client rendering, measurement, and validation."
 date: "2026-03-12"
+updated: "2026-09-25"
 ---
 
-First Contentful Paint (FCP) measures how long it takes for the browser to render the first piece of content on the screen. That content can be text, an image, a background image, or an SVG.
+First Contentful Paint measures when the browser first renders text, an image, a non-white canvas, or an SVG from the page. It answers a narrow but useful question: how long did the visitor wait before seeing any page content?
 
-FCP is worth 10% of your PageSpeed score. A good FCP is under 1.8 seconds. Above 3 seconds is considered poor.
+FCP is not a current Core Web Vital, and it does not tell you when the main content is ready. It remains valuable for diagnosing blank-screen time and the early critical rendering path.
 
-## Why FCP Matters
+### Table of contents
 
-FCP is the first signal to the user that the page is actually loading. Before FCP, the screen is blank. A slow FCP makes users think the site is broken or down, leading to higher bounce rates even if the rest of the page loads quickly.
+- [What FCP measures](#article-what-fcp-measures)
+- [What is a good FCP value](#article-what-is-a-good-fcp-value)
+- [Measure FCP correctly](#article-measure-fcp-correctly)
+- [Break the delay into phases](#article-break-the-delay-into-phases)
+- [Reduce document and server delay](#article-reduce-document-and-server-delay)
+- [Remove render-blocking work](#article-remove-render-blocking-work)
+- [Keep text visible during font loading](#article-keep-text-visible-during-font-loading)
+- [Avoid client-rendered blank shells](#article-avoid-client-rendered-blank-shells)
+- [Control third parties and connection cost](#article-control-third-parties-and-connection-cost)
+- [Validate without gaming the metric](#article-validate-without-gaming-the-metric)
 
-It's different from LCP (Largest Contentful Paint), which measures when the main content loads. FCP just measures the very first thing the user sees.
+## What FCP measures
 
-## What Causes Slow FCP
+FCP starts when navigation begins and ends at the first contentful paint. It can therefore include:
 
-### Slow Server Response (High TTFB)
+- unload time from the previous document;
+- redirects;
+- DNS, connection, and TLS setup;
+- Time to First Byte;
+- HTML download and parsing;
+- render-blocking CSS and scripts;
+- font or resource work needed before anything visible can paint.
 
-If your server takes a long time to respond, FCP can't start until the HTML arrives. TTFB (Time to First Byte) directly delays FCP.
+A background color alone is not contentful. Text, images including CSS background images, SVG, and non-white canvas content can qualify.
 
-**Fix:** Use caching, move to faster hosting, or use edge/CDN delivery.
+FCP differs from LCP. A header or small icon can create an early FCP while the primary article, hero, or product image appears much later. Diagnose both when the page starts quickly but still feels incomplete.
 
-### Render-Blocking Resources
+## What is a good FCP value
 
-CSS and synchronous JavaScript in the `<head>` block the browser from rendering anything until they finish loading and parsing.
+The current thresholds documented by [web.dev's FCP reference](https://web.dev/articles/fcp) are:
 
-**Fix:** Move non-critical CSS to load asynchronously. Add `defer` or `async` to JavaScript. Inline the critical CSS needed for above-the-fold content.
+| FCP | Rating |
+| ---: | --- |
+| 1.8 seconds or less | Good |
+| Over 1.8 through 3 seconds | Needs improvement |
+| Over 3 seconds | Poor |
 
-### Large HTML Payload
+Field classification uses the 75th percentile of page visits, segmented by mobile and desktop. FCP is reported in PageSpeed field data when sufficient Chrome UX Report samples exist, but it is not one of the three metrics used for the current Core Web Vitals pass assessment.
 
-If your server sends a huge HTML document before the browser can start rendering, FCP is delayed.
+Treat 1.8 seconds as a shared assessment threshold, not a promise that every page at 1.79 seconds is excellent. Improve the experience based on user impact and the full metric set.
 
-**Fix:** Use server-side rendering or static generation so the first HTML response includes ready-to-display content. Avoid loading all content on a single giant page.
+## Measure FCP correctly
 
-### Too Many Redirects
+Use PageSpeed Insights to view field and lab context. Confirm whether the field data is for the exact URL or the whole origin. Use Chrome DevTools Performance to inspect the document request, blocking resources, parsing, styles, scripts, and the FCP marker.
 
-Each redirect adds a round trip before the browser gets the actual page content.
+For reliable comparisons:
 
-**Fix:** Eliminate redirect chains. Go directly from the URL to the final destination.
+1. Test the deployed URL, not a development server.
+2. Keep mobile or desktop mode, location, authentication, and consent state consistent.
+3. Run several lab tests and compare a representative median.
+4. Record TTFB, FCP, LCP, transferred bytes, and critical request chains.
+5. Save a trace before and after the change.
 
-## How to Fix FCP
+Local `PerformanceObserver` instrumentation can expose paint entries for debugging, but production RUM should use a maintained implementation such as the `web-vitals` library to handle lifecycle details. Protect privacy and avoid attaching sensitive URL parameters or user data.
 
-### 1. Eliminate Render-Blocking CSS
+Published measurement histories on [IndieTools Speed](/speed) can show when FCP changes. They do not replace a trace that explains why it changed.
 
-Move non-critical CSS out of the `<head>` or load it asynchronously:
+## Break the delay into phases
+
+An FCP fix depends on where the time is spent.
+
+### Before the first byte
+
+Look for redirect chains, slow edge routing, cold starts, server work, database queries, cache misses, and upstream APIs. Browser-side minification cannot recover time spent waiting for the HTML document.
+
+### After the first byte, before paint
+
+Look for blocking stylesheets, synchronous scripts, large HTML, deep critical request chains, slow critical fonts, expensive style calculation, or a client-rendered shell with no useful server HTML.
+
+### FCP is early but LCP is late
+
+The page is no longer blank, but the main resource is delayed. Investigate LCP discovery, priority, transfer, and render delay rather than optimizing a small logo that already paints quickly.
+
+This phase-based view prevents generic work that improves file size but not the measured bottleneck.
+
+## Reduce document and server delay
+
+Remove avoidable redirects. Link directly to the canonical HTTPS host, update old internal links, and avoid routing every visit through a locale or authentication bounce when the destination can be resolved earlier.
+
+At the server:
+
+- profile database and API calls in the document request;
+- cache public responses only with correct variation and invalidation;
+- move nonessential media processing and aggregation out of the request path;
+- avoid serial calls when independent work can run concurrently;
+- monitor queue time, cold starts, and connection pools;
+- serve visitors through an appropriate edge or CDN strategy.
+
+Measure at the browser, edge, application, and database so one layer is not blamed for another. If TTFB is already small, focus on the render path.
+
+## Remove render-blocking work
+
+The browser generally needs CSS before it can render styled content. Keep critical CSS small, remove unused rules carefully, and split page-specific styles where the architecture supports it. Minification reduces transfer but does not automatically eliminate blocking.
+
+JavaScript without suitable scheduling can block the parser. For scripts that do not need to run during parsing:
 
 ```html
-<link rel="preload" href="styles.css" as="style" onload="this.rel='stylesheet'">
+<script defer src="/assets/site-navigation.js"></script>
 ```
 
-Inline only the CSS needed to render above-the-fold content. Everything else can load after FCP.
+`defer` preserves document order and runs after parsing. `async` runs when the file is ready and does not preserve order, so it is appropriate only for independent code. Modules are deferred by default, but their dependency graph can still be large.
 
-### 2. Defer JavaScript
+Do not change script scheduling without testing. Consent, analytics, navigation, forms, commerce, and hydration may depend on execution order. Remove unused code before applying increasingly complex loaders.
 
-Any JavaScript in the `<head>` without `defer` or `async` blocks rendering:
+Inspect the critical request chain. Preload can help a late-discovered resource that is certainly needed for initial paint, but preloading many resources creates competition. Use it sparingly and confirm that the resource is consumed promptly.
 
-```html
-<!-- Blocks FCP -->
-<script src="app.js"></script>
+## Keep text visible during font loading
 
-<!-- Does not block FCP -->
-<script defer src="app.js"></script>
+An early heading can be FCP, so font strategy affects blank-screen time. Limit families, weights, styles, and character sets. Serve WOFF2 where appropriate, use long caching for versioned font URLs, and avoid loading the same family from multiple providers.
+
+Use a `font-display` value that matches the product's rendering policy. `swap` can keep text visible with a fallback, while `optional` may avoid a late swap under some conditions. Both require testing for CLS, brand requirements, and readability.
+
+```css
+@font-face {
+  font-family: "Product Sans";
+  src: url("/fonts/product-sans-regular.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
 ```
 
-### 3. Use a CDN
+Preload only a font used by important initial text. A preload for every weight spends bandwidth before the browser knows which files the page needs.
 
-A CDN puts your content on servers close to your users, reducing TTFB and therefore FCP. This is one of the highest-impact changes for global audiences.
+## Avoid client-rendered blank shells
 
-### 4. Preconnect to Critical Origins
+A single-page application that serves only an empty root element must download and execute JavaScript before content can create FCP. Use server rendering, static generation, or meaningful initial HTML when the framework and product permit it.
 
-If your page loads resources from external domains (fonts, analytics, CDN assets), add preconnect hints to start those connections early:
+Keep the primary heading, navigation, article, product summary, or loading state visible without waiting for a large client bundle. If personalized data needs time, render a stable and accessible shell with realistic reserved space, then enhance it.
 
-```html
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://cdn.example.com">
-```
+Hydration should not replace useful server HTML with a different layout. A mismatch can delay paint, create CLS, and duplicate work. Profile route bundles, dynamically import optional heavy features, and avoid putting the entire page behind one client-only component for convenience.
 
-### 5. Use Server-Side Rendering
+## Control third parties and connection cost
 
-Client-side rendered apps (React, Vue, Angular SPAs without SSR) show a blank screen until JavaScript loads and runs. This devastates FCP.
+Every external origin may require DNS, connection, and TLS work. Third-party scripts can also block parsing or occupy the main thread before paint.
 
-Switch to SSR or static generation so the browser receives rendered HTML immediately.
+Inventory analytics, consent, ads, chat, reviews, video, social embeds, experiments, and tag-manager contents. Load only what the route needs, respect consent, and prefer interaction-based or viewport-based loading for nonessential features when the vendor supports it.
 
-## FCP vs LCP
+`preconnect` can help a critical external origin, but each connection consumes resources. Use it only when a necessary early request is known and measure the result. A first-party proxy does not erase the JavaScript execution cost of a third party.
 
-People often confuse FCP and LCP:
+## Validate without gaming the metric
 
-- **FCP:** First piece of any content (text, image, SVG). Happens early.
-- **LCP:** The largest content element visible in the viewport. Happens later.
+After a change:
 
-FCP is always earlier than or equal to LCP. A fast FCP makes the page feel responsive. A fast LCP makes it feel loaded.
+- compare repeated equivalent lab runs;
+- verify the first painted content is useful and accessible;
+- confirm LCP, CLS, and interaction behavior did not regress;
+- test cold and warm caches, mobile and desktop, and relevant consent states;
+- check functionality, analytics integrity, and error handling;
+- deploy with a rollback path;
+- watch real-user FCP and Core Web Vitals through their reporting windows.
 
-## FCP Targets
+Do not display an artificial pixel, hide real content from the measurement tool, or delay essential features only to trigger an earlier FCP. That improves the marker without improving the experience.
 
-| Score | FCP |
-|---|---|
-| Good | Under 1.8s |
-| Needs improvement | 1.8s to 3s |
-| Poor | Over 3s |
-
-## Quick Checklist
-
-- [ ] TTFB under 800ms (use CDN or faster hosting)
-- [ ] No render-blocking CSS in `<head>`
-- [ ] All JavaScript has `defer` or `async`
-- [ ] Critical CSS inlined
-- [ ] No unnecessary redirects
-- [ ] Preconnect hints for external resources
-- [ ] SSR or static generation (not pure client-side rendering)
-
-[Test your site](/test) to see your current FCP and get a full breakdown of all your Core Web Vitals.
+For the wider field assessment, continue with [What Are Core Web Vitals?](/blog/what-are-core-web-vitals). For unexpected movement after the first paint, use [What Is CLS and How to Fix It](/blog/what-is-cls-and-how-to-fix-it).

@@ -1,72 +1,137 @@
 ---
-title: "Why Your PageSpeed Score Dropped (And How to Fix It)"
-description: "A sudden PageSpeed score drop can silently kill your Google rankings before you notice. Here's how to diagnose what went wrong and recover fast."
+title: "Why Your PageSpeed Score Dropped"
+description: "Use a release-led incident workflow to separate Lighthouse variation from real regressions and trace a PageSpeed drop to server, media, JavaScript, or layout changes."
 date: "2026-03-23"
-updated: "2026-09-20"
+updated: "2026-09-25"
 ---
 
-Your site was fast. Then you launched something new, a redesign, a new plugin, a third-party widget, and your PageSpeed score quietly tanked. Traffic followed a few weeks later.
+A PageSpeed score can drop because the page changed, the measurement conditions changed, or the underlying Lighthouse version changed. The score alone does not reveal which one occurred. Before rolling back code, identify whether you are looking at a one-run lab fluctuation or a sustained field regression.
 
-A framework migration can increase JavaScript work or introduce layout shifts even when the site looks unchanged. Compare measurements from before and after the release; a traffic change by itself does not establish that performance caused it.
+This guide is an investigation workflow for an unexpected drop. It is not a list of speculative optimizations.
 
-Here's how to figure out why your score dropped and how to get it back.
+## Table of contents
 
-## The Most Common Causes
+- [Classify the drop](#article-classify-the-drop)
+- [Make the comparison valid](#article-make-the-comparison-valid)
+- [Find which metric moved](#article-find-which-metric-moved)
+- [Compare releases and page inputs](#article-compare-releases-and-page-inputs)
+- [Investigate server and LCP regressions](#article-investigate-server-and-lcp-regressions)
+- [Investigate JavaScript and TBT regressions](#article-investigate-javascript-and-tbt-regressions)
+- [Investigate CLS regressions](#article-investigate-cls-regressions)
+- [Account for third parties and test changes](#article-account-for-third-parties-and-test-changes)
+- [Verify recovery and prevent recurrence](#article-verify-recovery-and-prevent-recurrence)
 
-### 1. A New Third-Party Script
+## Classify the drop
 
-Analytics tools, chat widgets, A/B testing scripts, ad networks. These are the most frequent culprits. Each one blocks the main thread and drives up your **Total Blocking Time (TBT)**, which accounts for 30% of your PageSpeed score.
+PageSpeed Insights shows two kinds of evidence:
 
-Check your score breakdown in [Google PageSpeed Insights](https://pagespeed.web.dev/) and look at the "Reduce JavaScript execution time" and "Avoid long main-thread tasks" diagnostics.
+- **Lighthouse lab data** is one simulated load and produces the 0–100 performance score.
+- **Chrome UX Report field data** aggregates eligible real Chrome visits over the previous 28 days.
 
-**Fix:** Load third-party scripts with `defer` or `async`, or use a facade (lazy-load the widget only on interaction).
+A lab score can change immediately and vary between runs. Field Core Web Vitals move more slowly because new visits gradually replace older data. If the Lighthouse number dropped today while the field section is unchanged, investigate a lab regression or variance first. If field distributions worsen across days and representative routes, treat it as a user-facing regression.
 
-### 2. Unoptimized Images
+The [PageSpeed Insights guide](/blog/what-is-pagespeed-insights) explains the two sections and URL-versus-origin scope in detail.
 
-Adding a hero image, a new team photo, or a background without compressing it first can tank your **Largest Contentful Paint (LCP)**, which is 25% of your score.
+## Make the comparison valid
 
-**Fix:** Compress images before uploading. Use WebP format. In Next.js, use the `<Image>` component. It automatically serves the right size and format. Make sure your LCP image has `priority` set.
+Before comparing results, align:
 
-### 3. A Framework or Dependency Upgrade
+- the exact URL and redirect destination;
+- mobile or desktop configuration;
+- authenticated, consent, locale, and experiment state;
+- production or preview build;
+- cold or warm cache assumptions;
+- Lighthouse and browser versions;
+- test location and tool;
+- URL-level or origin-level field data.
 
-Upgrading frameworks, adding a new npm package, or switching CSS libraries can add kilobytes of JavaScript you don't realize is there.
+Run the same page several times and compare the median plus the traces. Do not compare the best historical run with the worst current run. Keep the raw reports so a later review can inspect metric values and audit details rather than relying on screenshots of the score dial.
 
-**Fix:** Run a bundle analyzer (`@next/bundle-analyzer` for Next.js) to see what's bloating your JS. Look for large dependencies you can replace with smaller alternatives.
+## Find which metric moved
 
-### 4. Layout Shifts from Fonts or Ads
+The current documented Lighthouse performance score is weighted across TBT, LCP, CLS, FCP, and Speed Index. A small change in a heavily weighted metric can move the score, and the scoring curves are nonlinear.
 
-If you added a custom font without `font-display: swap`, or if an ad slot loaded in and pushed content down, your **Cumulative Layout Shift (CLS)** will have increased. CLS is 25% of your score.
+Compare raw metric values first:
 
-**Fix:** Always use `font-display: swap` in your CSS. Reserve space for ads and embeds with explicit width/height attributes. Avoid inserting content above existing content after page load.
+- **TTFB increased:** inspect origin, cache, redirects, and upstream dependencies.
+- **LCP increased:** identify whether server, discovery, transfer, or render delay grew.
+- **TBT increased:** compare long tasks and scripts.
+- **CLS increased:** inspect layout-shift records and newly inserted UI.
+- **FCP or Speed Index increased:** inspect HTML arrival and the critical rendering path.
 
-### 5. Server Response Time Regression
+The [good PageSpeed score guide](/blog/what-is-a-good-pagespeed-score) explains why a threshold crossing is less informative than the underlying metric and user impact.
 
-If your hosting got slower (overloaded shared server, cold starts on serverless, a slow database query), your **Time to First Byte (TTFB)** increases, which pushes everything else back.
+## Compare releases and page inputs
 
-**Fix:** Check your server logs for slow queries. Use caching (Redis, CDN edge caching). Consider moving to a faster host or region closer to your users.
+Build a timeline around the first affected measurement. Include:
 
-## How to Diagnose It
+- application and infrastructure deploys;
+- CMS, theme, template, or page-builder publishes;
+- image, video, font, or hero changes;
+- tag-manager and consent updates;
+- new ads, chat, reviews, maps, personalization, or A/B tests;
+- cache purges and CDN configuration changes;
+- traffic campaigns or bot spikes;
+- framework, browser, or Lighthouse upgrades.
 
-1. **Run a PageSpeed test** with [TheFastestWeb](/test) or Google PageSpeed Insights
-2. **Look at the score breakdown.** Which metrics dropped? LCP, TBT, CLS?
-3. **Check the "Opportunities" and "Diagnostics" sections.** PageSpeed will tell you exactly what's causing the problem.
-4. **Compare against your history.** If you're listed on TheFastestWeb, your score history shows exactly when it dropped.
+Diff the generated HTML, network waterfall, transferred bytes, request priorities, JavaScript coverage, and trace. For data-driven pages, preserve the content inputs because a new hero image or product count can regress a template without a code deploy.
 
-## How to Recover
+If possible, replay the old and new builds under the same local or staging conditions. Change one suspected variable at a time.
 
-Once you know the cause, the fix is usually straightforward:
+## Investigate server and LCP regressions
 
-- **TBT high?** Audit your JavaScript. Defer scripts, remove unused code.
-- **LCP slow?** Optimize your hero image, preload critical resources.
-- **CLS issues?** Add explicit dimensions to images, reserve space for dynamic content.
-- **TTFB slow?** Cache aggressively, move to edge hosting.
+When document response time grows, check cache hit ratio, regional latency, database traces, external API timing, connection reuse, and redirect chains. Compare cached and uncached paths separately. A single fast origin request does not explain what most visitors receive through the full delivery chain.
 
-The key is to fix the specific metric that dropped rather than trying to optimize everything at once.
+For LCP, use the four-phase model in the [LCP diagnostic guide](/blog/what-is-lcp-and-how-to-fix-it):
 
-## Monitor It Going Forward
+1. Time to First Byte;
+2. resource load delay;
+3. resource load duration;
+4. element render delay.
 
-A score drop can go unnoticed between releases. Keep a record of measurements so you can compare performance under similar conditions.
+A recently lazy-loaded hero raises discovery delay. A larger image raises transfer time. A reveal animation, stylesheet, or hydration task can raise render delay even when the image request is fast. Fix the phase that changed rather than applying every image recommendation.
 
-Regular monitoring can help identify a regression. Review the recorded test dates and compare the same device and measurement method. A score change alone does not establish a change in search rankings.
+## Investigate JavaScript and TBT regressions
 
-[Submit your site](/submit) to keep a public performance report. Scheduled retests and email alerts depend on service availability and your notification preferences.
+Open comparable Performance traces and group new long tasks by script owner. Look for a larger application chunk, duplicate dependency, added hydration boundary, analytics tag, consent callback, or client-side content transformation.
+
+`async` and `defer` do not eliminate execution time. A newly asynchronous third-party script can still interrupt the main thread at a damaging moment. Compare the trace with a controlled block or stub, then work with the feature owner on supported scheduling.
+
+Use bundle reports and coverage as leads, then verify execution in the trace. The [TBT guide](/blog/what-is-tbt-and-how-to-fix-it) covers attribution and safe task reduction.
+
+## Investigate CLS regressions
+
+Review DevTools layout-shift records and identify the elements that moved and the elements that caused the movement. Recent causes often include:
+
+- an image or embed without reserved dimensions;
+- a consent bar, announcement, or ad inserted above content;
+- a changed web font or missing fallback metric overrides;
+- a widget whose placeholder is smaller than its final state;
+- client-rendered content replacing server output;
+- an animation that changes layout properties.
+
+Field CLS can include shifts later in a visit that a short lab run never observes. If CrUX worsens while Lighthouse remains stable, instrument field attribution or reproduce navigation, filter, modal, and infinite-scroll flows.
+
+## Account for third parties and test changes
+
+External services can vary independently. Record request failures, response size, execution time, and experiment state for ads, analytics, chat, video, fonts, and tag managers. Keep a synthetic test with controlled third-party behavior if your monitoring system supports it, but also test the real production configuration.
+
+Lighthouse updates can change audits, scoring, or simulation. Chrome's [performance scoring documentation](https://developer.chrome.com/docs/lighthouse/performance/performance-scoring) publishes the current weights. When a tool version changes, start a new baseline rather than presenting the whole score difference as a site regression.
+
+Local extensions, antivirus software, background processes, and battery or thermal state can affect DevTools runs. Use a clean profile and repeatable automation for release gates.
+
+## Verify recovery and prevent recurrence
+
+A proposed fix is ready when the responsible trace event changes and the relevant metric improves across repeated equivalent runs. Then verify the complete user flow, accessibility, analytics, consent, and adjacent metrics before release.
+
+After release:
+
+1. annotate the deployment;
+2. monitor representative URLs rather than only the home page;
+3. follow field distributions through their rolling window;
+4. keep error and business-conversion monitoring beside performance;
+5. create a regression budget tied to raw metrics and asset changes.
+
+[IndieTools Speed](/speed) can preserve daily measurement history and make a sudden change visible. The chart becomes operationally useful when every deploy, content change, and campaign has enough context to explain it.
+
+The correct response to a score drop is an attributable comparison: same page, same conditions, changed metric, trace-level cause, controlled correction, and field confirmation. That process prevents both unnecessary rollbacks and cosmetic score fixes that leave the underlying user problem intact.

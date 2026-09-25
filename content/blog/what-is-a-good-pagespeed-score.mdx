@@ -1,100 +1,136 @@
 ---
 title: "What Is a Good PageSpeed Score?"
-description: "A score of 90+ is good, but context matters. Here's what PageSpeed scores actually mean, what's realistic for different site types, and what to aim for."
+description: "A practical explanation of Lighthouse score ranges, mobile versus desktop, field data, score variability, and how to choose a useful performance target."
 date: "2026-03-26"
+updated: "2026-09-25"
 ---
 
-Google's PageSpeed Insights scores your site from 0 to 100. A score of 90 or above is "Good." But what score should you actually be targeting for your type of site?
+A Lighthouse performance score of 90 to 100 is classified as good. A score of 50 to 89 needs improvement, and 0 to 49 is poor. Those ranges describe the lab score shown by PageSpeed Insights; they do not replace real-user Core Web Vitals.
 
-## The Official Thresholds
+The best target is therefore not simply “100.” Aim for good field Core Web Vitals on important pages, remove meaningful lab bottlenecks, and prevent regressions without breaking the product.
 
-Google defines three categories:
+### Table of contents
 
-- **90-100:** Good
-- **50-89:** Needs Improvement
-- **0-49:** Poor
+- [The official score ranges](#article-the-official-score-ranges)
+- [What the score represents](#article-what-the-score-represents)
+- [Why 90 is not the whole answer](#article-why-90-is-not-the-whole-answer)
+- [Mobile and desktop scores](#article-mobile-and-desktop-scores)
+- [Why scores change between runs](#article-why-scores-change-between-runs)
+- [How to set a target](#article-how-to-set-a-target)
+- [How to improve the score responsibly](#article-how-to-improve-the-score-responsibly)
+- [How to report performance](#article-how-to-report-performance)
 
-These apply to both mobile and desktop scores. But the thresholds are the same regardless of whether you're running a simple blog or a complex SaaS dashboard with real-time data.
+## The official score ranges
 
-## Realistic Targets by Site Type
+Google's current [PageSpeed Insights documentation](https://developers.google.com/speed/docs/insights/v5/about) and [Lighthouse scoring guide](https://developer.chrome.com/docs/lighthouse/performance/performance-scoring) use these ranges:
 
-Not all sites can hit 90+, and that's okay. Here's what to expect:
+| Lighthouse performance score | Classification |
+| ---: | --- |
+| 90–100 | Good |
+| 50–89 | Needs improvement |
+| 0–49 | Poor |
 
-### Static Landing Pages and Blogs
+A score of 100 is not required for a result to be green. Lighthouse's scoring curve also has diminishing returns near the top, so moving from 99 to 100 can require substantial metric improvement. That effort may be less valuable than fixing a slow product page, an interaction problem, or an accessibility defect.
 
-**Target: 90-100 mobile, 95-100 desktop**
+## What the score represents
 
-These should be easy. If your landing page or blog is scoring under 85, something is wrong -- likely oversized images, a page builder loading unnecessary CSS, or third-party scripts.
+PageSpeed Insights runs Lighthouse under a simulated environment and combines several lab metrics into a weighted performance score. The weights and scoring curves can change between Lighthouse versions as the project evolves.
 
-### Marketing Websites (SSR or SSG)
+The report's opportunities and diagnostics do not directly add or subtract fixed points. They help explain changes that may improve the measured metrics. A claim such as “this audit is worth exactly 12 points” is unreliable across pages and Lighthouse versions.
 
-**Target: 85-95 mobile, 90-100 desktop**
+The lab score answers a bounded question: how did this page perform in this simulated run under this Lighthouse version and environment? It does not directly describe every visitor.
 
-Sites built on Next.js, Nuxt, Astro, or similar frameworks with server-side rendering should consistently hit the 90s. If you're below 80, check for unoptimized images, blocking JavaScript, or too many third-party tools (chat, video, analytics).
+PageSpeed Insights may also show field data from the Chrome UX Report above the lab section. That field panel reflects real-user experience over a trailing period and uses LCP, INP, and CLS for the Core Web Vitals assessment. Read [What Are Core Web Vitals?](/blog/what-are-core-web-vitals) for the current thresholds and percentile model.
 
-### Shopify and E-commerce
+## Why 90 is not the whole answer
 
-**Target: 65-85 mobile, 75-90 desktop**
+A 90-plus score is a useful quality signal for the tested state, but it can coexist with problems:
 
-E-commerce sites are harder to optimize. Product pages load many images, often have review widgets and live inventory checks, and Shopify's platform adds some baseline overhead. A score in the 70s is respectable for a Shopify store. Above 80 is excellent.
+- the URL has poor field Core Web Vitals from real mobile visits;
+- a page-load test misses slow interactions later in the session;
+- consent, ads, personalization, or authenticated content did not appear in the lab;
+- a low-traffic URL has no field data;
+- a fast page is inaccessible or does not satisfy the visitor's task;
+- the home page is fast while product or article templates are slow.
 
-### WordPress Sites
+The reverse can also happen. A lab score may fluctuate below 90 while the field data remains good. Investigate the underlying metrics and trace rather than treating the score as a release verdict by itself.
 
-**Target: 70-90 mobile, 80-95 desktop**
+## Mobile and desktop scores
 
-Highly variable. A well-built WordPress site with a fast theme and minimal plugins can hit 90+. A site with a page builder like Elementor and 20 plugins will often score in the 50s-60s. Improving a WordPress score is often more about removing things than adding them.
+Mobile and desktop Lighthouse runs use different scoring curves and simulated conditions. They should not be averaged. Mobile often exposes CPU, network, responsive-image, and JavaScript problems that a desktop run hides.
 
-### SaaS Applications and Dashboards
+Set separate budgets and monitor real traffic distribution. A business with mostly mobile visitors should not declare success from a strong desktop score. At the same time, a desktop workflow with complex interaction deserves direct testing rather than being inferred from mobile.
 
-**Target: 60-80 mobile, 70-90 desktop**
+When comparing changes, keep the URL, device mode, Lighthouse version, authentication state, consent state, region, and major third-party behavior as consistent as possible.
 
-Authenticated apps with real-time data, complex UI components, and many interactive elements are inherently heavier. A score in the 70s is good for a SaaS product. Focus on getting public pages (marketing, landing, pricing) into the 90s and accept that the app itself will be lower.
+## Why scores change between runs
 
-### News and Content Sites
+Lighthouse and PageSpeed results can vary without a code deployment. Causes include:
 
-**Target: 50-70 mobile, 65-85 desktop**
+- shared test infrastructure and network routing;
+- origin or CDN cache state;
+- third-party service latency;
+- ads, experiments, or personalized content;
+- background load on the server;
+- browser extensions in local tests;
+- dynamic images or API responses;
+- differences in the Lighthouse version.
 
-High-traffic news sites often score in the 50s-60s due to aggressive ad loading, multiple analytics scripts, comment systems, and related content widgets. Improving scores here requires removing or deferring many third-party tools, which is often a business tradeoff.
+Run several equivalent tests and compare a representative median result. Save the individual metrics and trace. Do not select only the best run, and do not promise customers a permanently fixed score from a one-time audit.
 
-## Mobile vs Desktop
+For historical comparisons, [IndieTools Speed](/speed) can show how published measurements change over time. Those records are still observations of a URL and test configuration, not guarantees about every visit.
 
-Desktop scores are almost always higher because the test simulates a faster device and connection. The gap is typically 10-25 points.
+## How to set a target
 
-**Mobile scores are what matter for SEO.** Google uses mobile Core Web Vitals for rankings. If you have to choose where to focus, optimize for mobile.
+Use a hierarchy rather than one universal number.
 
-## The Score Is Not the Goal -- The Metrics Are
+### First: protect the user journey
 
-A score of 95 doesn't mean your site is fast. It means the metrics Lighthouse measures are within good ranges. The score is a weighted composite:
+Measure the pages and interactions that matter: landing, listing, product, article, search, sign-up, cart, or dashboard. Performance on the home page cannot stand in for the whole site.
 
-- **Total Blocking Time (TBT):** 30%
-- **Largest Contentful Paint (LCP):** 25%
-- **Cumulative Layout Shift (CLS):** 25%
-- **First Contentful Paint (FCP):** 10%
-- **Speed Index:** 10%
+### Second: pass field Core Web Vitals
 
-A site can score 90 with a mediocre LCP if its TBT and CLS are perfect. What Google actually uses for rankings is Core Web Vitals field data (LCP, CLS, INP from real users), not the lab score.
+Aim for good LCP, INP, and CLS at the 75th percentile, segmented by mobile and desktop. Track route templates in your own RUM when public CrUX data is too coarse or unavailable.
 
-Focus on passing the Core Web Vitals thresholds:
-- LCP under 2.5s
-- CLS under 0.1
-- INP under 200ms
+### Third: use Lighthouse as a diagnostic and regression gate
 
-If those pass, your score will usually follow.
+A project may choose 90-plus as a lab budget for key public templates. Another may use metric budgets such as maximum LCP or JavaScript size because they are more actionable. Document the environment and allow a review path for justified product features.
 
-## When to Stop Optimizing
+### Fourth: improve where evidence supports it
 
-Getting from 50 to 70 is relatively easy. Going from 80 to 90 takes focused effort. Going from 90 to 100 is often impractical for real-world sites with any dynamic content.
+Once the experience is good, compare the next optimization with other work. A smaller image or removed third party may be valuable; weeks spent converting 99 to 100 may not be.
 
-A score of 90+ on mobile is the point of diminishing returns for most sites. Beyond that, you're spending significant engineering time for tiny user experience improvements.
+## How to improve the score responsibly
 
-Exceptions: if you're in a competitive SEO niche where every signal matters, or if your real-world LCP is still above 2.5s even with a high score, keep optimizing.
+Open the trace and fix the largest measured constraint. Common paths include:
 
-## What to Do If Your Score Is Low
+- reduce server and redirect delay;
+- expose the LCP resource in initial HTML;
+- size and compress responsive images;
+- remove render-blocking or unused CSS;
+- reduce JavaScript and long main-thread tasks;
+- load third-party features only where and when needed;
+- reserve space for media and injected UI;
+- limit font families, weights, and late swaps;
+- cache immutable assets with versioned URLs.
 
-1. Run the test 3 times and take the average -- single scores vary
-2. Check the "Opportunities" section in PageSpeed Insights -- it ranks fixes by impact
-3. Fix your LCP first (biggest weight, biggest user impact)
-4. Fix TBT second (second biggest weight, reflects JavaScript overhead)
-5. Fix CLS third (layout shifts cause user frustration and accidental clicks)
+Change one system at a time and retest. Do not hide content from Lighthouse, delay essential functionality only for the test, or serve a special page to measurement tools. Such tactics do not improve the visitor experience and can create correctness and trust problems.
 
-[Test your site now](/test) to see your current score and exactly what's affecting it.
+Metric-specific diagnosis is more useful than generic advice. Use the [FCP guide](/blog/what-is-fcp-and-how-to-fix-it) when the first visible content is late, and the [CLS guide](/blog/what-is-cls-and-how-to-fix-it) when content moves unexpectedly.
+
+## How to report performance
+
+A professional performance report should include:
+
+- exact URL and timestamp;
+- mobile or desktop configuration;
+- Lighthouse and browser versions where available;
+- median plus range across repeated runs;
+- individual metrics, not only the aggregate score;
+- field-data source, scope, and date window;
+- whether field data is URL-level or origin-level;
+- relevant consent, authentication, cache, and third-party state;
+- the change made and the release identifier;
+- follow-up field results after the reporting window.
+
+Say “the median mobile Lighthouse score improved from X to Y under this test configuration,” rather than “the site is now permanently Y.” That wording is precise, reproducible, and honest about what the measurement proves.

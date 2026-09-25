@@ -1,93 +1,116 @@
 ---
 title: "What Is PageSpeed Insights and How to Use It"
-description: "Google PageSpeed Insights is the standard tool for measuring website performance. Here's what it measures, how to read the results, and what to do with them."
+description: "Learn how to read PageSpeed Insights field and lab data, interpret URL and origin results, and turn the report into a reliable performance workflow."
 date: "2026-03-30"
+updated: "2026-09-25"
 ---
 
-Google PageSpeed Insights (PSI) is a free tool from Google that measures how fast your website loads and how good the user experience is. It gives your site a score from 0 to 100 and tells you exactly what's slowing it down.
+Google PageSpeed Insights (PSI) combines real-user performance data, when available, with a Lighthouse lab test of the URL you enter. The two sections answer different questions. Field data describes what eligible Chrome visitors experienced over time; lab data reproduces one controlled scenario and helps identify work to investigate.
 
-It's the most widely used web performance tool and the standard reference for SEO and performance discussions.
+The most common PageSpeed mistake is treating the 0–100 Lighthouse score as a direct measurement of every visitor or as a search ranking score. A useful PSI review begins by separating the data sources.
 
-## What PageSpeed Insights Actually Tests
+## Table of contents
 
-PSI runs your URL through Google's Lighthouse engine, which simulates a page load on a mid-range mobile device on a typical mobile network. It captures performance data and calculates a score based on six metrics:
+- [What PageSpeed Insights reports](#article-what-pagespeed-insights-reports)
+- [Read field data first](#article-read-field-data-first)
+- [Understand URL and origin data](#article-understand-url-and-origin-data)
+- [Interpret the Lighthouse score](#article-interpret-the-lighthouse-score)
+- [Use audits as evidence, not a checklist](#article-use-audits-as-evidence-not-a-checklist)
+- [Investigate field and lab disagreement](#article-investigate-field-and-lab-disagreement)
+- [Build a repeatable PSI workflow](#article-build-a-repeatable-psi-workflow)
+- [Avoid common interpretation errors](#article-avoid-common-interpretation-errors)
 
-| Metric | Weight | What It Measures |
-|---|---|---|
-| Total Blocking Time (TBT) | 30% | JavaScript blocking the main thread |
-| Largest Contentful Paint (LCP) | 25% | When the main content loads |
-| Cumulative Layout Shift (CLS) | 25% | Visual stability (content moving) |
-| First Contentful Paint (FCP) | 10% | When first content appears |
-| Speed Index (SI) | 10% | How quickly the page fills in |
+## What PageSpeed Insights reports
 
-These are called Core Web Vitals (LCP, CLS, TBT/FID) and are used by Google as a ranking signal.
+PSI's [official documentation](https://developers.google.com/speed/docs/insights/v5/about) describes two primary data sources:
 
-## Lab Data vs Field Data
+- **Field data** comes from the Chrome User Experience Report (CrUX). It aggregates eligible real-user experiences over the previous 28 days.
+- **Lab data** comes from Lighthouse. It runs the page with a defined device and network simulation and produces diagnostics plus a performance score.
 
-PSI shows two types of data:
+The field section focuses on experience distributions and Core Web Vitals. The lab section includes Largest Contentful Paint (LCP), Cumulative Layout Shift (CLS), Total Blocking Time (TBT), First Contentful Paint (FCP), and Speed Index. TBT and Speed Index are valuable lab diagnostics, but they are not Core Web Vitals.
 
-**Field Data (Chrome User Experience Report):** Real performance data collected from actual Chrome users visiting your site over the past 28 days. This is what Google actually uses for search rankings. If you've just launched or have low traffic, this section may not appear.
+PageSpeed may also present accessibility, best-practice, and SEO audits. These are useful automated checks, not complete audits of those disciplines.
 
-**Lab Data (Lighthouse):** A simulated test run in controlled conditions. This is what gives you the 0-100 score and the specific recommendations. It's useful for debugging and tracking improvements.
+## Read field data first
 
-Both matter. Field data tells you how your real users experience the site. Lab data tells you what to fix.
+The current Core Web Vitals are:
 
-## How to Read Your Score
+- **LCP** for loading performance;
+- **INP** for interaction responsiveness;
+- **CLS** for visual stability.
 
-**90-100:** Good. Your site is well optimized.
-**50-89:** Needs improvement. There are meaningful gains available.
-**0-49:** Poor. Significant performance issues affecting user experience and rankings.
+Google evaluates the 75th percentile, separately for mobile and desktop, when classifying these metrics. PSI displays a distribution rather than only an average because a fast median can hide a poor experience for a meaningful group of visitors.
 
-The score is calculated on a logarithmic scale, which means going from 50 to 70 is easier than going from 85 to 95.
+Field data can differ by geography, device capability, connection, signed-in state, cache state, and page behavior. It is also delayed by its rolling window. A production fix made today will not replace the previous 28 days of observations immediately.
 
-**Desktop vs Mobile:** PSI tests both. Desktop scores are almost always higher because it simulates a faster device and connection. Google prioritizes mobile performance for rankings, so focus on your mobile score.
+If the page has insufficient eligible traffic, field data may be unavailable. That is not a pass or a failure. Use lab diagnostics, your own Real User Monitoring where available, and comparable templates until enough CrUX data exists.
 
-## How to Read the Diagnostics
+## Understand URL and origin data
 
-Below the score, PSI shows three sections:
+Check the label above the field results. PSI may show data for the exact URL or fall back to the whole origin when URL-level data is unavailable. Origin data combines different page types and can conceal a slow template behind faster, higher-traffic pages.
 
-**Opportunities:** Specific improvements with estimated time savings. These are ranked by potential impact. Fix the top ones first.
+For example, an origin can pass while a JavaScript-heavy configurator fails. The reverse can also occur if one optimized landing page is compared with weaker origin-wide data. Record which scope PSI used before sharing the result.
 
-**Diagnostics:** Additional information about performance patterns. Less actionable than Opportunities but useful for understanding what's happening.
+Test representative URLs: a home page, a high-traffic listing, an article, and a conversion page. Do not infer site-wide health from the home page alone.
 
-**Passed Audits:** Things your site is already doing right. Ignore these.
+## Interpret the Lighthouse score
 
-Click on any item to get detailed explanations and specific resources causing the problem.
+Lighthouse converts its lab metrics into a weighted performance score. In the current documented model, TBT carries 30%, LCP and CLS each carry 25%, and FCP and Speed Index each carry 10%. The formula is nonlinear, so the same raw improvement does not always produce the same point increase.
 
-## What the Metrics Mean in Plain English
+PSI labels 90–100 as good, 50–89 as needing improvement, and below 50 as poor for the lab score. These bands describe that run. They do not mean a score of 91 is complete or that a score of 89 is a production incident.
 
-**LCP over 4s:** Your main content (hero image, headline) takes too long to appear. Usually an image or font loading issue.
+Use [What Is a Good PageSpeed Score?](/blog/what-is-a-good-pagespeed-score) to set an appropriate score policy. Prioritize passing real-user Core Web Vitals and correcting observable user friction over chasing a perfect number.
 
-**TBT over 600ms:** Your JavaScript is blocking the browser for too long. Users can't interact with the page. Usually caused by large JS bundles or third-party scripts.
+## Use audits as evidence, not a checklist
 
-**CLS over 0.25:** Content is jumping around as the page loads. Usually caused by images without dimensions or late-loading content.
+Lighthouse audits identify resources and patterns associated with the run. An estimated saving is a model, not a guaranteed improvement. Start with the metric that is weak and connect each audit to its trace:
 
-**FCP over 3s:** Nothing appears for over 3 seconds. Usually a server response or render-blocking resource issue.
+- for LCP, identify the element and split time into server, discovery, transfer, and render phases;
+- for TBT, inspect long tasks and attribute script work to first-party or third-party owners;
+- for CLS, use layout-shift records to identify the elements that moved;
+- for Speed Index or FCP, inspect render-blocking work and above-the-fold progress.
 
-## How to Use PSI Effectively
+Passed audits do not prove that a page is fast, and an audit warning does not automatically justify a code change. Validate the causal path first.
 
-**Test the right page.** Your homepage may be fast but product pages might not be. Test the pages that matter most for conversions and SEO.
+## Investigate field and lab disagreement
 
-**Test multiple times.** Single runs can vary by 10-15 points depending on server load and network conditions. Run it 3 times and take the average.
+It is normal for the two sections to disagree. Google's [field and lab data guide](https://web.dev/articles/lab-and-field-data-differences) highlights several causes:
 
-**Fix one thing at a time.** Make a change, run the test again, see if it improved. Don't make 10 changes at once.
+- lab runs use one simulated environment; field data includes a distribution of real devices and networks;
+- field data includes repeat visits, cache states, interactions, and page lifecycle behavior;
+- lab CLS normally observes the initial load, while field CLS can include later shifts;
+- lab TBT is a proxy for main-thread blocking, while field INP observes real interactions;
+- the production page or third-party response may vary by location, consent, experiment, or account state.
 
-**Track over time.** A one-time test is a snapshot. Performance can degrade as you add features. Use a tool like [TheFastestWeb](/submit) to monitor your score daily automatically.
+When field data is poor and lab data is good, reproduce a representative device, route, state, and interaction. When lab data is poor but field data is good, the lab scenario may still expose risk for slower users. Do not discard either result without explaining the conditions.
 
-## Free Alternatives to PageSpeed Insights
+## Build a repeatable PSI workflow
 
-PSI is the standard, but other tools can give you additional insight:
+Use the same process for each important template:
 
-- **WebPageTest:** More detailed waterfall analysis, real browser testing
-- **GTmetrix:** Combines Lighthouse and WebPageTest, easy to read
-- **Lighthouse in Chrome DevTools:** Same engine as PSI, runs locally without network latency
+1. Record the URL, test time, device tab, field-data scope, and current release.
+2. Save the field Core Web Vitals and their distributions.
+3. Run the lab test several times under comparable conditions.
+4. Choose one weak metric and open its relevant audits.
+5. Reproduce the finding in Chrome DevTools or an application trace.
+6. Make one attributable change in a staging or preview environment.
+7. Retest functionality, accessibility, and adjacent performance metrics.
+8. Deploy with an annotation and monitor field data over its full window.
 
-All of these use the same underlying metrics. PSI is the reference because it's what Google uses for rankings.
+For trend visibility between PSI checks, compare representative sites and historical measurements in [IndieTools Speed](/speed). A monitoring chart is most useful when releases and campaign changes are documented beside it.
 
-## The Relationship Between PSI and Google Rankings
+## Avoid common interpretation errors
 
-Google uses Core Web Vitals (LCP, CLS, and FID/INP) as a ranking factor as part of the Page Experience signal. A poor PageSpeed score doesn't automatically drop you in rankings, but sites with consistently good scores have an advantage over competitors with similar content.
+Do not:
 
-Think of it as a tiebreaker: if two pages are equally relevant for a query, the faster one ranks higher.
+- call every Lighthouse metric a Core Web Vital;
+- compare a mobile run with a desktop run as if conditions were equal;
+- average URL-level and origin-level field data;
+- promise a ranking increase from a score change;
+- remove a required business feature solely because it appears in an audit;
+- declare a fix complete before field data has time to reflect it;
+- repeatedly reload PSI until one favorable run appears.
 
-[Test your site now](/test) and see your PageSpeed score in seconds.
+Page performance can support users and search visibility, but Google's [Core Web Vitals search documentation](https://developers.google.com/search/docs/appearance/core-web-vitals) does not describe a perfect Lighthouse score as a guarantee of ranking. Relevant content, crawlability, and overall page experience still matter.
+
+PSI works best as the entry point to an evidence chain: field outcome, reproducible lab symptom, trace-level cause, controlled fix, and post-release confirmation.

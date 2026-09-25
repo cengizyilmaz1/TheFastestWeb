@@ -1,139 +1,119 @@
 ---
 title: "Astro PageSpeed Optimization Guide"
-description: "Astro ships zero JavaScript by default, making it one of the fastest frameworks available. Here's how to keep your Astro site scoring in the 90s and what can still go wrong."
+description: "A current, measurement-first guide to optimizing Astro images, islands, rendering, fonts, scripts, caching, and Lighthouse results."
 date: "2026-03-14"
+updated: "2026-09-25"
 ---
 
-Astro is built for performance. It ships zero JavaScript to the browser by default, uses static generation out of the box, and produces minimal, clean HTML. Most Astro sites score 90-100 on PageSpeed without any optimization.
+Astro starts from a useful performance model: `.astro` components render to HTML, and framework components only send client-side JavaScript when you opt into hydration. That reduces accidental JavaScript, but it does not make every Astro site fast automatically. Large images, eager islands, third-party scripts, slow on-demand rendering, and unstable layouts can still dominate the result.
 
-But there are still things that can drag your score down. Here's what to watch for and how to fix it.
+This guide focuses on current Astro APIs and a repeatable way to find the real bottleneck before changing code.
 
-## Why Astro Is Fast by Default
+### Table of contents
 
-Astro's architecture is fundamentally different from React or Vue SPAs:
+- [Measure before changing anything](#article-measure-before-changing-anything)
+- [Keep islands intentional](#article-keep-islands-intentional)
+- [Optimize the LCP image](#article-optimize-the-lcp-image)
+- [Choose static or on-demand rendering per route](#article-choose-static-or-on-demand-rendering-per-route)
+- [Control fonts, scripts, and layout shifts](#article-control-fonts-scripts-and-layout-shifts)
+- [Treat transitions as a product decision](#article-treat-transitions-as-a-product-decision)
+- [Use a release checklist](#article-use-a-release-checklist)
 
-- **Zero JS by default.** Components render to static HTML at build time. No hydration overhead.
-- **Islands architecture.** Only interactive components ship JavaScript, and only when needed.
-- **Static output.** Pages are pre-rendered and served instantly from a CDN.
-- **No layout shifts from hydration.** Content is in the HTML from the start.
+## Measure before changing anything
 
-This means TBT is near zero, FCP is fast, and CLS from hydration doesn't exist. Your score problems, if any, will come from images, fonts, or the interactive islands you add.
+Start with the exact production URL and record the environment. A Lighthouse performance score is a simulated lab result, while Core Web Vitals are field measurements collected from real visits. The two answer different questions. The [PageSpeed Insights guide](/blog/what-is-pagespeed-insights) explains how to read them together.
 
-## What Can Still Hurt Your Astro Score
+For lab comparisons:
 
-### 1. Unoptimized Images
+1. Test the same URL and device profile.
+2. Run Lighthouse several times and compare a representative median run rather than one unusually good result.
+3. Record LCP, CLS, TBT, FCP, and Speed Index, not only the overall score.
+4. Change one bottleneck at a time and repeat the same test.
 
-The most common issue. Astro's built-in `<Image>` component from `@astrojs/image` handles optimization, but only if you use it.
+Use Chrome DevTools Performance when you need a trace showing which request, task, or layout event caused the metric. Use field data when it exists to confirm that the change helps actual visitors.
 
-**Fix:** Use Astro's Image component instead of raw `<img>` tags:
+## Keep islands intentional
+
+Astro renders UI framework components as HTML by default. Client-side JavaScript is added only when a component uses a `client:*` directive, as described in Astro's [islands architecture documentation](https://docs.astro.build/en/concepts/islands/).
+
+Choose the least eager directive that still meets the interaction requirement:
 
 ```astro
----
-import { Image } from "astro:assets";
-import heroImage from "../assets/hero.jpg";
----
-
-<Image src={heroImage} alt="Hero" width={1200} height={630} />
+<SearchBox client:load />
+<Reviews client:visible />
 ```
 
-This automatically converts to WebP, generates srcset, and sets correct dimensions to prevent CLS.
+`client:load` is appropriate for interaction needed immediately. `client:visible` can delay an off-screen widget until it approaches the viewport. Other directives can hydrate after idle time or under a media condition. The important step is to inspect what each island ships: a small component can still pull in a large dependency graph.
 
-For external images, compress and resize them before referencing them. Aim for under 100KB for hero images.
+Avoid wrapping an entire page in one hydrated framework component for convenience. Keep static headings, article text, navigation, and product details in server-rendered Astro markup where possible. Split interactive controls into focused islands, and load a heavy component conditionally when the visitor actually requests it.
 
-### 2. The LCP Image Not Being Prioritized
+## Optimize the LCP image
 
-Astro lazy-loads images by default. Your hero image should load eagerly.
+Use the current `astro:assets` APIs rather than the retired `@astrojs/image` integration. Astro's [image guide](https://docs.astro.build/en/guides/images/) and [`astro:assets` reference](https://docs.astro.build/en/reference/modules/astro-assets/) document the supported `Image` and `Picture` components.
 
-**Fix:** Add `loading="eager"` and `fetchpriority="high"` to your LCP image:
+After importing `Image` from `astro:assets` and a local image in the component script, render it with explicit responsive intent:
 
 ```astro
 <Image
-  src={heroImage}
-  alt="Hero"
-  width={1200}
-  height={630}
-  loading="eager"
-  fetchpriority="high"
+  src={hero}
+  alt="Analytics dashboard showing weekly traffic trends"
+  widths={[640, 960, 1280]}
+  sizes="(max-width: 720px) 100vw, 1200px"
+  priority
 />
 ```
 
-### 3. Too Many Client-Side Islands
+Astro's current `priority` prop applies eager loading, synchronous decoding, and high fetch priority for an above-the-fold image. Reserve it for the image that is genuinely likely to become LCP. Prioritizing every image competes for bandwidth. For images below the fold, keep lazy loading and provide realistic responsive `sizes` so the browser does not download a needlessly large candidate.
 
-Every time you use `client:load`, `client:visible`, or `client:idle` on a component, you're shipping JavaScript. If you have many interactive islands loading on the initial page view, TBT will climb.
+Always provide descriptive `alt` text when the image conveys information, and let the component preserve intrinsic dimensions to reduce layout movement. If an image is decorative, use an empty `alt` attribute instead of stuffing keywords into it.
 
-**Fix:** Use the right hydration directive for each component:
+If LCP is still slow, use the trace to separate its phases: server response, resource discovery, resource download, and render delay. An optimized file cannot compensate for an image discovered late behind client-side rendering.
 
-- `client:load` - loads immediately (use only when necessary)
-- `client:idle` - loads when the browser is idle (good for non-critical UI)
-- `client:visible` - loads when the component enters the viewport (best for below-fold)
-- `client:media` - loads only on certain screen sizes
+## Choose static or on-demand rendering per route
 
-Replace `client:load` with `client:idle` wherever the component doesn't need to be interactive immediately.
+Astro pre-renders routes at build time by default. Current Astro also supports on-demand rendering with an adapter and route-level opt-outs. The official [on-demand rendering guide](https://docs.astro.build/en/guides/on-demand-rendering/) recommends starting with static output until a route genuinely needs request-time work.
 
-### 4. Third-Party Scripts
+Use static rendering for content that can be generated during a build. Use on-demand rendering for personalization, request-specific authorization, or data that must be fresh on every request. In a mixed site, keep the static default and opt individual routes into server rendering:
 
-Analytics, chat widgets, and other third-party scripts affect Astro sites just like any other. Astro doesn't shield you from these.
-
-**Fix:** Use Astro's `<script>` tag with `is:inline` only for truly critical scripts. For analytics, add the script at the bottom of your layout with `defer`:
-
-```astro
-<script defer src="https://analytics.example.com/script.js"></script>
+```ts
+export const prerender = false;
 ```
 
-Or use a lightweight analytics tool. Astro integrates well with Partytown, which runs third-party scripts in a web worker off the main thread:
+Place that export in the page's Astro component script, then perform request-specific work there and render the result in the template.
 
-```bash
-npx astro add partytown
-```
+For on-demand routes, profile the whole server path: database queries, external APIs, cold starts, cache behavior, and HTML streaming. Cache only responses that are safe to share, define an invalidation strategy, and verify the resulting HTTP headers at the CDN rather than assuming a platform default.
 
-### 5. Google Fonts
+## Control fonts, scripts, and layout shifts
 
-Loading fonts from Google Fonts adds an external DNS lookup and render-blocking request.
+Fonts should be a deliberate subset of the weights and styles used by the page. Prefer WOFF2, preload only a font needed for initial text, and use a fallback with compatible metrics. `font-display` controls rendering behavior, but it does not by itself guarantee that text will never shift. The [CLS guide](/blog/what-is-cls-and-how-to-fix-it) covers font metric overrides and other layout-shift sources.
 
-**Fix:** Download your fonts and self-host them in your `public/fonts/` directory. Add `font-display: swap` and preload your primary font:
+Astro processes ordinary component `<script>` tags with bundling and deduplication. Its [client-side scripts guide](https://docs.astro.build/en/guides/client-side-scripts/) also explains when inline scripts behave differently. Keep first-party scripts small and treat every analytics, chat, video, and consent script as a performance dependency.
 
-```html
-<link rel="preload" href="/fonts/inter.woff2" as="font" type="font/woff2" crossorigin />
-```
+For third-party code:
 
-### 6. View Transitions API Overhead
+- load it only on routes where it is needed;
+- use `defer` or an interaction-based loader when its behavior permits;
+- reserve space for embeds before they initialize;
+- verify consent behavior without loading the vendor first;
+- measure main-thread work and network cost after enabling it.
 
-Astro's View Transitions feature (`<ViewTransitions />`) adds a small JavaScript bundle to enable smooth page transitions. If you're chasing a perfect 100 score, this adds a few milliseconds of TBT.
+## Treat transitions as a product decision
 
-For most sites the trade-off is worth it. If you're obsessing over those last few points, you can remove it.
+Astro's earlier `<ViewTransitions />` component was replaced by `<ClientRouter />` in Astro 5. Current [view transitions documentation](https://docs.astro.build/en/guides/view-transitions/) distinguishes browser-native cross-document transitions from Astro's enhanced client-side router.
 
-## Astro Score Targets
+Native transitions can preserve normal document navigation without adding a client router. `<ClientRouter />` adds navigation behavior and lifecycle considerations: scripts may need to reinitialize after page swaps, and persistent state can change how a page behaves. Add it because the experience needs it, then profile navigation and test keyboard, history, focus, and reduced-motion behavior.
 
-Astro sites consistently outperform other frameworks. Realistic targets:
+## Use a release checklist
 
-| Setup | Realistic Score |
-|---|---|
-| Static site, optimized images, no third-party | 95-100 |
-| Few interactive islands, lightweight analytics | 90-95 |
-| Multiple client:load islands, third-party scripts | 75-90 |
-| Heavy SSR with dynamic content | 70-85 |
+Before shipping an Astro performance change, verify:
 
-## Deployment Matters
+- the production route uses the intended static or on-demand mode;
+- only necessary islands hydrate, with the least eager suitable directive;
+- the LCP resource is discoverable in the initial HTML and not lazy-loaded;
+- responsive images have correct dimensions, `sizes`, and useful alternative text;
+- third-party scripts are scoped and scheduled intentionally;
+- caches have an explicit freshness and invalidation policy;
+- Lighthouse is compared across repeated, equivalent runs;
+- field Core Web Vitals are monitored separately from the lab score.
 
-Astro's static output shines when deployed to edge networks. The fastest options:
-
-- **Cloudflare Pages** - free, global edge, fastest TTFB
-- **Vercel** - excellent DX, fast edge network
-- **Netlify** - solid, slightly slower than the above two
-- **Astro's own hosting (Astro DB / Starlight)** - optimized for Astro
-
-Avoid deploying static Astro sites to traditional shared hosting. The CDN is where the speed comes from.
-
-## Quick Checklist
-
-- [ ] Using `astro:assets` Image component for all images
-- [ ] Hero/LCP image has `loading="eager"` and `fetchpriority="high"`
-- [ ] All images under 100KB for hero, 30KB for thumbnails
-- [ ] Islands use `client:idle` or `client:visible` instead of `client:load` where possible
-- [ ] Third-party scripts use `defer` or Partytown
-- [ ] Fonts are self-hosted with preload
-- [ ] Deployed to edge CDN (Cloudflare Pages or Vercel)
-
-If you're using Astro and scoring below 85, something specific is causing it. The most likely culprits are images and third-party scripts.
-
-[Test your Astro site](/test) to get your exact score and a breakdown of what's affecting each metric.
+You can review published performance measurements on [IndieTools Speed](/speed). For the scoring model and its limitations, continue with [How to Get a 100 PageSpeed Score](/blog/how-to-get-100-pagespeed-score) and [What Are Core Web Vitals?](/blog/what-are-core-web-vitals).

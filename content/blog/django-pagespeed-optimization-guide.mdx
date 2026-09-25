@@ -1,278 +1,152 @@
 ---
 title: "Django PageSpeed Optimization Guide"
-description: "Django is a Python web framework that can serve very fast pages with the right configuration. Here's how to optimize a Django site for top PageSpeed scores."
+description: "A production-focused guide to improving Django response time, queries, caching, static assets, images, and frontend performance without relying on score promises."
 date: "2026-03-25"
+updated: "2026-09-25"
 ---
 
-Django is a batteries-included Python web framework used by some of the highest-traffic sites on the web. With the right setup, Django sites can score 90+ on PageSpeed. Without it, they often score in the 40s-60s due to slow TTFB and unoptimized assets.
+Django performance is an end-to-end problem. The framework can return a small HTML response quickly, but slow queries, request-time API calls, unversioned assets, oversized images, or too much browser JavaScript can still make a page feel slow.
 
-Here's how to optimize Django for performance.
+The reliable approach is to trace the production request, fix the largest measured constraint, and retest under the same conditions.
 
-## Reduce TTFB: The Foundation
+### Table of contents
 
-Everything starts with how quickly Django responds to requests. A slow TTFB means slow FCP, LCP, and everything else.
+- [Separate backend and browser time](#article-separate-backend-and-browser-time)
+- [Remove avoidable database work](#article-remove-avoidable-database-work)
+- [Cache at the right layer](#article-cache-at-the-right-layer)
+- [Deploy static files correctly](#article-deploy-static-files-correctly)
+- [Build an image pipeline](#article-build-an-image-pipeline)
+- [Tune the application server with load tests](#article-tune-the-application-server-with-load-tests)
+- [Control frontend work](#article-control-frontend-work)
+- [Use a production checklist](#article-use-a-production-checklist)
 
-### Use a Production-Ready Server
+## Separate backend and browser time
 
-Never run `python manage.py runserver` in production. Use Gunicorn or uWSGI:
+Begin with the request waterfall and a server trace. Time to First Byte can include DNS, connection setup, proxy and CDN behavior, queueing, application work, database calls, and upstream services. Do not assume Django itself is the bottleneck.
 
-```bash
-gunicorn myapp.wsgi:application --workers 4 --bind 0.0.0.0:8000
-```
+Record at least:
 
-Workers should be `2 * CPU cores + 1`. For async views, consider Uvicorn with Gunicorn:
+- total request duration at the edge and application;
+- database query count and cumulative query time;
+- cache hit or miss state;
+- external service duration;
+- response size and compression;
+- LCP, CLS, TBT, FCP, and Speed Index in the browser.
 
-```bash
-gunicorn myapp.asgi:application -k uvicorn.workers.UvicornWorker --workers 4
-```
+PageSpeed Insights combines a Lighthouse lab run with field data when the URL has enough Chrome UX Report traffic. Read [How to Check Website Speed](/blog/how-to-check-website-speed) before comparing runs, and use a server profiler or application telemetry to connect browser symptoms to backend causes.
 
-### Enable Database Query Optimization
+## Remove avoidable database work
 
-Unoptimized database queries are the most common cause of slow TTFB. Use Django's query optimization tools:
+Query count often matters more than the choice of web server. Inspect representative production views and API endpoints for N+1 access patterns.
 
-```python
-# Bad: N+1 query problem
-for article in Article.objects.all():
-    print(article.author.name)  # One query per article
-
-# Good: Single query with JOIN
-articles = Article.objects.select_related("author").all()
-```
-
-For many-to-many or reverse FK relationships:
-
-```python
-articles = Article.objects.prefetch_related("tags").all()
-```
-
-Enable query logging in development to catch N+1 problems before they hit production:
+Use `select_related()` for appropriate single-valued relationships and `prefetch_related()` for collections. Fetch only the columns required by the response when a wide model or large text field is involved. Add indexes for real filter, join, and ordering patterns after inspecting query plans.
 
 ```python
-# settings.py (development only)
-LOGGING = {
-    "version": 1,
-    "handlers": {"console": {"class": "logging.StreamHandler"}},
-    "loggers": {
-        "django.db.backends": {
-            "handlers": ["console"],
-            "level": "DEBUG",
-        }
+articles = (
+    Article.objects
+    .filter(status="published")
+    .select_related("author")
+    .prefetch_related("categories")
+    .only("slug", "title", "summary", "author__name")
+)
+```
+
+`only()` is not a universal optimization; accessing a deferred field later triggers another query. Verify the query log and rendered template together.
+
+Keep expensive aggregation, feed generation, and media processing out of the request path when the result can be prepared asynchronously. Pagination should have bounded page sizes, and list views should avoid computing data that is not rendered.
+
+## Cache at the right layer
+
+Django supports per-site, per-view, template-fragment, and low-level caching. The [Django cache documentation](https://docs.djangoproject.com/en/6.0/topics/cache/) explains their different scopes.
+
+Choose the narrowest cache that removes meaningful repeated work:
+
+- cache public page responses only when they are safe to share;
+- use fragment caching for an expensive section inside an otherwise personalized page;
+- cache computed query results with stable keys and bounded lifetimes;
+- let the CDN cache versioned public assets for a long time;
+- invalidate or version cache keys when the underlying content changes.
+
+Never share a response that varies by account, locale, authorization, or cookie unless those dimensions are correctly represented in the cache key and downstream `Vary` behavior.
+
+Django database connections also need topology-aware tuning. `CONN_MAX_AGE` controls persistent connection lifetime, and current Django supports health checks for reused connections. Persistent connections can reduce setup cost, but every worker may hold a connection. If a proxy or transaction pooler is present, align connection lifetime and capacity with that layer rather than copying a value from another deployment.
+
+## Deploy static files correctly
+
+Modern Django uses the `STORAGES` setting. `STATICFILES_STORAGE` and `DEFAULT_FILE_STORAGE` were removed and should not appear in current examples.
+
+For local or origin-served static assets, hashed filenames enable long-lived browser caching:
+
+```python
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.ManifestStaticFilesStorage",
     },
 }
 ```
 
-### Use Caching Aggressively
+Run `collectstatic` as a release step, then serve the collected files from a static server, object storage, or CDN. Django's official [static-file deployment guide](https://docs.djangoproject.com/en/6.0/howto/static-files/deployment/) describes that separation. Verify that HTML references hashed URLs and that those immutable objects receive long cache lifetimes.
 
-Django's cache framework supports multiple backends. Use Redis for production:
+Do not use Django's development static-file server in production. Avoid setting a long cache lifetime on mutable, unhashed filenames because clients may keep old CSS or JavaScript after a deployment.
 
-```bash
-pip install django-redis
-```
+## Build an image pipeline
 
-```python
-# settings.py
-CACHES = {
-    "default": {
-        "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": "redis://127.0.0.1:6379/1",
-        "OPTIONS": {
-            "CLIENT_CLASS": "django_redis.client.DefaultClient",
-        },
-    }
-}
-```
+`ImageField` can validate image uploads and expose dimensions, but it requires the separately installed Pillow library. Pillow is not an automatic Django dependency. More importantly, `ImageField` is not a complete delivery pipeline.
 
-Cache expensive views with the `cache_page` decorator:
+At ingestion or in a background job:
 
-```python
-from django.views.decorators.cache import cache_page
-
-@cache_page(60 * 60)  # Cache for 1 hour
-def blog_list(request):
-    articles = Article.objects.select_related("author").published()
-    return render(request, "blog/list.html", {"articles": articles})
-```
-
-Or cache at the template fragment level for pages with some dynamic content:
-
-```html
-{% load cache %}
-{% cache 3600 article_list %}
-  <!-- expensive template fragment -->
-{% endcache %}
-```
-
-## Optimize Static File Delivery
-
-### Use WhiteNoise for Simple Deployments
-
-WhiteNoise serves static files efficiently from Django itself with correct cache headers and compression:
-
-```bash
-pip install whitenoise
-```
-
-```python
-# settings.py
-MIDDLEWARE = [
-    "django.middleware.security.SecurityMiddleware",
-    "whitenoise.middleware.WhiteNoiseMiddleware",
-    # ...
-]
-
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
-```
-
-WhiteNoise adds Brotli and gzip compression automatically and sets long-term cache headers for versioned files.
-
-### Use a CDN for Production Scale
-
-For higher traffic, serve static files from a CDN:
-
-```python
-# settings.py
-STATIC_URL = "https://your-cdn.example.com/static/"
-MEDIA_URL = "https://your-cdn.example.com/media/"
-```
-
-Use django-storages with S3 or a similar service:
-
-```bash
-pip install django-storages boto3
-```
-
-```python
-DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
-STATICFILES_STORAGE = "storages.backends.s3boto3.S3StaticStorage"
-```
-
-Serve assets from S3 + CloudFront for global CDN distribution.
-
-### Run collectstatic in Deployment
-
-```bash
-python manage.py collectstatic --noinput
-```
-
-This copies all static files to `STATIC_ROOT` and (with WhiteNoise or custom storage) adds content hashes to filenames for long-term caching.
-
-## Optimize Frontend Assets
-
-### Minify JavaScript and CSS
-
-Use a bundler like Vite or webpack for your frontend assets:
-
-```bash
-npm install vite
-```
-
-Or use Django's built-in static files with a minification library:
-
-```bash
-pip install django-compressor
-```
-
-```python
-INSTALLED_APPS = ["compressor", ...]
-COMPRESS_ENABLED = True
-COMPRESS_OFFLINE = True  # Pre-compress for production
-```
-
-In templates:
-
-```html
-{% load compress %}
-{% compress css %}
-<link rel="stylesheet" href="{% static 'css/main.css' %}">
-{% endcompress %}
-```
-
-### Defer Non-Critical JavaScript
-
-In your base template, ensure scripts don't block rendering:
-
-```html
-<!-- Blocks rendering - avoid -->
-<script src="{% static 'js/analytics.js' %}"></script>
-
-<!-- Deferred - good -->
-<script defer src="{% static 'js/analytics.js' %}"></script>
-```
-
-## Optimize Images
-
-### Process Images on Upload
-
-Use Pillow (already a Django dependency) or ImageKit for automatic image optimization:
-
-```bash
-pip install django-imagekit
-```
-
-```python
-from imagekit.models import ImageSpecField
-from imagekit.processors import ResizeToFit
-
-class Article(models.Model):
-    image = models.ImageField(upload_to="articles/")
-    image_thumbnail = ImageSpecField(
-        source="image",
-        processors=[ResizeToFit(800, 600)],
-        format="WEBP",
-        options={"quality": 85},
-    )
-```
-
-### Always Set Width and Height
-
-Prevent layout shift in templates:
+1. validate the decoded file, dimensions, and resource limits;
+2. normalize orientation and strip metadata that should not be public;
+3. generate the sizes the design actually uses;
+4. encode suitable WebP or AVIF variants with a fallback where needed;
+5. store width, height, format, and descriptive alternative text metadata;
+6. serve variants through `srcset` and `sizes`.
 
 ```html
 <img
-    src="{{ article.image.url }}"
-    width="{{ article.image.width }}"
-    height="{{ article.image.height }}"
-    alt="{{ article.title }}"
-    loading="lazy"
+  src="/media/products/analytics-dashboard-960.webp"
+  srcset="/media/products/analytics-dashboard-640.webp 640w,
+          /media/products/analytics-dashboard-960.webp 960w,
+          /media/products/analytics-dashboard-1440.webp 1440w"
+  sizes="(max-width: 720px) 100vw, 960px"
+  width="1440"
+  height="900"
+  alt="Analytics dashboard with traffic and conversion charts"
 >
 ```
 
-For your hero/LCP image, use `loading="eager"` (or omit the attribute).
+Do not lazy-load the image that is likely to become LCP. Lazy-load appropriate off-screen images, and preserve intrinsic dimensions to reduce layout shifts.
 
-## Use Database Connection Pooling
+## Tune the application server with load tests
 
-Django opens a new database connection per request by default. Use a connection pooler:
+Gunicorn documents `(2 × CPU cores) + 1` as a starting heuristic for synchronous workers, not a universally correct production setting. Its [worker design guide](https://gunicorn.org/design/) explicitly recommends tuning for the actual hardware and workload.
 
-```bash
-pip install django-db-connection-pool
-```
+More workers can increase throughput until memory use, database connections, context switching, or downstream capacity becomes the limit. Choose worker type based on behavior: long blocking upstream calls, streaming, and WebSockets have different requirements from short synchronous requests.
 
-Or use PgBouncer in front of PostgreSQL for high-traffic deployments.
+Test through the same reverse proxy and application settings used in production. Watch latency percentiles, errors, CPU, memory, connection pools, and queue time while gradually increasing concurrency. A configuration that wins a synthetic throughput test but exhausts the database is not an improvement.
 
-## Deploy to a Fast Platform
+## Control frontend work
 
-Django performance varies significantly by hosting:
+Django templates do not protect a page from browser-side regressions. Bundle and minify application assets, split code by page where practical, and avoid loading an entire UI library for one control. Use `defer` for ordered non-blocking scripts that do not need to run during parsing; use `async` only when execution order is unimportant.
 
-- **Railway or Render:** Easy deployment, decent performance, auto-scaling
-- **Fly.io:** Deploy close to your users globally
-- **DigitalOcean App Platform:** Managed, auto-scaling
-- **VPS (DigitalOcean, Linode):** Most control, most configuration required
+Reserve dimensions for images, videos, embeds, and injected banners. Self-host or subset fonts where licensing permits, preload only truly critical resources, and measure every third-party script after consent and production configuration are active.
 
-For database: use managed PostgreSQL (Supabase, RDS, DigitalOcean Managed Database) rather than running PostgreSQL on the same server as your app.
+Lighthouse's lab score is useful for diagnosing these issues, but it is not the score Google directly uses for ranking. [Does Page Speed Affect SEO?](/blog/does-page-speed-affect-seo) explains how field Core Web Vitals relate to Search.
 
-## Quick Checklist
+## Use a production checklist
 
-- [ ] Gunicorn or uWSGI in production (not `runserver`)
-- [ ] N+1 queries eliminated (`select_related`, `prefetch_related`)
-- [ ] Redis configured for caching
-- [ ] Expensive views or fragments cached
-- [ ] WhiteNoise installed and configured (or CDN for static files)
-- [ ] `collectstatic` run as part of deployment
-- [ ] JavaScript deferred or placed at end of body
-- [ ] Images converted to WebP and compressed
-- [ ] Width and height attributes on all images
-- [ ] Database connection pooling configured
+Before calling a Django performance change complete, verify:
 
-Django can be very fast -- Instagram, Pinterest, and Disqus all use or used Django at massive scale. But it requires configuration. The defaults are safe, not fast.
+- query count and query plans for representative pages;
+- cache keys, lifetimes, invalidation, and personalization boundaries;
+- `STORAGES`, `collectstatic`, hashed assets, and CDN headers;
+- image variants, dimensions, loading behavior, and alternative text;
+- application worker and database connection capacity under load;
+- compression and proxy behavior on actual production responses;
+- repeated lab tests under equivalent conditions;
+- field Core Web Vitals separately from Lighthouse scores.
 
-[Test your Django site](/test) to see your current PageSpeed score and find out where the bottlenecks are.
+Browse recorded measurements on [IndieTools Speed](/speed), then use the individual [LCP](/blog/what-is-lcp-and-how-to-fix-it), [CLS](/blog/what-is-cls-and-how-to-fix-it), and [TBT](/blog/what-is-tbt-and-how-to-fix-it) guides to investigate the metric that actually regressed.

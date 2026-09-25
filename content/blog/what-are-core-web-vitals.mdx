@@ -1,103 +1,127 @@
 ---
 title: "What Are Core Web Vitals? (Explained Simply)"
-description: "Core Web Vitals are three metrics Google uses to measure real-world user experience. Here's what they are, why they matter, and what scores you should aim for."
+description: "A clear guide to LCP, INP, and CLS: current thresholds, field measurement, PageSpeed data, Search context, and a practical monitoring workflow."
 date: "2026-03-29"
+updated: "2026-09-25"
 ---
 
-Core Web Vitals are three performance metrics that Google defined as the most important signals of a good web user experience. They're used as a ranking factor in Google Search and are the foundation of what Google calls the "Page Experience" signal.
+Core Web Vitals are Google's current set of field metrics for three parts of a page experience: loading, responsiveness, and visual stability. The metrics are Largest Contentful Paint (LCP), Interaction to Next Paint (INP), and Cumulative Layout Shift (CLS).
 
-They measure three things: loading performance, interactivity, and visual stability.
+They are most useful as a shared language for finding real user-experience problems. They are not a complete quality score, and passing them does not guarantee rankings, conversions, accessibility, or a good product.
 
-## The Three Core Web Vitals
+### Table of contents
 
-### Largest Contentful Paint (LCP) — Loading
+- [The three Core Web Vitals](#article-the-three-core-web-vitals)
+- [Current thresholds](#article-current-thresholds)
+- [How the assessment is calculated](#article-how-the-assessment-is-calculated)
+- [Field data and lab data](#article-field-data-and-lab-data)
+- [Where to measure Core Web Vitals](#article-where-to-measure-core-web-vitals)
+- [How Core Web Vitals relate to Search](#article-how-core-web-vitals-relate-to-search)
+- [What Core Web Vitals do not measure](#article-what-core-web-vitals-do-not-measure)
+- [A practical improvement workflow](#article-a-practical-improvement-workflow)
 
-LCP measures when the largest piece of visible content on the page finishes loading. This is usually a hero image, a large heading, or a video poster.
+## The three Core Web Vitals
 
-**Good:** Under 2.5 seconds
-**Needs improvement:** 2.5s to 4s
-**Poor:** Over 4 seconds
+### Largest Contentful Paint
 
-LCP is the most important of the three. It's the moment the page feels "loaded" to the user.
+LCP measures when the largest eligible image, text block, or video poster visible in the viewport is rendered. It is intended to represent when the page's main visible content has likely appeared.
 
-### Cumulative Layout Shift (CLS) — Visual Stability
+LCP includes more than the resource download. Redirects, connection setup, server response, late discovery, download time, fonts, JavaScript, and rendering can all contribute. A useful diagnosis separates those phases before choosing a fix.
 
-CLS measures how much content unexpectedly moves around while the page loads. If an image loads and pushes the text down, or a banner appears and shifts everything, that's layout shift.
+### Interaction to Next Paint
 
-CLS is a unitless score (not time-based).
+INP measures responsiveness across a page visit. It observes qualifying click, tap, and keyboard interactions, then reports a high-latency interaction while excluding some outliers. The timing covers input delay, event-handler processing, and the work required before the browser presents the next frame.
 
-**Good:** Under 0.1
-**Needs improvement:** 0.1 to 0.25
-**Poor:** Over 0.25
+INP replaced First Input Delay as a Core Web Vital in 2024. It is broader because it considers interactions throughout the visit rather than only the first input.
 
-A CLS of 0 means nothing moved. Higher is worse.
+### Cumulative Layout Shift
 
-### Interaction to Next Paint (INP) — Interactivity
+CLS measures unexpected visual movement. It combines how much of the viewport is affected with how far elements move, grouped into session windows. CLS is unitless; it is not a duration in seconds.
 
-INP measures how quickly your page responds to user interactions (clicks, taps, keyboard input). It replaced First Input Delay (FID) as an official Core Web Vital in March 2024.
+Shifts that follow recent user input can be excluded from the metric, because some movement is expected after an intentional action. A shift can still be frustrating even when it does not count, so product review remains necessary.
 
-**Good:** Under 200ms
-**Needs improvement:** 200ms to 500ms
-**Poor:** Over 500ms
+## Current thresholds
 
-INP captures the worst-case interaction delay across the entire page session, not just the first input.
+Google recommends evaluating the 75th percentile of visits separately for mobile and desktop.
 
-## Why Core Web Vitals Matter
+| Metric | Good | Needs improvement | Poor |
+| --- | ---: | ---: | ---: |
+| LCP | 2.5 seconds or less | Over 2.5 through 4 seconds | Over 4 seconds |
+| INP | 200 milliseconds or less | Over 200 through 500 milliseconds | Over 500 milliseconds |
+| CLS | 0.1 or less | Over 0.1 through 0.25 | Over 0.25 |
 
-### They're a Google Ranking Factor
+These are the current thresholds documented by [Google Search Central](https://developers.google.com/search/docs/appearance/core-web-vitals) and the Web Vitals project. They are assessment boundaries, not promises that every experience just inside a boundary is ideal. Faster and more stable can still help users, provided the change does not weaken functionality or accessibility.
 
-Google uses Core Web Vitals as part of the Page Experience signal. Sites that consistently pass all three have a measurable ranking advantage over those that don't — especially when competing for the same keywords with similar content quality.
+## How the assessment is calculated
 
-This doesn't mean a site with perfect Core Web Vitals will outrank a site with better content. But between two pages with similar relevance, the one with better performance wins.
+The 75th percentile means that at least 75% of measured visits are at or better than the reported value. A site should analyze mobile and desktop separately because their devices, networks, layouts, and interactions differ.
 
-### They Measure Real User Experience
+PageSpeed Insights can assess a specific URL or, when URL-level data is insufficient, show origin-level field data. Check the label before assuming the number belongs only to the page you tested.
 
-Core Web Vitals are designed to capture what users actually feel, not synthetic lab conditions. Google collects field data from real Chrome users through the Chrome User Experience Report (CrUX) and uses those real-world numbers for rankings.
+When sufficient data exists for all three metrics, the Core Web Vitals assessment passes only when the 75th-percentile value of LCP, INP, and CLS is in the good range. Google documents limited handling when INP data is insufficient, but missing data is not the same as a passing measurement.
 
-If your PageSpeed score is high but real users are experiencing slow loads (due to geography, device fragmentation, or caching issues), your CrUX data will reflect that.
+Field datasets also need enough eligible real-user samples. A new or low-traffic page may show no CrUX result. That does not mean the page is fast or slow; it means the public dataset cannot report it reliably.
 
-### They Affect Conversion Rates
+## Field data and lab data
 
-Slower LCP means users leave before the page loads. CLS causes accidental clicks and frustration. High INP means buttons feel broken. Every Core Web Vital has a direct line to user behavior and business outcomes.
+Field data records actual visits across a distribution of devices, networks, locations, cache states, and user behavior. PageSpeed Insights obtains public field data from the Chrome UX Report and currently reports a trailing 28-day period.
 
-Google's own research shows that pages meeting Core Web Vitals thresholds have significantly lower bounce rates.
+Lab data runs a page under controlled conditions. Lighthouse is valuable for reproducing load problems, inspecting opportunities, and comparing a change. A standard page-load lab test cannot fully reproduce interactions and post-load layout shifts from a long real visit.
 
-## Core Web Vitals vs PageSpeed Score
+This explains common disagreements:
 
-These are related but not the same thing.
+- A lab run may be slow while the 28-day field value is still good.
+- A quick lab load may miss a consent banner or late shift that field users encounter.
+- The field panel may show origin data while the lab panel tests one URL.
+- A new fix appears immediately in lab data but takes time to affect a rolling field window.
 
-**PageSpeed score (0-100):** A composite score from Lighthouse that includes Core Web Vitals and other lab metrics like Total Blocking Time (TBT), First Contentful Paint (FCP), and Speed Index. This is the number you see in PageSpeed Insights.
+Google's [PageSpeed Insights documentation](https://developers.google.com/speed/docs/insights/v5/about) describes these two data sources. Use the lab trace to diagnose and field data to validate the experience at scale.
 
-**Core Web Vitals (field data):** The real-world measurements of LCP, CLS, and INP from actual users. These are what Google uses for rankings. You need enough traffic for Google to collect this data (a minimum sample size).
+## Where to measure Core Web Vitals
 
-You can have a high PageSpeed score but still fail Core Web Vitals if real-world conditions (mobile devices, slow connections, geographic latency) are worse than the lab simulation.
+Use more than one view of the system:
 
-## How to Check Your Core Web Vitals
+- **PageSpeed Insights** for public CrUX context and a Lighthouse diagnostic run.
+- **Search Console** for groups of indexed pages with similar field problems.
+- **Chrome DevTools Performance** for LCP phases, layout-shift clusters, long tasks, and interaction traces.
+- **The `web-vitals` library or another RUM implementation** for page-specific field attribution under your own traffic and privacy rules.
+- **IndieTools Speed** for published historical measurements and comparisons at [/speed](/speed).
 
-**PageSpeed Insights:** Run a test on any URL to see both lab data (PageSpeed score) and field data (Core Web Vitals from CrUX).
+RUM should record enough context to act without collecting sensitive content. Useful dimensions may include route template, device class, app version, metric rating, and a bounded debug target. Avoid sending raw form values, full URLs with secrets, or user identifiers as performance metadata.
 
-**Google Search Console:** The Core Web Vitals report shows field data across all your pages grouped by Good/Needs Improvement/Poor. This is the most useful view for site-wide health.
+## How Core Web Vitals relate to Search
 
-**Chrome DevTools:** The Performance panel shows LCP, CLS, and INP in real-time during your own browsing session.
+Google says its core ranking systems seek to reward good page experience, and recommends good Core Web Vitals for Search success and user experience. It also makes clear that there is no single page-experience signal and that relevant content can still rank when some page-experience aspects are weaker.
 
-**[TheFastestWeb](/test):** Runs PageSpeed Insights on your URL and shows all metrics clearly. Good for tracking over time.
+That means Core Web Vitals are neither irrelevant nor a shortcut to first place. Improve them because visitors benefit and because page experience is part of a broader search system. Do not remove useful content, accessibility, security, or essential product behavior merely to raise a score.
 
-## What to Fix First
+Search performance also depends on crawlability, indexability, content quality, intent satisfaction, internal linking, structured data where appropriate, and many other signals. A fast empty page is not a useful result.
 
-If you're failing Core Web Vitals:
+## What Core Web Vitals do not measure
 
-1. **LCP over 2.5s:** Start here. Optimize your hero image (compress, use WebP, preload), reduce server response time (CDN), eliminate render-blocking resources.
+The three metrics do not directly prove:
 
-2. **CLS over 0.1:** Add explicit width and height to all images and videos. Reserve space for ads and embeds. Avoid injecting content above existing content.
+- accessibility or keyboard support;
+- security and privacy;
+- task completion or conversion quality;
+- correctness of content or commerce data;
+- total page weight and data cost;
+- every animation or scroll-performance issue;
+- server availability;
+- SEO relevance or authority;
+- whether an interface is understandable.
 
-3. **INP over 200ms:** Break up long JavaScript tasks. Reduce third-party script impact. Defer non-critical work.
+FCP, TTFB, Total Blocking Time, and Speed Index can help diagnosis, but they are not current Core Web Vitals. [What Is FCP and How to Fix It](/blog/what-is-fcp-and-how-to-fix-it) explains one of those supporting metrics without calling it a ranking metric.
 
-TBT (Total Blocking Time) from the lab score is a reliable proxy for INP. If your TBT is under 200ms, your INP is likely fine.
+## A practical improvement workflow
 
-## The Passing Threshold
+1. Identify important templates and segment field data by mobile and desktop.
+2. Prioritize a metric and route group with enough evidence and business relevance.
+3. Reproduce the problem in a lab trace or a real-user debug sample.
+4. Attribute it to a resource, server path, script, component, or layout event.
+5. Make one bounded change and test functionality, accessibility, and correctness.
+6. Compare equivalent lab runs before release.
+7. Deploy with monitoring and a rollback path.
+8. Watch RUM and public field trends through the full reporting window.
 
-Google considers a page to have "good" Core Web Vitals when at least 75% of real user visits meet the Good threshold for all three metrics. The 75th percentile matters — not the average or median.
-
-This means you need most of your users, on most devices, in most locations, to have a good experience.
-
-[Test your site now](/test) to see your Core Web Vitals alongside your full PageSpeed score.
+For metric-specific work, continue with the [CLS guide](/blog/what-is-cls-and-how-to-fix-it) or review the performance history for the relevant product on [IndieTools Speed](/speed). Focus on the experience the metric reveals, not the color of a badge alone.

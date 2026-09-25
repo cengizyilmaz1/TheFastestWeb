@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node runtime/validate-redirect-manifest-set.mjs && next build",
     "start": "next start",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "next typegen && tsc --noEmit",
@@ -20,7 +20,8 @@
     "scheduler": "node dist/jobs/scheduler.cjs",
     "queue:admin": "node dist/jobs/queue-admin.cjs",
     "test:public": "node scripts/verify-public.mjs",
-    "admin:bootstrap": "node dist/jobs/admin-bootstrap.cjs"
+    "admin:bootstrap": "node dist/jobs/admin-bootstrap.cjs",
+    "redirects:validate": "node runtime/validate-redirect-manifest.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1138.0",

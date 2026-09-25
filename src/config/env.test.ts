@@ -21,7 +21,32 @@ describe("runtime environment", () => {
     }
   });
   it("allows production builds without runtime secrets", () => {
-    expect(parseEnv({ NODE_ENV: "production" }).SITE_URL).toBe("https://thefastestweb.site");
+    const config = parseEnv({ NODE_ENV: "production" });
+    expect(config.SITE_URL).toBe("https://thefastestweb.site");
+    expect(config.TFW_REDIRECT_CUTOVER_ENABLED).toBe(false);
+  });
+
+  it("requires a fully pinned manifest only when the cutover gate is enabled", () => {
+    const digest = "a".repeat(64);
+    const enabled = parseEnv({
+      TFW_REDIRECT_CUTOVER_ENABLED: "true",
+      TFW_REDIRECT_MANIFEST_PATH: "/app/runtime/redirect-manifests/thefastestweb-redirects-v1-aaaaaaaaaaaaaaaa.json",
+      TFW_REDIRECT_MANIFEST_DIGEST: digest,
+    });
+    expect(enabled.TFW_REDIRECT_CUTOVER_ENABLED).toBe(true);
+    expect(enabled.TFW_REDIRECT_MANIFEST_DIGEST).toBe(digest);
+    for (const change of [
+      { TFW_REDIRECT_MANIFEST_PATH: "" },
+      { TFW_REDIRECT_MANIFEST_DIGEST: "" },
+      { TFW_REDIRECT_MANIFEST_DIGEST: "A".repeat(64) },
+    ]) {
+      expect(() => parseEnv({
+        TFW_REDIRECT_CUTOVER_ENABLED: "true",
+        TFW_REDIRECT_MANIFEST_PATH: "/app/runtime/redirect-manifests/thefastestweb-redirects-v1-aaaaaaaaaaaaaaaa.json",
+        TFW_REDIRECT_MANIFEST_DIGEST: digest,
+        ...change,
+      })).toThrow(EnvironmentError);
+    }
   });
 
   it("fails closed at production startup without core credentials", () => {

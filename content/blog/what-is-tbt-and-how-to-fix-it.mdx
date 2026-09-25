@@ -1,118 +1,115 @@
 ---
 title: "What Is TBT and How to Fix It"
-description: "Total Blocking Time is the biggest factor in your PageSpeed score at 30%. Here's what it measures and how to reduce it."
+description: "Learn how Lighthouse calculates Total Blocking Time, trace long tasks to their owners, and reduce main-thread blocking without confusing TBT with INP."
 date: "2026-03-20"
+updated: "2026-09-25"
 ---
 
-Total Blocking Time (TBT) is the single biggest factor in your Google PageSpeed score, carrying 30% of the total weight. Yet it's one of the least understood metrics.
+Total Blocking Time (TBT) is a Lighthouse lab metric that adds up the blocking portions of long main-thread tasks between First Contentful Paint and Lighthouse's internal Time to Interactive point. A task becomes a long task when it lasts more than 50 milliseconds; only the time beyond 50 milliseconds contributes to TBT.
 
-Here's what it means and how to fix it.
+For example, a 120-millisecond task contributes 70 milliseconds. Several smaller long tasks can therefore produce the same TBT as one very large task. The trace, not only the total, tells you what to fix.
 
-## What TBT Measures
+## Table of contents
 
-TBT measures the total time the browser's main thread is blocked from responding to user input. A task is considered "blocking" if it takes longer than 50 milliseconds. TBT adds up all the blocking time from those tasks between First Contentful Paint and Time to Interactive.
+- [What TBT measures](#article-what-tbt-measures)
+- [TBT is not INP](#article-tbt-is-not-inp)
+- [Interpret TBT thresholds](#article-interpret-tbt-thresholds)
+- [Find the responsible long tasks](#article-find-the-responsible-long-tasks)
+- [Reduce first-party JavaScript work](#article-reduce-first-party-javascript-work)
+- [Control third-party scripts](#article-control-third-party-scripts)
+- [Break up necessary work](#article-break-up-necessary-work)
+- [Avoid fixes that only move the problem](#article-avoid-fixes-that-only-move-the-problem)
+- [Validate a TBT improvement](#article-validate-a-tbt-improvement)
 
-In simpler terms: TBT measures how long your JavaScript makes the page feel frozen.
+## What TBT measures
 
-A good TBT is under 200ms. Above 600ms is considered poor.
+The browser's main thread parses HTML and CSS, executes most JavaScript, calculates styles, lays out the page, and paints frames. While a long task occupies that thread, the browser may be unable to process input promptly.
 
-## Why TBT Is Such a Big Deal
+TBT estimates the amount of potential blocking during a Lighthouse load. It is useful because a lab test may not contain meaningful user interaction. Lighthouse can still observe startup tasks that would have delayed an input if it arrived at that moment.
 
-When the main thread is blocked, the browser can't respond to clicks, scrolls, or keyboard input. The page appears loaded but feels sluggish. Users notice this and so does Google.
+TBT carries 30% of the current documented Lighthouse performance score. That makes it influential in the lab score, but its purpose is diagnosis. Cutting 200 milliseconds from a trace does not guarantee a fixed number of score points because Lighthouse scoring is nonlinear and other metrics can change between runs.
 
-Because TBT is 30% of the score, even a perfect LCP and CLS won't save you if your JavaScript is heavy. A TBT of 600ms alone can drop your score by 15-20 points.
+## TBT is not INP
 
-## What Causes High TBT
+Interaction to Next Paint (INP) is a Core Web Vital measured from real interactions in the field. TBT is a lab metric calculated during a defined loading interval. They are related because main-thread contention can harm both, but they are not interchangeable.
 
-### Too Much JavaScript
+A page can have low TBT and poor INP if an expensive menu, editor, filter, or checkout interaction occurs after startup. It can also have high lab TBT while real visitors rarely interact during the blocking window. Use TBT to find startup work and use field INP plus interaction traces to assess responsiveness.
 
-The most common cause by far. Every JavaScript file you ship has to be parsed, compiled, and executed on the main thread. Large bundles from frameworks, UI libraries, and dependencies all contribute.
+The broader [Core Web Vitals guide](/blog/what-are-core-web-vitals) explains the field thresholds and why lab proxies should remain clearly labeled.
 
-### Third-Party Scripts
+## Interpret TBT thresholds
 
-Google Analytics with GTM, chat widgets, A/B testing tools, heat maps, ad scripts. Each of these runs on the main thread. The more you load, the higher your TBT.
+Chrome's [Lighthouse TBT documentation](https://developer.chrome.com/docs/lighthouse/performance/lighthouse-total-blocking-time) currently uses these mobile bands:
 
-### Long Tasks in Your Own Code
+| Classification | Mobile TBT |
+| --- | ---: |
+| Good | 0–200 milliseconds |
+| Needs improvement | More than 200–600 milliseconds |
+| Poor | More than 600 milliseconds |
 
-Sometimes it's not third-party scripts but your own JavaScript. Expensive computations, large loops, or synchronous data processing on page load all block the thread.
+For desktop, the documented bands are 0–150 milliseconds, more than 150–350 milliseconds, and more than 350 milliseconds. Always report the Lighthouse configuration with the value. These are lab score bands, not field Core Web Vital thresholds.
 
-### Unused JavaScript
+## Find the responsible long tasks
 
-If you're shipping code that isn't used on the current page, the browser still has to parse it. Code splitting is essential to avoid this.
+Run Lighthouse against a production-like build, then record a Chrome DevTools Performance trace. In the Main track, inspect tasks marked as long and expand their call trees. Group them by owner:
 
-## How to Fix TBT
+- application bundles and framework hydration;
+- component initialization and large synchronous renders;
+- tag managers, analytics, ads, chat, consent, or experimentation;
+- JSON parsing, sorting, syntax highlighting, or data transformation;
+- style recalculation, layout, and large DOM updates;
+- browser extensions present only in a local test.
 
-### 1. Defer All Non-Critical Scripts
+The Bottom-Up view helps aggregate expensive functions. DevTools Coverage can reveal downloaded JavaScript or CSS that the tested route did not execute, although unused bytes alone do not prove removal is safe.
 
-Any script that doesn't need to run before the page is interactive should be deferred:
+Capture the script URL, function, duration, and feature owner. “Reduce JavaScript” is not an actionable ticket; “delay the support widget until the launcher is opened” is.
 
-```html
-<script defer src="analytics.js"></script>
-```
+## Reduce first-party JavaScript work
 
-In Next.js, use the `<Script>` component with `strategy="lazyOnload"` for third-party scripts:
+Start with code that is not required for the initial experience:
 
-```tsx
-<Script src="https://analytics.example.com/script.js" strategy="lazyOnload" />
-```
+- split route-specific features so they are not shipped globally;
+- remove obsolete dependencies and duplicate libraries;
+- import only the functions or icons used by the route;
+- render static content on the server instead of recreating it through hydration;
+- virtualize genuinely large interactive lists;
+- avoid parsing large payloads before the user needs them;
+- reduce DOM size and repeated layout reads and writes.
 
-### 2. Remove Unused JavaScript
+Bundle size is a useful lead, but execution time depends on the code and device. A compressed bundle can still require expensive parse and execution work. Confirm the change in a trace on a representative mobile CPU profile.
 
-Use Chrome DevTools Coverage tab to see which JavaScript is unused on page load. Cut ruthlessly.
+## Control third-party scripts
 
-For Next.js apps, run `@next/bundle-analyzer` to see what's in your bundle. Common culprits are date libraries (moment.js), icon libraries loading all icons, and large utility libraries where you only use a few functions.
+Inventory every external script and assign a business owner. For each one, record where it loads, when it executes, which consent state permits it, and what user outcome it supports.
 
-### 3. Break Up Long Tasks
+Where requirements allow, load nonessential code after consent, interaction, or viewport entry. Limit global tag-manager rules and remove retired campaign tags. Prefer a vendor's supported delayed-loading option over modifying its snippet in a way the vendor does not support.
 
-If you have JavaScript that must run on page load, break it into smaller chunks using `setTimeout` or `requestIdleCallback`:
+`async` and `defer` change scheduling, not execution cost. An asynchronous script can still create a long task when it runs, and it may interrupt a critical rendering phase. Compare traces with the script present and absent to quantify its cost before choosing a policy.
 
-```js
-// Instead of one big task
-processData(largeArray);
+## Break up necessary work
 
-// Break it up
-function processInChunks(data, index = 0) {
-  const chunk = data.slice(index, index + 100);
-  process(chunk);
-  if (index + 100 < data.length) {
-    setTimeout(() => processInChunks(data, index + 100), 0);
-  }
-}
-```
+When computation is required, divide it at safe boundaries so the browser can yield between chunks. The current [web.dev long-task guidance](https://web.dev/articles/optimize-long-tasks) describes yielding strategies and the emerging scheduler APIs. Choose an approach supported by your browser targets and provide a fallback where needed.
 
-### 4. Use Web Workers for Heavy Computation
+Use a Web Worker for computation that does not require the DOM, such as parsing or transforming a large dataset. The worker reduces main-thread pressure, but transferring large objects also has a cost. Measure the complete operation.
 
-If you need to do heavy computation (parsing, sorting, transforming large datasets), move it to a Web Worker so it runs off the main thread.
+Framework transitions, idle callbacks, and timers can help schedule nonurgent work, but they should not delay essential accessibility, navigation, or input handlers.
 
-### 5. Load Third-Party Scripts After Interaction
+## Avoid fixes that only move the problem
 
-For chat widgets, social embeds, and support tools, consider loading them only when the user first interacts with the page:
+Do not postpone all startup work until the first click. That may improve TBT while making the first real interaction slow and worsening INP. Likewise, a full-page loading overlay can hide visual updates without reducing main-thread work.
 
-```js
-document.addEventListener("click", loadChatWidget, { once: true });
-```
+Be cautious with aggressive script combination, minification, or execution-delay plugins. They can change dependency order, consent behavior, analytics accuracy, and checkout functionality. Test the feature path, not only the score.
 
-### 6. Switch to Lighter Alternatives
+The legacy [Time to Interactive guide](/blog/what-is-tti-and-how-to-fix-it) explains why TTI was removed from Lighthouse and which modern measurements should replace it in reports.
 
-If you're using Google Analytics + GTM, consider switching to [Umami](https://umami.is/) or [Plausible](https://plausible.io/). They're lightweight (under 2KB) and have near-zero TBT impact.
+## Validate a TBT improvement
 
-## TBT Targets
+After a change:
 
-| Score | TBT |
-|---|---|
-| Good | Under 200ms |
-| Needs improvement | 200ms to 600ms |
-| Poor | Over 600ms |
+1. repeat the same Lighthouse scenario several times;
+2. verify that the intended long task disappeared or became shorter;
+3. confirm no equivalent task moved later into the first interaction;
+4. test keyboard, pointer, and touch flows on a representative device;
+5. watch field INP and error monitoring after release.
 
-## Quick Checklist
-
-- [ ] All third-party scripts use `defer` or `lazyOnload`
-- [ ] Bundle analyzer run, unused JS removed
-- [ ] No synchronous heavy computation on page load
-- [ ] Code splitting enabled (default in Next.js)
-- [ ] Chat/support widgets load on interaction, not page load
-- [ ] Lightweight analytics instead of GTM-based setup
-
-Fixing TBT is often the most impactful change you can make to your PageSpeed score. Start by auditing your third-party scripts and deferring everything that isn't critical.
-
-[Test your site](/test) to see your current TBT and full PageSpeed breakdown.
+Track comparable results over time with [IndieTools Speed](/speed), and annotate releases so a trend remains attributable. A durable improvement reduces unnecessary work while preserving business behavior and real interaction quality.

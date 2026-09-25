@@ -85,6 +85,9 @@ ENV NODE_ENV=production \
 COPY --from=builder --chown=nextjs:nextjs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nextjs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nextjs /app/public ./public
+# Reviewed redirect manifests are immutable release artifacts. Root ownership
+# prevents the unprivileged web process from replacing an activated manifest.
+COPY --from=builder --chown=root:root /app/runtime/redirect-manifests ./runtime/redirect-manifests
 USER nextjs
 EXPOSE 3000
 STOPSIGNAL SIGTERM

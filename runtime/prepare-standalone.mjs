@@ -7,7 +7,7 @@ const project = resolve(import.meta.dirname, "..");
 const standalone = resolve(project, ".next/standalone");
 // Explicitly copy this tiny custom server; Next only traces its own server.js.
 await mkdir(resolve(standalone, "runtime"), { recursive: true });
-for (const file of ["server.mjs", "shutdown.mjs", "browser-smoke.mjs"]) {
+for (const file of ["server.mjs", "shutdown.mjs", "browser-smoke.mjs", "legacy-redirects.mjs"]) {
   await copyFile(resolve(project, "runtime", file), resolve(standalone, "runtime", file));
 }
 await writeFile(resolve(standalone, "next.config.js"), `module.exports = ${JSON.stringify(serverConfig, null, 2)};\n`);

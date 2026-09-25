@@ -1,137 +1,128 @@
 ---
 title: "Shopify PageSpeed Optimization Guide"
-description: "Shopify stores often struggle with PageSpeed scores because of heavy themes and app scripts. Here's how to fix it and get your store loading faster."
+description: "A measurement-first Shopify speed guide covering themes, apps, Liquid, images, scripts, Core Web Vitals, and safe release validation."
 date: "2026-03-15"
+updated: "2026-09-25"
 ---
 
-Shopify stores have a unique set of performance challenges. Between theme bloat, app scripts, and large product images, it's common to see scores in the 30-50 range. But with the right approach, most Shopify stores can reach 70-85, and lean stores can hit 90+.
+Shopify provides the hosting layer, CDN, compression, and other platform optimizations for a Liquid storefront. Store performance can still regress through theme code, installed apps, media, analytics, and custom integrations. The useful question is therefore not whether Shopify is fast, but which part of a specific storefront is delaying real customers.
 
-Here's how to do it.
+This guide follows Shopify's current performance tooling and prioritizes changes that can be measured safely.
 
-## Why Shopify Stores Are Often Slow
+### Table of contents
 
-Shopify's infrastructure is solid. The CDN is fast, SSL is included, and server response times are generally good. The slowness almost always comes from:
+- [Establish a reliable baseline](#article-establish-a-reliable-baseline)
+- [Read Shopify and PageSpeed data together](#article-read-shopify-and-pagespeed-data-together)
+- [Audit the theme before replacing it](#article-audit-the-theme-before-replacing-it)
+- [Control app and third-party JavaScript](#article-control-app-and-third-party-javascript)
+- [Optimize the LCP image](#article-optimize-the-lcp-image)
+- [Reduce Liquid and rendering work](#article-reduce-liquid-and-rendering-work)
+- [Protect CLS and INP](#article-protect-cls-and-inp)
+- [Validate every release](#article-validate-every-release)
 
-- **Heavy themes** loaded with unused features
-- **App scripts** from every installed Shopify app loading on every page
-- **Large product images** without proper compression
-- **Third-party tracking scripts** from marketing tools
-- **Liquid rendering overhead** for complex templates
+## Establish a reliable baseline
 
-## Step 1: Switch to a Fast Theme
+Test representative production URLs rather than only the home page. A useful Shopify baseline includes the home page, a popular product, a collection, search, and a cart flow. Mobile results deserve separate attention because customers may have slower devices and networks even when the storefront is served from a fast edge.
 
-The Dawn theme (Shopify's free default theme) is one of the fastest available. It's built on performance-first principles and scores well out of the box.
+Before changing code:
 
-If you're on a third-party theme, check its PageSpeed score on a demo store before committing. Many premium themes score in the 30-50 range on mobile.
+1. Record Shopify's web performance report and its date range.
+2. Run PageSpeed Insights for the same URLs on mobile and desktop.
+3. Save the Core Web Vitals status and the Lighthouse diagnostics.
+4. Capture a Chrome DevTools Performance trace for a reproducible slow page.
+5. List recent theme publishes, app changes, pixels, and campaign scripts.
 
-Fast theme options:
-- **Dawn** (free, Shopify default) - best baseline performance
-- **Sense** (free) - clean, fast
-- **Craft** (free) - minimal, good for brand stores
-- **Streamline** (paid) - fast, feature-rich
+Use repeated lab runs under equivalent conditions. A single Lighthouse result can vary because the test environment and third-party responses vary. For ongoing comparisons, the measured history on [IndieTools Speed](/speed) can help reveal trends, while [What Is a Good PageSpeed Score?](/blog/what-is-a-good-pagespeed-score) explains what the headline score can and cannot prove.
 
-If you're locked into a heavy theme for design reasons, focus on the other optimizations below.
+## Read Shopify and PageSpeed data together
 
-## Step 2: Audit Your Shopify Apps
+Shopify's [web performance reports](https://help.shopify.com/en/manual/online-store/web-performance/web-performance-reports) use real-user measurements and show loading, interactivity, and visual stability over time. PageSpeed Insights can show Chrome UX Report field data when a URL or origin has enough traffic, plus a Lighthouse lab run for diagnosis.
 
-Every Shopify app you install can inject scripts into every page of your store, even pages where the app isn't active. This is the single biggest cause of slow Shopify stores.
+These views are complementary:
 
-**How to audit:**
-1. Open Chrome DevTools > Network tab
-2. Load your homepage
-3. Filter by JS and look for scripts from domains you don't recognize
-4. Match them back to your installed apps
+- Use field data to understand what visitors experienced over a rolling period.
+- Use lab data and traces to reproduce a problem and test a proposed fix.
+- Segment mobile and desktop rather than averaging them together.
+- Confirm whether PageSpeed is showing URL-level or origin-level field data.
 
-For each app, ask:
-- Do I actually use this?
-- Is the revenue/value worth the performance cost?
-- Is there a lighter alternative?
+A green Lighthouse score does not guarantee that real customers pass Core Web Vitals. Conversely, one weak lab run does not prove every visitor has a poor experience. Shopify's [performance overview](https://help.shopify.com/en/manual/online-store/web-performance/overview) also recommends balancing useful storefront features against their measured cost.
 
-Common heavy apps and their impact:
-- Review apps (Yotpo, Okendo) add 50-150KB of JavaScript
-- Live chat (Gorgias, Tidio) block the main thread for 100-300ms
-- Loyalty apps (Smile.io) add significant script overhead
-- A/B testing apps are TBT killers
+## Audit the theme before replacing it
 
-Uninstall apps you don't actively use. Deleted apps sometimes leave script tags behind, so check your theme's `theme.liquid` file for orphaned scripts after uninstalling.
+Do not switch themes solely because a demo produced a higher score. Demo content, apps, tracking, and product media rarely match a production store. Profile your current theme first and identify whether the problem comes from Liquid, assets, or client-side work.
 
-## Step 3: Optimize Product Images
+Shopify's [theme performance best practices](https://shopify.dev/docs/storefronts/themes/best-practices/performance) prioritize discoverable LCP content, restrained JavaScript, responsive images, and efficient Liquid. For a customized theme:
 
-Product images are usually the biggest contributor to slow LCP on Shopify stores.
+- run Theme Check and fix relevant performance findings;
+- use the Shopify Theme Inspector to find expensive Liquid paths;
+- remove code left by retired features after confirming ownership;
+- compare a production-like duplicate theme before publishing changes;
+- test the same catalog data because nested loops can scale poorly.
 
-**Best practices:**
-- Upload images at 2048x2048 maximum (Shopify's recommendation)
-- Compress before uploading with [TinyPNG](https://tinypng.com/) or Squoosh
-- Shopify automatically serves WebP to browsers that support it
-- Use square images for product listings (consistent aspect ratio prevents layout shifts)
+Keep essential product information, navigation, and the likely LCP content in server-rendered Liquid and HTML. Moving them behind client-side rendering delays discovery and can make the page less resilient.
 
-**For collection pages:** Shopify loads all product images on the page. If you have 50 products with large images, this adds up. Make sure lazy loading is enabled in your theme for collection grids.
+## Control app and third-party JavaScript
 
-## Step 4: Defer App Scripts
+Installed apps, pixels, consent tools, reviews, chat, personalization, and tag managers can all compete for the main thread. An app's business value may justify its cost, so measure before removing it.
 
-For apps you can't remove, you can often reduce their performance impact by loading them after the page is interactive.
+In DevTools, attribute network requests and long tasks to their owner. Then ask:
 
-In your theme's `theme.liquid`, find app script tags that look like:
+- Is the feature used on every template where its script loads?
+- Can it initialize after consent, interaction, or viewport entry?
+- Does uninstalling the app remove all theme and app-embed code?
+- Is an old campaign still present in the tag manager?
+- Does a replacement reduce work without weakening checkout or accessibility?
 
-```html
-<script src="https://cdn.someapp.com/widget.js"></script>
+Avoid editing a vendor script tag blindly. Adding `async` or `defer` can break code that relies on order or parser timing. Prefer the app's supported loading controls, disable unused app embeds, and test cart, variant, search, login, and checkout-adjacent behavior in a duplicate theme.
+
+## Optimize the LCP image
+
+On many storefront pages, the LCP element is a hero or primary product image. Shopify's Liquid image filters can generate responsive candidates, intrinsic dimensions, and CDN URLs. The browser still needs accurate priorities and sizing.
+
+```liquid
+{{ section.settings.hero_image
+  | image_url: width: 1600
+  | image_tag:
+    widths: '600, 900, 1200, 1600',
+    sizes: '100vw',
+    loading: 'eager',
+    fetchpriority: 'high',
+    alt: section.settings.hero_image.alt
+}}
 ```
 
-Add `defer` to defer their execution:
+Apply eager loading and high fetch priority only to the image that is genuinely likely to become LCP. Lazy-load appropriate off-screen images. Set a realistic `sizes` value for product grids so a narrow card does not download a full-width source. Shopify's [responsive design guidance](https://shopify.dev/docs/storefronts/themes/best-practices/performance/implement-responsive-design) explains why hidden duplicate mobile and desktop markup can still download assets and expand the DOM.
 
-```html
-<script defer src="https://cdn.someapp.com/widget.js"></script>
-```
+Avoid putting the LCP image behind a slider initialization or reveal animation. Compress uploads to an appropriate visual quality, preserve width and height, and use descriptive alternative text for informative images.
 
-Note: This can break some apps that expect to run synchronously. Test carefully.
+## Reduce Liquid and rendering work
 
-## Step 5: Use Shopify's Built-In Performance Tools
+Time to First Byte delays every resource that the browser discovers from HTML. Inspect complex sections for nested product, variant, collection, or metafield loops. Fetch and render only what the page displays, paginate large collections, and avoid repeating expensive work inside a loop.
 
-Shopify has added performance tooling directly in the admin:
+Do not duplicate Shopify platform features with extra scripts or resource hints. Shopify already provides CDN delivery and platform-level transport optimizations. Preload should be reserved for a small number of late-discovered critical resources; excessive preloads compete with the browser's prioritization.
 
-**Online Store > Themes > Performance** shows your theme's speed score and specific recommendations.
+If TTFB is high only on a particular template, isolate its Liquid path. If it is high across templates, verify the measurement conditions and platform status before rewriting client-side code that cannot affect server rendering.
 
-**Shopify Speed Score** in the admin is based on a sample of real page loads, not just a single PageSpeed test. Use it as a baseline but also run tests with [our tool](/test) for more detail.
+## Protect CLS and INP
 
-## Step 6: Optimize Your Largest Contentful Paint
+For CLS, reserve space for product media, review widgets, consent interfaces, recommendations, and promotional banners. Do not inject a banner above existing content after the page has painted unless its space already exists. The detailed [CLS guide](/blog/what-is-cls-and-how-to-fix-it) covers layout-shift debugging.
 
-On most Shopify stores, the LCP element is either the hero image on the homepage or the main product image on product pages.
+For INP, profile real interactions such as variant selection, filter changes, cart drawer opening, search input, and mobile navigation. Shopify's [INP guidance](https://shopify.dev/docs/storefronts/themes/best-practices/performance/understanding-inp) recommends examining input delay, event processing, and presentation delay rather than treating every slow interaction as a network problem.
 
-**For the hero image:**
-- Compress it aggressively (under 150KB)
-- Make sure it's not lazy-loaded (check your theme's `index.liquid`)
-- Add preload if possible in your theme's `<head>`
+Reduce long JavaScript tasks, split work across frames where appropriate, and avoid rebuilding large DOM regions for a small state change. Verify the interaction on a representative mobile device, not only a fast desktop.
 
-**For product pages:**
-- The main product image is usually the LCP
-- Upload product images pre-compressed
-- Ensure your theme doesn't lazy-load the first product image
+## Validate every release
 
-## Step 7: Enable Lazy Loading for Below-Fold Images
+Use a duplicate theme and a written test matrix before publishing. After release, annotate the change and watch field data long enough to account for its reporting window.
 
-Most modern Shopify themes enable lazy loading by default. If yours doesn't, add `loading="lazy"` to images in collection grids, related products, and other below-fold content in your theme code.
+Confirm that:
 
-## Realistic Score Targets for Shopify
+- the LCP resource is present in the initial HTML and is not lazy-loaded;
+- responsive images have correct candidates, dimensions, and `sizes`;
+- unused app embeds and stale theme code are removed deliberately;
+- essential cart, search, variant, and consent flows still work;
+- no new layout shift appears when apps initialize;
+- equivalent repeated Lighthouse runs improve the intended metric;
+- Shopify and CrUX field trends confirm the effect for real visitors.
 
-| Setup | Realistic Score |
-|---|---|
-| Dawn theme, minimal apps, optimized images | 80-90 |
-| Fast theme, 5-8 apps | 65-80 |
-| Heavy theme, many apps | 30-55 |
-| Large collection pages | 50-70 |
-
-Mobile scores are typically 15-25 points lower than desktop on Shopify. Focus your optimization efforts on mobile.
-
-## Quick Checklist
-
-- [ ] Fast theme (Dawn or equivalent)
-- [ ] Apps audited, unused apps uninstalled
-- [ ] Product images compressed before upload (under 200KB)
-- [ ] Hero image not lazy-loaded
-- [ ] App scripts deferred where possible
-- [ ] No orphaned scripts from deleted apps in theme.liquid
-- [ ] Collection page images lazy-loaded
-
-Shopify performance is more constrained than other platforms because you're working within the platform's limits. But app management and image optimization alone can move the needle by 20-30 points for most stores.
-
-[Test your Shopify store](/test) to see your current PageSpeed score on both mobile and desktop.
+Performance work is an operating practice, not a one-time score chase. Recheck important templates after theme publishes, app installs, campaign launches, and major catalog changes.

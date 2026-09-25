@@ -108,6 +108,12 @@ const envSchema = z.object({
   SEARCH_CONSOLE_VERIFICATION: optionalString,
   BING_VERIFICATION: optionalString,
   INDEXNOW_KEY: optionalString.refine((value) => !value || /^[a-zA-Z0-9-]{8,128}$/.test(value), "Invalid IndexNow key"),
+  TFW_REDIRECT_CUTOVER_ENABLED: flag,
+  TFW_REDIRECT_MANIFEST_PATH: optionalString,
+  TFW_REDIRECT_MANIFEST_DIGEST: optionalString.refine(
+    (value) => !value || /^[a-f0-9]{64}$/.test(value),
+    "Must be a lowercase SHA-256 digest",
+  ),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -166,6 +172,10 @@ export function parseEnv(
       if (config[key]) missing.push(key);
     }
   }
+  requireFields(config.TFW_REDIRECT_CUTOVER_ENABLED, [
+    "TFW_REDIRECT_MANIFEST_PATH",
+    "TFW_REDIRECT_MANIFEST_DIGEST",
+  ]);
   if (missing.length) throw new EnvironmentError([...new Set(missing)]);
   return Object.freeze(config);
 }

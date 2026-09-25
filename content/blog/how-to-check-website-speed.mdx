@@ -1,100 +1,127 @@
 ---
-title: "How to Check Website Speed (Free Tools)"
-description: "A practical guide to the best free tools for checking website speed, what each one measures, and when to use which one."
+title: "How to Check Website Speed with Free Tools"
+description: "A repeatable website speed testing workflow using PageSpeed Insights, Chrome DevTools, Lighthouse CI, field data, and network waterfalls."
 date: "2026-03-27"
+updated: "2026-09-25"
 ---
 
-There are dozens of tools to check website speed, and each gives you slightly different data. Here's which ones to use and what they're actually telling you.
+Checking website speed is not a matter of pasting the homepage into one tool and saving the score. A useful test separates real-user field data from controlled lab diagnostics, covers representative pages, repeats variable runs, and records enough context to reproduce the result.
 
-## The Tools That Matter
+This guide is a multi-tool workflow. For a detailed explanation of Google's interface, use the separate [PageSpeed Insights guide](/blog/what-is-pagespeed-insights).
 
-### 1. PageSpeed Insights (Google)
+### Table of contents
 
-**URL:** pagespeed.web.dev
+- [Choose the pages and journeys](#article-choose-the-pages-and-journeys)
+- [Start with PageSpeed Insights](#article-start-with-pagespeed-insights)
+- [Use DevTools to find the cause](#article-use-devtools-to-find-the-cause)
+- [Use a waterfall for delivery problems](#article-use-a-waterfall-for-delivery-problems)
+- [Repeat tests and compare a median](#article-repeat-tests-and-compare-a-median)
+- [Add performance checks to CI](#article-add-performance-checks-to-ci)
+- [Record a useful baseline](#article-record-a-useful-baseline)
 
-The standard reference for web performance. It runs Lighthouse (Google's performance engine) on your URL and gives you a 0-100 score based on six metrics. More importantly, it shows your real-world Core Web Vitals from actual Chrome users if your site has enough traffic.
+## Choose the pages and journeys
 
-**Use it when:** You want the official score Google sees, or you want to understand what's affecting your rankings.
+Test the URLs people actually visit. A homepage can be fast while a product page, category listing, article, search result, or checkout is slow.
 
-**Limitation:** Single test result can vary by 10-15 points depending on server load. Run it 3 times and average the results.
+Build a small representative set:
 
-### 2. TheFastestWeb
+- the homepage;
+- one typical and one heavy page from each important template;
+- the main organic landing pages;
+- a signed-in route if it is part of the product experience;
+- a meaningful interaction such as opening a menu, filtering a list, or submitting a form.
 
-**URL:** thefastestweb.site/test
+Use the final canonical production URL, including the real host and HTTPS redirect path. Record whether the page was tested with a cold or warm cache, whether consent was accepted, and whether ads, chat, personalization, or A/B tests were present.
 
-Runs PageSpeed Insights on your URL and presents the results clearly with metric-by-metric breakdowns. Also lets you monitor your score daily and get alerts if it drops.
+## Start with PageSpeed Insights
 
-**Use it when:** You want to track your score over time and see how it compares to other sites.
+[PageSpeed Insights](https://pagespeed.web.dev/) is a useful first check because it can show two different data sets on one page.
 
-### 3. WebPageTest
+### Field data
 
-**URL:** webpagetest.org
+When a URL or origin has enough eligible traffic, the Chrome UX Report supplies aggregated real-user data. It covers a rolling 28-day period and reports the 75th percentile for metrics including LCP, INP, and CLS. The result may be URL-level, origin-level, or unavailable, so read the label before drawing a conclusion.
 
-The most detailed free performance tool available. Runs your page in a real browser (Chrome, Firefox) from a real location with a configurable connection speed. Shows a full waterfall of every request, how long each resource takes, and exactly what's blocking what.
+Field data tells you what visitors experienced. It does not show a detailed trace for one request, and it changes gradually after a release.
 
-**Use it when:** You need to understand the root cause of a slow load, not just the score. If PageSpeed Insights tells you something is slow, WebPageTest tells you why.
+### Lab data
 
-**Best feature:** Filmstrip view showing exactly what the page looked like at each moment during load.
+PSI also runs Lighthouse in a simulated environment. Lab data is useful for diagnosis and before-and-after checks. The current performance score combines five weighted metrics: FCP, Speed Index, LCP, TBT, and CLS.
 
-### 4. GTmetrix
+Do not call the Lighthouse number "the score Google sees." It is one controlled test, not a direct ranking score. [Does Page Speed Affect SEO?](/blog/does-page-speed-affect-seo) explains the Search relationship.
 
-**URL:** gtmetrix.com
+Capture the report URL or export the result, then write down the test time, device mode, Lighthouse version, metric values, and the first few relevant diagnostics. Avoid turning every audit into a task before checking which one affects the measured bottleneck.
 
-Combines Lighthouse and WebPageTest data in a cleaner interface. Free tier gives you 1 test location (Vancouver) with Chrome. Shows waterfall, video playback, and performance scores.
+## Use DevTools to find the cause
 
-**Use it when:** You want something more visual than PageSpeed Insights but less technical than WebPageTest.
+Chrome DevTools Performance is better suited to answering "why". The current [Performance panel documentation](https://developer.chrome.com/docs/devtools/performance/reference) covers live Core Web Vitals, load recordings, runtime interactions, screenshots, and insights.
 
-### 5. Chrome DevTools (Lighthouse)
+For a load issue:
 
-**Built into Chrome:** F12 > Lighthouse tab
+1. Open a production-like page in a clean browser profile.
+2. Open the Performance panel.
+3. Choose the intended network and CPU settings.
+4. Record and reload.
+5. Inspect the LCP element, network dependencies, long tasks, layout shifts, and screenshots.
 
-Same Lighthouse engine as PageSpeed Insights but runs locally. Because it's running on your machine without network latency to Google's servers, it's faster but can give slightly different results. Useful for testing local development builds before deploying.
+For an interaction issue, start a runtime recording, perform the slow action, then inspect the event and work that delayed the next paint. This is how you find expensive handlers, forced layout, large rendering updates, and third-party main-thread work that a page-load report cannot reproduce.
 
-**Use it when:** You're actively debugging and iterating on changes locally.
+DevTools can also show live LCP, CLS, and INP as you use the page. Field INP still requires production observation across real visits; a local interaction trace is a diagnostic sample, not the field percentile.
 
-**How to use:** Open DevTools (F12), go to the Lighthouse tab, select Mobile or Desktop, click "Analyze page load."
+## Use a waterfall for delivery problems
 
-### 6. Google Search Console
+A waterfall makes request ordering visible. Chrome's Network panel is enough for many investigations. WebPageTest is useful when you need a controlled remote location, connection profile, filmstrip, repeat view, or shareable waterfall.
 
-**URL:** search.google.com/search-console
+Look for:
 
-Not a speed testing tool, but the most important source of real-world Core Web Vitals data. The Core Web Vitals report shows how your pages are performing for actual users, grouped by Good/Needs Improvement/Poor.
+- redirect chains before the document or key asset;
+- slow DNS, connection, TLS, or server response phases;
+- an LCP image discovered late through CSS or client JavaScript;
+- resources with no compression or ineffective cache headers;
+- duplicate libraries, fonts, or analytics requests;
+- large assets delivered before critical content;
+- third-party requests that block rendering or occupy the main thread.
 
-**Use it when:** You want to know what Google is actually seeing and using for rankings.
+Test from a location relevant to the audience. A nearby data center can conceal a slow origin or missing edge cache for distant visitors. Keep the location and connection profile identical when comparing releases.
 
-**Limitation:** Only available if you've verified ownership of your site.
+## Repeat tests and compare a median
 
-## Which Tool to Use for What
+Performance runs naturally vary. Network routing, server load, cache state, ads, experiments, browser extensions, and machine contention can all change a result.
 
-| Goal | Tool |
-|---|---|
-| Check overall score | PageSpeed Insights |
-| Track score over time | TheFastestWeb |
-| Debug a specific issue | WebPageTest |
-| Test before deploying | Chrome DevTools |
-| See ranking impact | Google Search Console |
+The Lighthouse project recommends running tests multiple times and using an aggregate such as the median instead of trusting a single result. Lighthouse CI runs three times by default and supports additional runs. For a manual investigation, five equivalent runs often provide a more stable comparison than one; the correct count depends on your variance and decision risk.
 
-## Testing Best Practices
+Do not simply average different environments. A mobile PSI run, a desktop local run, and a remote waterfall are different experiments. Group like with like, preserve individual reports, and compare the representative run plus the spread.
 
-**Test mobile first.** Google uses mobile Core Web Vitals for rankings. Desktop scores are almost always better and less relevant.
+If results vary widely, investigate the variability itself. Check cache outcomes, third-party responses, A/B variants, server timing, and page content before declaring an optimization successful.
 
-**Run multiple tests.** A single PageSpeed run can vary significantly. Run at least 3 tests and take the average or middle value.
+## Add performance checks to CI
 
-**Test the right pages.** Your homepage might be well-optimized, but product pages, blog posts, or landing pages might not be. Test the pages that drive actual traffic and conversions.
+[Lighthouse CI](https://github.com/GoogleChrome/lighthouse-ci) can run production-like pages repeatedly during a build. Start with a small set of stable routes and collect reports before enforcing strict thresholds.
 
-**Test from multiple locations.** WebPageTest lets you choose test locations. Users in Europe get a different experience than users in Singapore. If you have a global audience, test from multiple regions.
+Useful controls include:
 
-**Test consistently.** Run tests at the same time of day if possible. A page that's cached by a CDN will test much faster at midday than at 3am when caches are cold.
+- a fixed production build and server command;
+- a pinned Node, Chrome, and Lighthouse toolchain;
+- several runs per URL;
+- assertions on objective facts such as resource size, request count, or specific audits;
+- metric budgets with enough tolerance for normal variance;
+- stored reports linked to the commit.
 
-## Understanding Score Variability
+CI lab checks catch regressions before release, but they do not replace production field monitoring. Use both: CI protects the build, and real-user data verifies the experience.
 
-PageSpeed scores can vary by 10-20 points between runs. This is normal and caused by:
+## Record a useful baseline
 
-- Server response time variation
-- CDN cache state (cached vs. uncached)
-- Background network conditions during the test
-- Third-party script load times
+A baseline should let another person reproduce the test. Store:
 
-If you're seeing a sudden drop in score, run the test 3-5 times before reacting. If the average is consistently lower than before, then something changed.
+- URL and canonical URL;
+- commit or deployment identifier;
+- date, region, and test tool version;
+- mobile or desktop configuration;
+- cold or warm cache state;
+- consent and authentication state;
+- individual runs and representative median;
+- LCP, CLS, TBT, FCP, Speed Index, and available field CWV;
+- screenshots, waterfall, and trace for the identified bottleneck.
 
-[Test your site now](/test) and get your current PageSpeed score in seconds.
+Then make one focused change and rerun the same scenario. A higher aggregate score with a worse LCP or broken interaction is not a valid win.
+
+Use [IndieTools Speed](/speed) to browse published measurements and their recorded dates. For interpreting a green score without overvaluing it, continue with [What Is a Good PageSpeed Score?](/blog/what-is-a-good-pagespeed-score) and [How to Get a 100 PageSpeed Score](/blog/how-to-get-100-pagespeed-score).

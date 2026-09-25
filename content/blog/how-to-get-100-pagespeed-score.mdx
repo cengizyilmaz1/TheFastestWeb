@@ -1,97 +1,131 @@
 ---
 title: "How to Get a 100 PageSpeed Score"
-description: "A perfect 100 PageSpeed score is achievable for most sites. Here's exactly what it takes and what the fastest sites on the web have in common."
+description: "How to pursue a repeatable 100 Lighthouse performance score, understand its limits, and optimize the five metrics that determine it."
 date: "2026-03-21"
+updated: "2026-09-25"
 ---
 
-A 100 PageSpeed score means your site loads instantly, has no layout shifts, and blocks the main thread for almost zero time. It's achievable, but it requires discipline.
+A 100 PageSpeed performance score is a result from one Lighthouse lab test under a particular device, network, browser, page state, and Lighthouse version. It does not prove instant loading, zero layout shift for every user, healthy field Core Web Vitals, or higher search rankings.
 
-On [TheFastestWeb leaderboard](/leaderboard/perfect), several sites consistently score 100. Here's what they have in common.
+It can still be a useful engineering target for a stable page when you treat it as a repeatable lab outcome rather than a business guarantee.
 
-## What Goes Into a 100 Score
+### Table of contents
 
-Google PageSpeed Insights uses these metrics (with their weights):
+- [Understand what 100 means](#article-understand-what-100-means)
+- [Make the test repeatable](#article-make-the-test-repeatable)
+- [Optimize the five scored metrics](#article-optimize-the-five-scored-metrics)
+- [Use diagnostics without chasing every audit](#article-use-diagnostics-without-chasing-every-audit)
+- [Confirm the result beyond one run](#article-confirm-the-result-beyond-one-run)
+- [Know when to stop chasing 100](#article-know-when-to-stop-chasing-100)
 
-- **Total Blocking Time (TBT):** 30%
-- **Largest Contentful Paint (LCP):** 25%
-- **Cumulative Layout Shift (CLS):** 25%
-- **First Contentful Paint (FCP):** 10%
-- **Speed Index (SI):** 10%
+## Understand what 100 means
 
-To hit 100, you need near-perfect scores across all five. The good news: fixing TBT and LCP alone gets you most of the way there.
+Lighthouse converts raw metric values to scores using log-normal scoring curves based on HTTP Archive data. It then combines five weighted metric scores:
 
-## What Sites With a 100 Score Do Differently
+- First Contentful Paint (FCP)
+- Speed Index
+- Largest Contentful Paint (LCP)
+- Total Blocking Time (TBT)
+- Cumulative Layout Shift (CLS)
 
-### 1. Almost No JavaScript
+The [official Lighthouse scoring guide](https://developer.chrome.com/docs/lighthouse/performance/performance-scoring/) explains that the weights and curves can change as the project evolves. It also notes diminishing returns near the top of the scale: moving from 99 to 100 can require substantial metric improvement.
 
-The biggest common trait among perfect-scoring sites is minimal JavaScript. No heavy frameworks, no bloated libraries, no third-party scripts loaded on page load.
+The number is rounded for display, so two pages showing 100 can have different underlying values. Save the raw metrics and Lighthouse version rather than recording only the circle at the top of the report.
 
-If you need JavaScript, ship as little as possible. Defer everything that isn't critical. Use vanilla JS where you can.
+Field Core Web Vitals are a different system. They describe aggregated real-user LCP, INP, and CLS at the 75th percentile. Lighthouse cannot measure field INP during a page-load audit and uses TBT as a lab diagnostic. See [What Are Core Web Vitals?](/blog/what-are-core-web-vitals) for that distinction.
 
-### 2. Optimized Images
+## Make the test repeatable
 
-Every image is compressed, correctly sized, and served in WebP. The LCP image is preloaded. Nothing is lazy-loaded above the fold.
+Do not optimize against a moving target. Define the experiment first:
 
-### 3. No Third-Party Scripts on Page Load
+1. Use the same canonical production URL.
+2. Keep mobile or desktop mode, throttling, region, browser, and Lighthouse version constant.
+3. Specify authentication, consent, personalization, and experiment state.
+4. Decide whether the run should be cold-cache or warm-cache.
+5. Run several tests and retain every report.
 
-Analytics, chat widgets, A/B testing tools, tag managers. These are TBT killers. Perfect-scoring sites either don't use them or load them only after the page is interactive.
+Lighthouse documents many sources of variability, including network routing, machine contention, browser extensions, antivirus software, ads, and A/B tests. A clean profile and dedicated test environment reduce noise. Lighthouse CI can collect repeated runs and identify a representative median run.
 
-If you need analytics, consider lightweight alternatives like [Umami](https://umami.is/) or [Plausible](https://plausible.io/) instead of Google Analytics with GTM.
+If the page changes on every request, first explain that variance. A perfect result produced only when the ad slot is empty or an API happens to respond quickly is not a stable 100.
 
-### 4. Inline Critical CSS
+## Optimize the five scored metrics
 
-Rather than loading a large CSS file that blocks rendering, they inline the CSS needed for above-the-fold content and defer the rest.
+Work from the trace and the most influential failing metric. Do not apply a generic checklist blindly.
 
-### 5. Fast Hosting
+### Largest Contentful Paint
 
-A slow server response time (TTFB) puts a ceiling on your score no matter how optimized your assets are. Top-scoring sites use edge hosting (Vercel, Cloudflare Pages, Netlify Edge) with servers close to their users.
+Identify the actual LCP element in the report. If it is an image:
 
-### 6. No Layout Shifts
+- make it discoverable from the initial HTML;
+- do not lazy-load it;
+- give it appropriate fetch priority or preload only when discovery would otherwise be late;
+- serve a correctly sized, compressed variant;
+- remove request chains before the image;
+- reserve its dimensions.
 
-Every image has explicit width and height. Fonts use `font-display: swap`. No content is injected above existing content after load.
+If the resource loads quickly but LCP remains late, inspect render delay, client-side rendering, font dependencies, and main-thread work. The [LCP guide](/blog/what-is-lcp-and-how-to-fix-it) separates those phases.
 
-## Step-by-Step: How to Improve Your Score
+### Total Blocking Time
 
-**Start with the bottleneck.** Run your site through [PageSpeed Insights](https://pagespeed.web.dev/) and look at which metric is lowest. Fix that first.
+TBT accumulates the blocking portion of long main-thread tasks between FCP and Time to Interactive. Use the Performance trace to find the specific script and call stack.
 
-**For TBT:**
-- Remove or defer all non-critical JavaScript
-- Audit your npm packages for bloat
-- Move third-party scripts to load after interaction
+Typical fixes include:
 
-**For LCP:**
-- Compress your hero image to WebP
-- Add `<link rel="preload">` or `priority` attribute to the LCP image
-- Improve server response time
+- removing unused client-side code;
+- splitting large interactive features by route or action;
+- moving server-capable work off the browser;
+- delaying non-critical third-party scripts;
+- breaking long work into smaller tasks while preserving correctness;
+- reducing expensive rendering and repeated layout calculation.
 
-**For CLS:**
-- Add `width` and `height` to all `<img>` tags
-- Use `font-display: swap`
-- Reserve space for ads and embeds
+Replacing one library can help, but package size alone does not reveal parse, compile, execution, or rendering cost. Measure the production bundle and trace after the change.
 
-**For FCP:**
-- Inline critical CSS
-- Reduce server response time
-- Eliminate render-blocking resources
+### Cumulative Layout Shift
 
-## Realistic Targets by Site Type
+Reserve space for images, video, ads, embeds, banners, and asynchronous content. Avoid inserting UI above content the visitor is already reading. Match fallback font metrics when web-font replacement moves text.
 
-Not every site can hit 100. A complex SaaS dashboard with heavy interactivity will never score like a static landing page. Here's what's realistic:
+CLS is calculated from layout-shift session windows, not a simple sum of every movement at initial load. Use the trace to identify the shifted element and the element that caused it. The [CLS guide](/blog/what-is-cls-and-how-to-fix-it) covers the current metric in detail.
 
-| Site Type | Realistic Target |
-|---|---|
-| Static landing page | 95-100 |
-| Marketing site | 85-95 |
-| Blog | 85-95 |
-| SaaS tool | 70-85 |
-| E-commerce | 60-80 |
+### First Contentful Paint
 
-If you're in the right range for your site type, you're doing well. The goal isn't a perfect score, it's being faster than your competitors.
+FCP can improve when the document arrives sooner and the browser has less render-blocking work before it can paint. Check server response, redirect chains, critical CSS, font behavior, and synchronous scripts.
 
-## Is a Perfect Score Worth It?
+Inlining all CSS is not a universal solution; it can enlarge HTML and prevent shared stylesheet caching. Keep the critical path small, and let the rest load in a cacheable form appropriate to the application.
 
-For most sites, chasing 100 after you're already at 90+ has diminishing returns. The performance gains from 90 to 100 are real but small. What matters for rankings is being in the "Good" range (90+) consistently.
+### Speed Index
 
-That said, for marketing sites, landing pages, and content sites, getting to 95+ is absolutely worth the effort.
+Speed Index evaluates visual progression in the captured viewport. Improve it by prioritizing above-the-fold content, reducing render-blocking resources, and avoiding blank client-rendered shells. Do not confuse it with a Core Web Vital or a measurement of the entire page from top to bottom.
 
-Want to know your current score? [Test your site](/test) and see exactly where you stand.
+## Use diagnostics without chasing every audit
+
+Lighthouse Opportunities and Diagnostics explain conditions that may affect the metrics. They do not each contribute directly to the performance score. A failed audit matters when it reveals a real cost for the tested page.
+
+Rank work by evidence:
+
+1. the failing metric and its weight;
+2. the trace or waterfall showing the cause;
+3. the estimated or measured effect of the proposed change;
+4. correctness, accessibility, security, and maintenance cost;
+5. the before-and-after result under the same test setup.
+
+Do not remove useful content, accessibility features, consent controls, or required security measures just to change a lab number. Optimize their implementation and loading behavior.
+
+## Confirm the result beyond one run
+
+After a run shows 100:
+
+- repeat the same test and compare the median plus the spread;
+- test the heavy pages and templates, not only the homepage;
+- exercise interactions and inspect responsiveness in DevTools;
+- test with production third parties and consent state;
+- verify on a real lower-powered device and slower connection;
+- watch field Core Web Vitals after the release;
+- add budgets or regression assertions to CI.
+
+Use [IndieTools Speed](/speed) to compare published measurements over time, while keeping the measurement date and test context visible. Follow the broader workflow in [How to Check Website Speed](/blog/how-to-check-website-speed).
+
+## Know when to stop chasing 100
+
+Google's Search documentation explicitly says that perfect tool scores are not a guarantee of ranking success and may not be the best use of time. A stable result in the good range, healthy field data, and a fast usable journey can be more valuable than removing a necessary feature to gain the final point.
+
+Stop when the remaining work costs more than the user benefit, or when the bottleneck exists only in the scoring setup and not in the target audience's experience. Keep monitoring, because content, dependencies, third parties, infrastructure, and Lighthouse itself will change.

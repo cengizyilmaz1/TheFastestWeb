@@ -1,95 +1,118 @@
 ---
 title: "Wix PageSpeed Optimization Guide"
-description: "Wix handles hosting and infrastructure for you, but there are still several things you can do to improve your PageSpeed score. Here's what works and what doesn't."
+description: "A Wix-specific performance workflow for Site Speed data, mobile layouts, media, fonts, apps, custom code, caching, and safe publish validation."
 date: "2026-03-22"
+updated: "2026-09-25"
 ---
 
-Wix is a fully hosted website builder. Unlike WordPress or self-hosted frameworks, you don't control the server, CDN, or code output. This limits what you can optimize, but there's still meaningful room for improvement.
+Wix manages hosting, CDN delivery, server-side rendering, image processing, and much of the caching layer. A Wix performance review should therefore focus on the decisions the site owner controls: page composition, above-the-fold media, mobile design, apps, embeds, fonts, animations, and custom code.
 
-Here's what actually helps on Wix and what to skip.
+Do not begin by adding generic optimization scripts intended for a self-hosted stack. Measure the affected page in Wix's own tools, identify the controllable element, and validate the published result.
 
-## Understanding Wix's Performance Baseline
+## Table of contents
 
-Wix has invested significantly in performance in recent years. They moved to a server-side rendering architecture (Wix Editor X and newer sites), use global CDN distribution, and automatically compress images.
+- [Establish a Wix baseline](#article-establish-a-wix-baseline)
+- [Use real visitor and lab data correctly](#article-use-real-visitor-and-lab-data-correctly)
+- [Simplify the initial viewport](#article-simplify-the-initial-viewport)
+- [Optimize media within Wix](#article-optimize-media-within-wix)
+- [Control fonts, animation, and visual effects](#article-control-fonts-animation-and-visual-effects)
+- [Audit apps, embeds, and third-party code](#article-audit-apps-embeds-and-third-party-code)
+- [Review Wix code and data loading](#article-review-wix-code-and-data-loading)
+- [Keep caching aligned with content](#article-keep-caching-aligned-with-content)
+- [Validate before and after publishing](#article-validate-before-and-after-publishing)
 
-The platform-level performance is decent. Most Wix sites should be able to achieve scores in the 65-80 range on mobile without any effort. Getting above 80 requires active optimization.
+## Establish a Wix baseline
 
-## What You Can Control on Wix
+Open **Site Speed** in the Wix dashboard and record mobile and desktop results for important templates. Wix's [Site Speed dashboard documentation](https://support.wix.com/en/article/understanding-your-site-speed-dashboard) explains that its real visitor section uses Wix-collected data and its Google PageSpeed section provides a Lighthouse-based simulation. The dashboard requires enough recent sessions before real-visitor data is available.
 
-### 1. Optimize Images
+Build a representative test set:
 
-Images are the biggest variable on Wix. The platform auto-converts to WebP and serves from CDN, but it can only optimize what you give it.
+- the home page;
+- a high-traffic service or landing page;
+- a product or booking page where applicable;
+- a content-heavy CMS page;
+- the first meaningful conversion flow.
 
-- **Compress before uploading.** Use Squoosh or TinyPNG on your images before adding them to Wix. Even though Wix compresses images, starting with a smaller source means better output.
-- **Use the right dimensions.** Don't upload a 4000px wide image for a 600px slot. Resize to roughly 2x the display size (for retina) before uploading.
-- **Don't overload pages with images.** Each additional image is another request. Use only the images that serve a purpose.
+Record the publish date, page URL, device view, and major apps or campaign tags. Use [IndieTools Speed](/speed) for continued comparisons, but keep Wix publishes and marketing changes annotated so a movement remains attributable.
 
-### 2. Set Your LCP Image to Load Eagerly
+## Use real visitor and lab data correctly
 
-Your hero image (the large image at the top of your page) is likely your LCP element. Make sure it's the first image on the page and not hidden below other content.
+Wix reports LCP, INP, and CLS as Core Web Vitals and also exposes supporting measurements. Real-visitor data answers whether people experienced a problem; a PageSpeed lab run helps reproduce one scenario.
 
-In Wix, you can't directly add `loading="eager"` or `fetchpriority="high"` attributes, but you can:
-- Place the hero image as the first visible element
-- Avoid having any JavaScript-loaded content above the hero
-- Keep the hero image file size small (under 150KB after compression)
+The two views can disagree because real visitors use different devices, networks, locations, cache states, and interactions. A Lighthouse score should not replace the field distribution. The [PageSpeed Insights guide](/blog/what-is-pagespeed-insights) explains URL and origin scope, reporting windows, and lab variation.
 
-### 3. Remove Unused Apps and Widgets
+When one Wix page is slow, test that exact URL. An origin-level field result can combine simple pages with a complex store, booking, or CMS template.
 
-Every Wix app you install may add JavaScript to your page. Wix Chat, booking widgets, countdown timers, and social feeds all have a performance cost.
+## Simplify the initial viewport
 
-Audit your installed apps in the Wix App Manager. Remove any app you're not actively using. This is the highest-impact change you can make.
+Wix's [site performance best practices](https://support.wix.com/en/article/site-performance-best-practices) recommend keeping above-the-fold content meaningful and light. Start with the first mobile viewport, where oversized layouts and slower devices expose more work.
 
-### 4. Minimize Animations
+Prefer a clear heading, concise supporting copy, one primary action, and restrained media. Move secondary galleries, social feeds, maps, long forms, and decorative video below the fold when the page purpose allows it. Avoid making a lightbox, slideshow, or third-party widget the only way to reach essential content.
 
-Wix makes it easy to add entrance animations and hover effects. Each animation adds JavaScript that must execute before the page becomes fully interactive.
+Use the Wix mobile editor or Wix Studio breakpoints to confirm what actually renders on narrow screens. Hiding an element may improve the mobile experience, but verify the published network behavior rather than assuming every hidden asset is absent.
 
-Disable animations on elements that don't need them. For important landing pages, consider turning off all entrance animations to reduce TBT.
+## Optimize media within Wix
 
-### 5. Reduce Content Per Page
+Wix automatically resizes and processes uploaded images and can deliver modern formats. That platform optimization does not make content choices irrelevant. A very large source, several competing hero images, or an autoplaying video can still delay the initial experience.
 
-Heavy pages with many sections, videos, embedded maps, and widgets will score lower than focused pages. If your homepage is a single long scroll with 15 sections, consider splitting content across pages.
+For each page:
 
-### 6. Connect a Custom Domain
+- crop images to the composition and aspect ratio actually displayed;
+- avoid using PNG for photographic content that does not need transparency;
+- remove duplicate or unused above-the-fold media;
+- keep video below the fold unless it is essential to the page purpose;
+- replace animated GIFs with an appropriate video, following Wix's guidance;
+- provide descriptive alternative text for informative images;
+- verify the mobile crop instead of relying only on the desktop canvas.
 
-Wix sites on the free plan show on a `wixsite.com` subdomain. This doesn't directly affect performance, but using a custom domain with proper DNS settings (including Wix's CDN) gives slightly better TTFB.
+Wix's [automatic performance features](https://support.wix.com/en/article/site-performance-how-wix-improves-a-sites-loading-time) include CDN delivery, image processing, and lazy loading. Because lazy loading is built into the platform, do not inject a separate library that can conflict with Wix's behavior. If LCP is weak, first reduce the complexity and weight of the likely above-the-fold LCP content.
 
-## What You Can't Control on Wix
+## Control fonts, animation, and visual effects
 
-- **JavaScript output.** Wix generates and serves the JavaScript. You can't minify or tree-shake it yourself.
-- **Rendering architecture.** You can't switch to pure static generation.
-- **Font loading strategy.** You can choose fonts from Wix's library, but you can't add custom `font-display` settings.
-- **Server-side code execution.** Wix Velo (their code platform) lets you add backend logic but you can't optimize how Wix's own code runs.
-- **HTTP/3 or custom headers.** Infrastructure decisions are Wix's.
+Every font family and weight adds a resource and may change when text appears. Wix recommends limiting font variety and notes that system fonts can load faster than custom fonts. Keep the design system intentional: use the fewest families and variants that meet the brand requirement, then test headings and body text on mobile.
 
-## Realistic Score Expectations
+Animations, slideshows, parallax effects, and entrance transitions can make principal content appear later or add main-thread work. Keep decorative motion below the fold where practical and avoid delaying the hero heading or primary action behind a reveal.
 
-| Page Type | Expected Mobile Score |
-|---|---|
-| Simple landing page | 70-82 |
-| Homepage with video | 55-70 |
-| Homepage with chat widget | 60-72 |
-| App-heavy store page | 45-62 |
-| Optimized product/blog page | 72-85 |
+Reserve enough space for galleries, app widgets, forms, and banners so their arrival does not move existing content. The [CLS guide](/blog/what-is-cls-and-how-to-fix-it) gives a trace-led method for finding the element that caused a shift.
 
-Wix is not designed to compete with statically-generated sites on raw PageSpeed scores. The platform adds overhead that you can't remove. But for most small businesses and portfolios, scores in the 65-80 range are acceptable.
+## Audit apps, embeds, and third-party code
 
-## Should You Migrate to a Faster Platform?
+Wix cannot optimize content delivered by an external iframe or third-party server in the same way it optimizes native elements. Inventory chat, reviews, social feeds, maps, video embeds, consent tools, analytics, ad pixels, and marketing widgets.
 
-If you're hitting a ceiling with Wix and performance is critical for your business:
+For every integration, ask:
 
-- **For marketing sites:** Consider Webflow or a static site generator
-- **For blogs:** Consider WordPress with a fast theme, or Ghost
-- **For e-commerce:** Consider Shopify
+- does it need to load on every page;
+- can a native Wix integration meet the requirement;
+- can the feature live on a secondary page or load after an explicit action;
+- is an old campaign or retired vendor still configured;
+- what breaks if it is disabled in a duplicate or test version;
+- who owns its business value and privacy behavior.
 
-But if you chose Wix because you need to manage your own content without technical knowledge, the performance trade-off may be worth it. A Wix site at 72 is still usable. What matters is whether the performance is affecting your conversions and rankings.
+Wix's [third-party code guidance](https://support.wix.com/en/article/site-performance-using-third-party-code-on-your-site) recommends reducing unnecessary snippets, deferring supported scripts, and placing suitable code later in the body. Preserve vendor-required order and consent behavior; test rather than modifying every snippet mechanically.
 
-## Quick Checklist
+## Review Wix code and data loading
 
-- [ ] All images compressed and resized before upload
-- [ ] Unused apps removed from App Manager
-- [ ] Unnecessary animations disabled
-- [ ] No embedded videos on pages where performance is critical
-- [ ] Custom domain connected (not `.wixsite.com`)
-- [ ] Pages not overloaded with sections and widgets
+Custom Wix code can expand functionality, but synchronous work and unnecessary data can delay rendering. Wix's [development best practices](https://dev.wix.com/docs/develop-websites-sdk/code-your-site/best-practices/site-development-best-practices) recommend minimizing data sent to the browser and treating asynchronous work in `onReady()` deliberately because it can delay rendering.
 
-[Test your Wix site](/test) to see your current PageSpeed score and which metrics are dragging it down.
+Return only fields needed by the component, paginate collections, and avoid repeating the same query for several elements. Keep crawlable principal content in the server-rendered result where possible. Delay nonessential personalization or secondary data without leaving the page's main purpose dependent on a long client request.
+
+Use browser DevTools to attribute long tasks and network requests. A broad “custom code is slow” conclusion is less useful than identifying a specific query, event handler, or external request.
+
+## Keep caching aligned with content
+
+Wix automatically caches most eligible pages and can use stale-while-revalidate behavior. Its [page caching documentation](https://support.wix.com/en/article/site-performance-caching-pages-to-optimize-loading-speed) also explains that member pages, private pages, and search results have different behavior.
+
+Do not disable caching across the site to solve one freshness issue. For a page that retrieves live external data, decide the required freshness and configure that page appropriately. Remember that publishing and manual cache clearing affect subsequent requests, so avoid running a performance comparison immediately after a purge without recording the cold-cache condition.
+
+## Validate before and after publishing
+
+Before publishing, preview or test the complete page and its business flow. After publishing:
+
+1. verify the final URL and mobile layout;
+2. repeat PageSpeed tests under comparable conditions;
+3. inspect the LCP element, long tasks, and layout shifts in DevTools;
+4. test forms, store, booking, consent, navigation, and analytics;
+5. watch Wix real-visitor metrics as new visits enter the reporting window;
+6. retain the previous design or settings long enough to roll back safely.
+
+A Wix page improves when controlled elements become lighter and more deliberate while the platform continues to handle delivery. The objective is stable real-user Core Web Vitals and a functional page, not a guaranteed Lighthouse number.

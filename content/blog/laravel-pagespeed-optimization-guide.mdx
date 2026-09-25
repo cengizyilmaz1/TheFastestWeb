@@ -1,225 +1,166 @@
 ---
 title: "Laravel PageSpeed Optimization Guide"
-description: "Laravel is a PHP framework that can power very fast websites when configured correctly. Here's how to optimize a Laravel app for high PageSpeed scores."
+description: "A current Laravel 13 performance guide covering request profiling, deployment caches, Redis, database queries, Vite, images, OPcache, and browser metrics."
 date: "2026-03-24"
+updated: "2026-09-25"
 ---
 
-Laravel is the most popular PHP framework and powers millions of websites. Like any server-rendered framework, its performance depends on how you configure it, what you cache, and how you deliver assets to users.
+Laravel can serve fast pages, but the framework is only one part of the request. Database queries, external services, PHP workers, caches, templates, images, JavaScript, and third-party scripts all contribute to the experience measured in the browser.
 
-Here's how to get your Laravel site scoring well on PageSpeed.
+This guide uses current Laravel 13 conventions. For an older application, check that version's upgrade guide before copying configuration or commands.
 
-## The Foundation: Reduce Server Response Time (TTFB)
+### Table of contents
 
-Every metric on PageSpeed starts with TTFB. If your server takes 800ms to respond, that's 800ms before the browser even starts rendering.
+- [Profile the full request](#article-profile-the-full-request)
+- [Build deployment caches safely](#article-build-deployment-caches-safely)
+- [Cache application work intentionally](#article-cache-application-work-intentionally)
+- [Reduce database cost](#article-reduce-database-cost)
+- [Move slow work out of the request](#article-move-slow-work-out-of-the-request)
+- [Ship production assets with Vite](#article-ship-production-assets-with-vite)
+- [Create an image delivery pipeline](#article-create-an-image-delivery-pipeline)
+- [Configure PHP and workers for the release model](#article-configure-php-and-workers-for-the-release-model)
+- [Verify the browser result](#article-verify-the-browser-result)
 
-### Enable Route Caching
+## Profile the full request
 
-In production, cache your routes so Laravel doesn't parse route files on every request:
+Start with a representative production route and separate server time from browser time.
 
-```bash
-php artisan route:cache
-php artisan config:cache
-php artisan view:cache
-```
+On the server, record:
 
-Run these as part of your deployment process. Remember to clear them when you make changes:
+- route and middleware duration;
+- query count and cumulative query time;
+- cache hits and misses;
+- external API and storage calls;
+- queue work accidentally performed inline;
+- response size, status, and cache headers;
+- PHP worker saturation and database connection pressure.
 
-```bash
-php artisan optimize:clear
-```
+In the browser, inspect the network waterfall and the LCP, CLS, TBT, FCP, and Speed Index metrics. A slow LCP can begin with server response time, but it can also come from late image discovery, client rendering, fonts, or main-thread work. [How to Check Website Speed](/blog/how-to-check-website-speed) provides a repeatable testing workflow.
 
-Or use the shortcut that runs all caches at once:
+Profile with production-like data and configuration. Debug tooling is useful locally but can add overhead and expose sensitive information, so do not enable it publicly to measure production.
+
+## Build deployment caches safely
+
+Laravel's current [deployment documentation](https://laravel.com/docs/13.x/deployment) recommends generating optimized caches during deployment:
 
 ```bash
 php artisan optimize
 ```
 
-### Use a PHP Opcode Cache
+This caches configuration, events, routes, and views. Run it after the release artifact and environment are in place, and before traffic reaches the new version. If configuration is cached, calls to `env()` outside configuration files do not behave as they do in an uncached local environment. Read environment values in config files and consume them through `config()` in application code.
 
-Make sure OPcache is enabled on your server. It caches compiled PHP bytecode so PHP doesn't need to compile your files on every request. It's enabled by default on most managed hosting but worth verifying:
-
-```ini
-; php.ini
-opcache.enable=1
-opcache.memory_consumption=256
-opcache.max_accelerated_files=20000
-opcache.revalidate_freq=0
-```
-
-### Use Redis or Memcached for Cache
-
-File-based caching works but Redis is significantly faster. Use Redis for sessions, cache, and queues:
-
-```env
-CACHE_DRIVER=redis
-SESSION_DRIVER=redis
-QUEUE_CONNECTION=redis
-```
+Use the granular commands when your release process needs explicit stages:
 
 ```bash
-composer require predis/predis
+php artisan config:cache
+php artisan event:cache
+php artisan route:cache
+php artisan view:cache
 ```
 
-## Cache Your Database Queries
+Treat `php artisan optimize:clear` as an operational action, not a routine request-path fix. A deployment should create a complete, coherent cache set for the exact code and environment being released.
 
-Repeated database queries are a common cause of slow TTFB. Cache expensive queries:
+## Cache application work intentionally
+
+Laravel's [cache system](https://laravel.com/docs/13.x/cache) supports multiple stores. Current configuration uses `CACHE_STORE`, not the older `CACHE_DRIVER` name used in many legacy examples.
+
+```dotenv
+CACHE_STORE=redis
+```
+
+Redis is a common shared store, but the correct choice depends on availability, persistence, latency, and operating model. A file cache may be local to one container and therefore unsuitable when several application instances need the same entries.
+
+Cache stable, expensive work with a clear key and lifetime:
 
 ```php
-$users = Cache::remember('users', 3600, function () {
-    return User::with('posts')->where('active', true)->get();
-});
+use Illuminate\Support\Facades\Cache;
+
+$products = Cache::remember(
+    "catalog:featured:v3",
+    now()->addMinutes(10),
+    fn () => Product::query()
+        ->published()
+        ->with("category")
+        ->latest("published_at")
+        ->limit(24)
+        ->get()
+);
 ```
 
-For public-facing pages where all users see the same content, cache the entire response using response caching:
+Version or invalidate the key when publication changes. Do not cache account-specific or authorization-dependent output under a shared key. Protect the application against a cache outage and avoid a synchronized cache stampede on expensive recomputation.
 
-```bash
-composer require spatie/laravel-responsecache
+HTTP caching is separate. Public responses and versioned assets can benefit from CDN or reverse-proxy caching, but cookies, localization, authentication, and personalized content require correct cache-control and variation rules.
+
+## Reduce database cost
+
+Inspect queries generated by Eloquent instead of assuming the ORM is slow. Common causes are N+1 relationships, missing indexes, unbounded result sets, and repeated aggregation.
+
+Use eager loading for relationships rendered in a list:
+
+```php
+$articles = Article::query()
+    ->published()
+    ->with(["author:id,name", "categories:id,name,slug"])
+    ->select(["id", "author_id", "slug", "title", "summary"])
+    ->paginate(24);
 ```
 
-This caches the entire HTTP response, making repeat visits effectively instant.
+Select only useful columns when the model contains large fields, but include relationship keys needed by Eloquent. Add indexes based on real `WHERE`, join, and ordering patterns, then inspect the database query plan. An index that helps one lookup can add write and storage cost elsewhere.
 
-## Optimize Your Frontend Assets
+For high-frequency aggregates, consider a maintained summary, a bounded cache, or asynchronous computation. Use cursor or chunk processing for large background data jobs rather than loading an entire table into memory.
 
-### Use Vite (Laravel 12+ Default)
+Database connection pooling is deployment-specific. Laravel's current database documentation notes that transaction-mode poolers such as PgBouncer can suit application queries while migrations and some maintenance tasks require a direct connection. Keep migration and runtime connection roles explicit.
 
-Laravel's default Vite integration handles asset bundling, minification, and cache-busting. Make sure you're running the production build:
+## Move slow work out of the request
+
+Email, image processing, webhooks, indexing, large exports, and other durable side effects generally belong on a queue. Return a truthful response only after the transaction that must succeed has committed, then let an idempotent job handle the asynchronous work.
+
+Run queue workers under a process supervisor, set timeouts and retry policies based on the job, and restart workers during deployment so they load the new application code. Monitor failed jobs and queue latency; moving work to a queue does not remove its operating cost.
+
+## Ship production assets with Vite
+
+Laravel 13 uses Vite as its standard asset pipeline. The [official Vite integration guide](https://laravel.com/docs/13.x/vite) documents production builds and versioned assets:
 
 ```bash
+npm ci
 npm run build
 ```
 
-The production build minifies JS and CSS, adds content hashes for caching, and tree-shakes unused code.
-
-### Defer and Async JavaScript
-
-Make sure non-critical scripts don't block rendering:
-
-```html
-<!-- Add defer to non-critical scripts -->
-<script defer src="{{ asset('js/analytics.js') }}"></script>
-```
-
-In Blade templates, put non-critical scripts at the end of `<body>` or add `defer`.
-
-### Inline Critical CSS
-
-For your above-the-fold CSS, inline it in the `<head>` to avoid a render-blocking stylesheet request. Extract critical CSS from your main stylesheet and inline it directly in your layout:
-
 ```blade
-<style>
-    /* Critical CSS here */
-</style>
-<link rel="preload" href="{{ mix('css/app.css') }}" as="style" onload="this.rel='stylesheet'">
+@vite(['resources/css/app.css', 'resources/js/app.js'])
 ```
 
-## Optimize Images
+Do not combine a Vite setup with examples from Laravel's older asset pipeline. Build assets once for the release and deploy the generated manifest and files together. If assets live on a separate CDN host, configure the supported asset URL and verify that HTML points to the versioned production files.
 
-### Use Laravel's Storage with Image Processing
+Use route-level imports for large interactive features, remove unused dependencies, and measure third-party scripts. A server-rendered Blade page can still have poor TBT when it ships too much JavaScript.
 
-For user-uploaded images, process them before storing to ensure they're web-optimized:
+## Create an image delivery pipeline
 
-```bash
-composer require intervention/image
-```
+Do not resize every large upload during the page request. Validate and transform images at ingestion or in a queue, then store the variants needed by the design.
 
-```php
-use Intervention\Image\ImageManager;
+If you use Intervention Image, target a supported major version. Version 3 uses an `ImageManager`, `read()`, resizing methods such as `scale()`, and encoders such as `WebpEncoder`; older `make()` and `encode('webp', ...)` snippets belong to a different API. Its [version 3 output documentation](https://image.intervention.io/v3/basics/image-output) is the source for current syntax.
 
-$manager = new ImageManager(['driver' => 'imagick']);
-$image = $manager->make($request->file('photo'))
-    ->resize(800, null, function ($constraint) {
-        $constraint->aspectRatio();
-        $constraint->upsize();
-    })
-    ->encode('webp', 85);
-```
+Whichever library you choose, generate responsive dimensions, retain metadata about width and height, and serve them with `srcset` and `sizes`. Do not lazy-load the likely LCP image. Use meaningful alternative text for informative images and an empty `alt` for decoration.
 
-Store WebP versions alongside originals and serve WebP to browsers that support it.
+## Configure PHP and workers for the release model
 
-### Add Width and Height to Image Tags
+Enable OPcache in production, then align validation with deployment behavior. The [PHP OPcache manual](https://www.php.net/manual/en/opcache.configuration.php) is precise:
 
-Prevent layout shift by always specifying dimensions:
+- with `opcache.validate_timestamps=1`, `opcache.revalidate_freq=0` checks for updates on every request;
+- with timestamp validation disabled, changed files are not picked up until OPcache is reset, invalidated, or the web server is restarted.
 
-```blade
-<img
-    src="{{ asset('images/hero.webp') }}"
-    width="1200"
-    height="630"
-    alt="Hero image"
-    loading="eager"
->
-```
+An immutable release plus an explicit PHP-FPM restart can safely use a different policy from a server where files change in place. Do not disable validation without a dependable activation step, or workers may continue executing old code.
 
-Use `loading="lazy"` for images below the fold, `loading="eager"` (or no attribute) for your LCP image.
+Choose PHP-FPM worker counts from measured memory, CPU, request time, and downstream capacity. More workers can increase concurrency while exhausting RAM or database connections. Load test through the real reverse proxy and monitor latency percentiles, errors, queueing, and resource saturation.
 
-## Use a CDN for Static Assets
+## Verify the browser result
 
-Serve CSS, JavaScript, images, and other static files from a CDN to reduce latency for global users. With Vite and Laravel:
+After each change:
 
-```env
-ASSET_URL=https://your-cdn.example.com
-```
+1. deploy to a production-like environment;
+2. run several equivalent Lighthouse tests and compare a representative median;
+3. inspect the trace or waterfall to verify the intended cause changed;
+4. exercise authenticated and interactive journeys;
+5. monitor field Core Web Vitals after production traffic reaches the release.
 
-Cloudflare's free plan works well for this -- it proxies your origin and caches static assets globally.
-
-## Enable HTTP Compression
-
-Make sure your server sends compressed responses. For Nginx:
-
-```nginx
-gzip on;
-gzip_types text/plain text/css application/json application/javascript text/xml;
-gzip_min_length 1000;
-
-# Or even better, use Brotli if available
-brotli on;
-brotli_types text/plain text/css application/json application/javascript;
-```
-
-For Apache:
-
-```apache
-<IfModule mod_deflate.c>
-    AddOutputFilterByType DEFLATE text/html text/css application/javascript application/json
-</IfModule>
-```
-
-## Configure Long-term Caching for Assets
-
-Vite already adds content hashes to asset filenames. Configure your web server to cache these aggressively:
-
-```nginx
-# Nginx
-location ~* \.(js|css|woff2|png|webp|jpg)$ {
-    expires 1y;
-    add_header Cache-Control "public, max-age=31536000, immutable";
-}
-```
-
-## Deploy on a Fast Server
-
-Laravel benefits significantly from good hosting:
-
-- **Managed Laravel hosting:** Laravel Forge on DigitalOcean or Linode, Ploi
-- **Platform hosting:** Laravel Vapor (serverless, auto-scaling), Railway, Render
-- **VPS with optimization:** Any VPS with PHP-FPM, Nginx, Redis, OPcache configured properly
-
-Shared hosting is the most common cause of poor TTFB on Laravel sites. If your server response time is over 600ms, hosting is likely the bottleneck.
-
-## Quick Checklist
-
-- [ ] `php artisan optimize` run as part of deployment
-- [ ] OPcache enabled and configured
-- [ ] Redis used for cache, sessions, and queues
-- [ ] Database queries cached for public pages
-- [ ] Vite production build (`npm run build`) deployed
-- [ ] Non-critical JS deferred or placed before `</body>`
-- [ ] Images compressed and served as WebP
-- [ ] Width and height set on all images
-- [ ] CDN configured for static assets
-- [ ] Gzip or Brotli compression enabled
-- [ ] Long-term cache headers set for versioned assets
-
-A well-configured Laravel application can comfortably score 85+ on PageSpeed. The biggest wins are usually server-side: faster TTFB through caching and good hosting makes every other metric better.
-
-[Test your Laravel site](/test) to see your current PageSpeed score and identify where to focus your optimization work.
+A Lighthouse score is a lab diagnostic, not a ranking guarantee. [Does Page Speed Affect SEO?](/blog/does-page-speed-affect-seo) explains the distinction. You can review dated measurements on [IndieTools Speed](/speed) and use the [LCP guide](/blog/what-is-lcp-and-how-to-fix-it) or [TBT guide](/blog/what-is-tbt-and-how-to-fix-it) for the metric that remains slow.

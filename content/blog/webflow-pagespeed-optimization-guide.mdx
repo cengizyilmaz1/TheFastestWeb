@@ -1,113 +1,143 @@
 ---
 title: "Webflow PageSpeed Optimization Guide"
-description: "Webflow generates clean code but there are still several things that can drag your PageSpeed score down. Here's how to optimize a Webflow site for speed."
+description: "A current Webflow speed guide for responsive images, fonts, interactions, custom scripts, publishing options, Core Web Vitals, and safe testing."
 date: "2026-03-16"
+updated: "2026-09-25"
 ---
 
-Webflow generates cleaner HTML and CSS than most page builders, which gives you a head start on performance. But there are still several common issues that drag scores down, especially around images, fonts, and third-party scripts.
+Webflow handles hosting and generates the site's core HTML, CSS, and JavaScript, while designers control the page structure, assets, interactions, fonts, embeds, and custom code. Performance work should concentrate on those controllable layers and verify the published result rather than relying on how the canvas feels in the Designer.
 
-Here's how to get the most out of your Webflow site's PageSpeed score.
+### Table of contents
 
-## What Webflow Does Well
+- [Measure the published site](#article-measure-the-published-site)
+- [Start with Webflow's own diagnostics](#article-start-with-webflows-own-diagnostics)
+- [Fix image delivery](#article-fix-image-delivery)
+- [Reduce fonts and CSS](#article-reduce-fonts-and-css)
+- [Budget interactions and animation](#article-budget-interactions-and-animation)
+- [Control custom code and embeds](#article-control-custom-code-and-embeds)
+- [Use publishing options carefully](#article-use-publishing-options-carefully)
+- [Validate Core Web Vitals](#article-validate-core-web-vitals)
+- [Follow a release checklist](#article-follow-a-release-checklist)
 
-Before getting into fixes, it's worth knowing what Webflow handles for you:
+## Measure the published site
 
-- **Clean, minimal HTML** with no unnecessary wrapper divs
-- **Automatic CSS minification** on publish
-- **Built-in lazy loading** for images below the fold
-- **Global CDN** via Fastly for all hosted sites
-- **Automatic WebP conversion** for images uploaded through the asset manager
+Test the custom-domain production URL after a clean publish. The Designer and staging environment do not reproduce every production cache, domain, script, consent, or third-party condition.
 
-These give Webflow sites a solid baseline. Most Webflow sites score in the 70-85 range without any optimization. With deliberate effort, 90+ is achievable.
+Choose a representative set of URLs:
 
-## The Biggest Performance Issues in Webflow
+- home page;
+- a large CMS collection page;
+- a CMS item or article;
+- a conversion landing page;
+- an Ecommerce product page where applicable;
+- the page with the most interactions or embeds.
 
-### 1. Large, Uncompressed Images
+Record mobile and desktop separately. Save transferred bytes, request count, LCP, CLS, FCP, main-thread long tasks, and the largest image, font, CSS, and JavaScript resources. Run comparable Lighthouse tests more than once, and use PageSpeed field data when the URL or origin has enough traffic.
 
-Even with automatic WebP conversion, Webflow serves whatever resolution image you upload. If you upload a 4000x3000 photo for a 600px thumbnail, you're serving a massive file.
+[What Is a Good PageSpeed Score?](/blog/what-is-a-good-pagespeed-score) explains why a 90-plus lab score is useful but does not replace field Core Web Vitals.
 
-**Fix:** Resize images before uploading. Match the image dimensions to their largest displayed size. For a hero image that displays at 1400px wide, upload at 1400px wide, not 4000px.
+## Start with Webflow's own diagnostics
 
-Use [Squoosh](https://squoosh.app/) or [TinyPNG](https://tinypng.com/) to compress before uploading. Target under 100KB for hero images, under 30KB for thumbnails.
+Webflow's current [site-speed guidance](https://help.webflow.com/hc/en-us/articles/33961401004819-How-do-I-optimize-site-speed-in-Webflow) points to large images, linked assets, third-party integrations, transitions, interactions, animations, and embedded content. Run the Site health scan where available, then verify each recommendation against the affected production page.
 
-### 2. The LCP Image Not Being Prioritized
+Start with high-confidence cleanup:
 
-Webflow lazy-loads images by default, which is good for most images. But your hero image (the LCP element) should load immediately, not lazily.
+- remove unused assets after confirming they are not referenced;
+- delete abandoned interactions and custom-code experiments;
+- consolidate duplicate styles and components;
+- remove hidden desktop or mobile sections that still download resources;
+- simplify oversized collection lists and nested structures;
+- document every external integration and its owner.
 
-**Fix:** Select your hero image in the Webflow designer, open the element settings, and uncheck "Lazy load." This removes the `loading="lazy"` attribute from your LCP image.
+Avoid redesigning several systems at once. A small measured change is easier to validate and roll back.
 
-### 3. Google Fonts Adding Request Overhead
+## Fix image delivery
 
-Webflow's font picker defaults to Google Fonts, which adds an external request and can delay text rendering.
+Images are frequent LCP candidates and often dominate page weight. Webflow's [responsive image system](https://help.webflow.com/hc/en-us/articles/33961378697107-Responsive-images) creates `srcset` and `sizes` variants for images uploaded directly through supported Webflow fields. Images introduced through other paths, including some imports and APIs, may not receive the same variants.
 
-**Fix:** Upload fonts directly to Webflow using custom fonts. Download your Google Font files (WOFF2 format), upload them in Project Settings > Fonts, and use `font-display: swap` in your custom code.
+For each large image:
 
-Alternatively, use system fonts for body text. They load instantly with zero external requests.
+1. Crop to the displayed aspect ratio.
+2. Resize the source to a sensible maximum.
+3. Compress it or use Webflow's supported WebP conversion workflow.
+4. Confirm responsive candidates exist in the published HTML.
+5. Add accurate width and height behavior to prevent movement.
+6. Write alternative text for informative images.
 
-### 4. Third-Party Scripts
+Inline image elements can use responsive variants. CSS background images and some rich-text images have different limitations, so do not assume they receive the same delivery behavior. For a visual hero, consider an image element positioned with `object-fit` when it provides better responsive semantics and discovery.
 
-This is the most common cause of poor TBT scores in Webflow sites. Analytics, chat widgets, heat map tools, and marketing automation scripts all run on the main thread.
+Do not lazy-load the likely LCP image. Lazy-load appropriate off-screen media, and avoid making several above-the-fold images compete for high priority. For CMS imports, inspect the published result and optimize source files when responsive variants are absent.
 
-**Fix:** Add scripts through Project Settings > Custom Code > Footer Code rather than the head. Scripts in the footer load after the page content, reducing their impact on your scores.
+## Reduce fonts and CSS
 
-For Google Analytics, consider switching to [Umami](https://umami.is/) or [Plausible](https://plausible.io/). They're under 2KB and have near-zero performance impact.
+Every font family, weight, and style adds potential transfer and rendering work. Use WOFF2 for uploaded custom fonts where licensing permits. Webflow's [custom-font guidance](https://help.webflow.com/hc/en-us/articles/33961287058451-Upload-custom-fonts) recommends WOFF2 and exposes font display controls.
 
-### 5. Too Many Interactions and Animations
+Keep only the variants the design uses. A variable font can reduce separate files in some families, but compare its actual subset size with the static weights you need. Set a suitable fallback and test whether the swap moves text or changes button dimensions.
 
-Webflow's interactions and animations feature is powerful but can add significant JavaScript weight. Complex scroll-triggered animations across many elements create long tasks that drive up TBT.
+Clean unused classes and duplicate styling deliberately. Test shared components and CMS templates after cleanup, because a class that appears unused on the current page may still be used elsewhere. On large sites, Webflow's per-page CSS publishing option can reduce page-specific CSS, but it needs regression testing when custom CSS or shared libraries are involved.
 
-**Fix:** Audit your interactions. Remove animations that aren't adding clear value. Use CSS transitions instead of Webflow interactions where possible, as CSS animations run off the main thread.
+## Budget interactions and animation
 
-### 6. Custom Code Bloat
+Interactions can improve comprehension, but each trigger, timeline, and target adds runtime work. Prefer transforms and opacity for animation, limit simultaneous effects, and avoid scroll-linked motion across many large elements.
 
-Many Webflow users add jQuery plugins, sliders, and other libraries through the custom code section without realizing the performance impact.
+Review:
 
-**Fix:** Audit your custom code sections (both page-level and site-level). Remove libraries you no longer use. Replace jQuery-dependent features with vanilla JavaScript alternatives.
+- page-load sequences that hide meaningful content until animation completes;
+- large parallax backgrounds and filters;
+- interactions duplicated across individual elements instead of reusable classes;
+- continuous animations that run outside the viewport;
+- separate mobile and desktop animation systems;
+- motion that ignores `prefers-reduced-motion`.
 
-## Webflow-Specific Settings to Check
+Webflow now supports both GSAP-based and Classic interactions. Its [comparison guidance](https://help.webflow.com/hc/en-us/articles/46300264646803-Interactions-with-GSAP-vs-Classic-Interactions) warns that using both can load resources for both systems. Standardize where the product permits, then test the real page rather than assuming a newer engine removes the cost of complex animation.
 
-**In Project Settings > SEO:**
-- Enable automatic sitemap generation
-- Make sure your canonical URL is set correctly
+## Control custom code and embeds
 
-**In Project Settings > General:**
-- Enable SSL (affects TTFB and security)
+Custom code can bypass Webflow's built-in optimizations. Inventory scripts in page settings, site settings, tag managers, embeds, and components. Attribute each request and long task in DevTools.
 
-**In the Designer for each image:**
-- Set meaningful alt text (accessibility + SEO)
-- Uncheck lazy load for hero/LCP images
-- Set explicit dimensions when possible
+For every dependency, decide:
 
-## Using Webflow with a Custom Domain and CDN
+- which pages genuinely need it;
+- whether consent must occur first;
+- whether it can load after interaction or viewport entry;
+- whether an embed can use a lightweight preview;
+- how its container reserves space;
+- how the feature is tested and rolled back.
 
-Webflow's built-in CDN via Fastly is good, but you can add Cloudflare in front for additional caching and performance:
+Do not add `async` or `defer` mechanically. Execution order matters, and Webflow components or custom code may depend on earlier scripts. Use the vendor's supported integration and test navigation, forms, Ecommerce, consent, and analytics after any scheduling change.
 
-1. Point your domain to Cloudflare (change nameservers)
-2. Set Cloudflare to proxy your Webflow site
-3. Enable Cloudflare's caching rules for static assets
-4. Turn on Auto Minify for HTML, CSS, and JavaScript
+Third-party code should be reviewed after campaigns end. A tag that no longer sends an event can still consume network and parsing time.
 
-This typically reduces TTFB by 50-150ms and improves scores by 3-8 points.
+## Use publishing options carefully
 
-## Realistic Score Targets for Webflow
+Webflow's [advanced publishing options](https://help.webflow.com/hc/en-us/articles/33961287288339-Advanced-publishing-options) include HTML, CSS, and JavaScript minification, asynchronous JavaScript loading, and per-page CSS. Enable only the options appropriate to the site and republish before measuring.
 
-| Setup | Realistic Score |
-|---|---|
-| Optimized images, minimal scripts | 85-95 |
-| Default settings, good images | 70-80 |
-| Heavy animations + third-party scripts | 50-70 |
-| E-commerce with many products | 60-75 |
+Minification generally reduces transfer size, but it will not solve large images or long-running scripts. Asynchronous JavaScript loading can improve render timing, but custom code that assumes synchronous order may fail. Per-page CSS can reduce unused styles on large sites but requires testing of custom CSS and shared library behavior.
 
-## Quick Checklist
+Use the staging domain to validate a change where practical, then check the custom domain after publish. Confirm response behavior and rendered resources rather than assuming a toggle took effect.
 
-- [ ] Images resized and compressed before uploading (under 100KB for hero)
-- [ ] Hero/LCP image has lazy load unchecked
-- [ ] Google Fonts replaced with self-hosted or system fonts
-- [ ] Third-party scripts moved to footer
-- [ ] Unnecessary Webflow interactions removed
-- [ ] Custom code audited for unused libraries
-- [ ] Cloudflare added in front for extra caching
+## Validate Core Web Vitals
 
-Webflow is one of the easier platforms to optimize because you're working with clean, predictable output. The biggest wins almost always come from image optimization and script management.
+For LCP, identify the exact element. If it is a hero image, confirm responsive delivery, eager discovery, and reasonable file size. If it is text, inspect fonts, CSS, and reveal animation. If TTFB is the main delay, distinguish a service incident or network condition from page-owned assets.
 
-[Test your Webflow site](/test) to see your current score and identify the specific issues holding you back.
+For CLS, reserve space for images, videos, CMS media, cookie interfaces, forms, and embeds. Avoid injecting promotional content above an already rendered heading. Use [What Is CLS and How to Fix It](/blog/what-is-cls-and-how-to-fix-it) for trace-based debugging.
+
+For INP, reproduce actual interactions: mobile menu, filter, tab, slider, form, and Ecommerce controls. Look for long event handlers, large DOM updates, third-party main-thread work, and animation presentation delay.
+
+Field data reflects real users over time. Lighthouse is a controlled diagnostic run. Use both and avoid claiming that a single score proves a permanent result.
+
+## Follow a release checklist
+
+Before publishing a Webflow performance change, verify:
+
+- representative pages were measured before the change;
+- responsive image variants exist where expected;
+- the likely LCP image is not lazy-loaded or hidden by animation;
+- fonts, weights, interactions, and assets are limited to what the site uses;
+- third-party scripts are scoped, owned, and consent-aware;
+- publishing options were tested with custom code and shared components;
+- forms, search, Ecommerce, analytics, and accessibility still work;
+- equivalent repeated lab runs improve the intended bottleneck;
+- field trends are monitored after the reporting window catches up.
+
+Use [IndieTools Speed](/speed) to compare published histories and detect regressions. Return to the Webflow page, asset, interaction, or integration that changed before making a broader redesign.

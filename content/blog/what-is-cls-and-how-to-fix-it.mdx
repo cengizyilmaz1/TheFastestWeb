@@ -1,110 +1,191 @@
 ---
 title: "What Is CLS and How to Fix It"
-description: "Cumulative Layout Shift measures visual stability. It's worth 25% of your PageSpeed score and one of the easiest Core Web Vitals to fix once you know what's causing it."
+description: "A trace-based guide to Cumulative Layout Shift: current thresholds, lab and field diagnosis, images, embeds, dynamic UI, fonts, animations, and validation."
 date: "2026-03-19"
+updated: "2026-09-25"
 ---
 
-Cumulative Layout Shift (CLS) measures how much your page content moves around while it loads. It's one of Google's three Core Web Vitals and accounts for 25% of your PageSpeed score.
+Cumulative Layout Shift measures unexpected visual movement during a page visit. A low CLS helps people keep their reading position and click the control they intended to use. A high CLS often points to media without dimensions, late injected content, unstable embeds, font swaps, or layout-changing animation.
 
-A good CLS score is under 0.1. Above 0.25 is considered poor.
+CLS is one of the current Core Web Vitals. The reliable way to improve it is to find the largest shift cluster, identify what caused the movement, reserve the correct space, and validate the complete page lifecycle.
 
-## What CLS Actually Measures
+### Table of contents
 
-Imagine you're reading an article and an image loads above the text, pushing everything down. Or you're about to click a button and an ad banner appears, making you click the wrong thing. That's layout shift.
+- [How CLS is measured](#article-how-cls-is-measured)
+- [What is a good CLS value](#article-what-is-a-good-cls-value)
+- [Find the actual layout shift](#article-find-the-actual-layout-shift)
+- [Fix images and video](#article-fix-images-and-video)
+- [Stabilize ads, embeds, and banners](#article-stabilize-ads-embeds-and-banners)
+- [Handle dynamic application content](#article-handle-dynamic-application-content)
+- [Control font-related shifts](#article-control-font-related-shifts)
+- [Use layout-safe animation](#article-use-layout-safe-animation)
+- [Explain lab and field differences](#article-explain-lab-and-field-differences)
+- [Validate the fix](#article-validate-the-fix)
 
-CLS scores each unexpected shift based on how much of the viewport moved and how far it moved. The score is the sum of all those shifts during the page load.
+## How CLS is measured
 
-## Why CLS Matters
+A layout shift entry measures the affected viewport area and the distance elements move. The browser groups shifts into session windows, and the page's CLS value is the largest session-window score during the visit. CLS is unitless; a value of `0.1` is not 100 milliseconds.
 
-Beyond the PageSpeed score, CLS directly affects user experience. Pages with high CLS feel unstable and unprofessional. Google uses it as a signal that your page is frustrating to use.
+Shifts following recent user input are generally excluded because movement can be expected after an intentional action. That exclusion does not make every post-interaction layout good. A control that jumps away or content that reorders unexpectedly can still be a product problem.
 
-The good news: CLS is usually the easiest Core Web Vital to fix. Most causes have straightforward solutions.
+The element shown as a shift source is often the element that moved, not necessarily the element that caused it. For example, a paragraph may move because an image above it loaded without reserved space. Inspect the surrounding layout and the event immediately before the shift.
 
-## Common Causes of High CLS
+## What is a good CLS value
 
-### Images Without Dimensions
+Google's current thresholds are:
 
-If your `<img>` tags don't have explicit `width` and `height` attributes, the browser doesn't know how much space to reserve. When the image loads, it pushes everything below it down.
+| CLS | Rating |
+| ---: | --- |
+| 0.1 or less | Good |
+| Over 0.1 through 0.25 | Needs improvement |
+| Over 0.25 | Poor |
 
-**Fix:** Always include width and height on images:
+Field assessment uses the 75th percentile of visits, segmented by mobile and desktop. The official [CLS optimization guide](https://web.dev/articles/optimize-cls) documents the threshold and common causes.
+
+A passing value is a baseline, not permission to ignore a visible shift. Prioritize movement near important controls, reading content, commerce actions, and forms even when the aggregate remains green.
+
+## Find the actual layout shift
+
+Use Chrome DevTools Performance on the production route:
+
+1. Open a private window with extensions disabled.
+2. Record a page load in the Performance panel.
+3. Interact with menus, filters, consent, galleries, and lazy content.
+4. Inspect the Layout Shifts track and start with the largest cluster.
+5. Click individual shifts to see affected nodes and screenshots.
+6. Correlate the timestamp with network, script, font, and rendering events.
+
+Test beyond initial load. A default Lighthouse run may miss a shift caused by scrolling, a delayed ad, a carousel, a route transition, or a consent action. Chrome's current [Performance Insights reference](https://developer.chrome.com/docs/performance/insights) includes a Layout shift culprits insight for trace-based attribution.
+
+In your own real-user monitoring, the `web-vitals` library can attach bounded attribution data. Record route and component identifiers rather than sensitive text or form values. Aggregate by affected template and debug target so the most common field cause becomes visible.
+
+## Fix images and video
+
+Give replaced media intrinsic dimensions so the browser can calculate an aspect ratio before bytes arrive:
 
 ```html
-<img src="hero.webp" width="800" height="450" alt="Hero" />
+<img
+  src="/products/analytics-dashboard-1200.webp"
+  srcset="/products/analytics-dashboard-600.webp 600w,
+          /products/analytics-dashboard-1200.webp 1200w"
+  sizes="(max-width: 720px) 100vw, 960px"
+  width="1200"
+  height="750"
+  alt="Analytics dashboard with traffic and conversion charts"
+>
 ```
 
-In Next.js, the `<Image>` component handles this automatically as long as you provide width and height props.
-
-### Web Fonts Causing FOUT
-
-When a custom font loads and replaces the fallback font, the text can reflow if the two fonts have different character sizes. This is called Flash of Unstyled Text (FOUT).
-
-**Fix:** Use `font-display: swap` and size your fallback font to match your custom font as closely as possible. Modern browsers support `size-adjust` in `@font-face` to match fallback metrics:
+Responsive CSS can still size the image fluidly:
 
 ```css
-@font-face {
-  font-family: "MyFont";
-  src: url("/fonts/myfont.woff2") format("woff2");
-  font-display: swap;
+.article-image {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 ```
 
-### Ads, Embeds, and Iframes
+For art-directed `<picture>` sources with different crops, provide the correct dimensions on each source where supported and test each breakpoint. For video, poster images, and custom players, use `aspect-ratio` or another stable container before the player initializes.
 
-Ad networks inject content dynamically, often without reserved space. Social embeds (Twitter cards, YouTube) expand when they load.
+Do not hard-code the wrong placeholder ratio. A reserved 16:9 box still shifts when the final asset is square.
 
-**Fix:** Always reserve space for ad slots and embeds before they load:
+## Stabilize ads, embeds, and banners
 
-```css
-.ad-slot {
-  min-height: 250px;
-}
-```
-
-For YouTube embeds, use a 16:9 aspect ratio placeholder:
+Ads and third-party embeds often determine their final height after a request or auction. Reserve a slot based on the supported creative sizes and viewport. When several sizes are possible, choose a stable container strategy and accept unused space rather than collapsing and expanding the document unexpectedly.
 
 ```css
-.video-wrapper {
+.video-embed-shell {
   aspect-ratio: 16 / 9;
+  width: 100%;
+  background: #f1f3f5;
+}
+
+.video-embed-shell iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
 }
 ```
 
-### Dynamically Injected Content
+Cookie notices, promotional bars, install prompts, and newsletter forms can shift an entire viewport when inserted at the top. Safer choices include:
 
-If JavaScript injects content (banners, cookie notices, notifications) above existing content after the page loads, it causes layout shift.
+- render the reserved region in initial HTML;
+- use an overlay when it is accessible and appropriate;
+- place nonurgent content later in the document;
+- keep a dismissed state from reappearing during navigation;
+- avoid collapsing an empty ad slot while the user is reading nearby content.
 
-**Fix:** Position dynamic content so it doesn't push other elements. Use fixed or absolute positioning for overlays. If you must inject content into the flow, do it before the page renders, not after.
+Test the real production vendor. A local placeholder cannot reproduce auction sizes, consent timing, or widget initialization.
 
-### Late-Loading Embeds
+## Handle dynamic application content
 
-Third-party embeds like Calendly booking widgets, map embeds, or review widgets often don't declare their size upfront.
+Skeletons prevent shifts only when they approximate the final layout. Match row count, media ratio, line height, and control dimensions closely. A tiny spinner replaced by a full product grid does not reserve meaningful space.
 
-**Fix:** Wrap the embed in a container with an explicit height, or lazy-load it below the fold where any shift won't be measured.
+For feeds and “load more” interfaces, append below the user's current position rather than inserting above it. For validation errors, reserve space near fields or place messages without pushing the active control unexpectedly. For client hydration, ensure server and client markup agree; a hydration correction can move large regions.
 
-## How to Find What's Causing Your CLS
+Common application causes include:
 
-**Chrome DevTools:** Open the Performance tab, record a page load, and look for "Layout Shift" entries in the timeline. Click one to see which element shifted and why.
+- personalization replacing the server layout with a taller variant;
+- A/B tests applying after first paint;
+- prices or stock messages inserted above purchase controls;
+- sticky headers changing height after scroll;
+- accordions without a stable transition model;
+- route transitions restoring the wrong scroll position.
 
-**PageSpeed Insights:** Run your URL through [Google PageSpeed Insights](https://pagespeed.web.dev/). Scroll to the "Avoid large layout shifts" diagnostic. It will show you the specific elements causing shifts and their individual impact scores.
+Trace the state that triggers the shift and fix the component contract, not only its initial CSS.
 
-**Web Vitals Extension:** Install the [Web Vitals Chrome extension](https://chrome.google.com/webstore/detail/web-vitals/ahfhijdlegdabablpippeagghigmibgt). It highlights layout shifts in real time with colored overlays as the page loads.
+## Control font-related shifts
 
-## CLS Targets
+A web font can change line breaks, element widths, and control heights when it replaces a fallback. Reduce the number of font files and load only the weights used on the page. Use WOFF2 where appropriate, cache versioned font assets, and preload only a truly critical above-the-fold font.
 
-| Score | CLS |
-|---|---|
-| Good | Under 0.1 |
-| Needs improvement | 0.1 to 0.25 |
-| Poor | Over 0.25 |
+Choose a fallback with compatible metrics. CSS font metric overrides such as `size-adjust`, `ascent-override`, `descent-override`, and `line-gap-override` can align a fallback when the font data supports a tested adjustment. They require measurement; copied values from another family can make the shift worse.
 
-## Quick Checklist
+`font-display: swap` keeps text visible, but the later swap can still move layout. `optional` can avoid a late swap in some situations, but product and brand requirements should drive the choice. Test headings, buttons, navigation, and localized text at narrow widths.
 
-- [ ] All `<img>` tags have explicit `width` and `height`
-- [ ] Fonts use `font-display: swap`
-- [ ] Ad slots have reserved `min-height`
-- [ ] Video and embed containers have explicit dimensions or `aspect-ratio`
-- [ ] Cookie notices and banners don't push content down
-- [ ] No content injected above existing content after page load
+## Use layout-safe animation
 
-CLS is often completely fixable in an afternoon. Adding dimensions to images alone resolves the issue for most sites.
+Animating layout properties such as `top`, `left`, width, or height can move surrounding content. Prefer compositor-friendly `transform` and `opacity` when the visual design permits:
 
-[Test your site](/test) to see your current CLS score and find out exactly which elements are causing shifts.
+```css
+.notice {
+  transform: translateY(-8px);
+  opacity: 0;
+  transition: transform 180ms ease, opacity 180ms ease;
+}
+
+.notice[data-open="true"] {
+  transform: translateY(0);
+  opacity: 1;
+}
+```
+
+This does not mean every transform is accessible or inexpensive. Respect reduced-motion preferences, avoid hiding essential content until an animation completes, and make sure transformed elements do not cover controls.
+
+## Explain lab and field differences
+
+Field CLS can be worse than Lighthouse because real visits last longer and include scrolling, interactions, ads, personalization, route changes, and cached states. Lab CLS can also expose a cold-load problem that many field visitors avoid through cache.
+
+Check:
+
+- whether PageSpeed is showing URL or origin field data;
+- the mobile or desktop segment;
+- whether a lab user flow includes the relevant interaction;
+- consent and authentication state;
+- viewport and responsive breakpoint;
+- the release date inside the rolling field window.
+
+Do not dismiss field data as “wrong” because one local load is stable. Add field attribution or reproduce the complete user flow.
+
+## Validate the fix
+
+After changing the component:
+
+1. Repeat the same trace at each relevant breakpoint.
+2. Test slow media, font, and third-party responses.
+3. Exercise consent, ads, filters, navigation, and dynamic content.
+4. Verify keyboard focus, screen-reader order, and reduced motion.
+5. Compare equivalent Lighthouse user flows.
+6. Deploy with monitoring and a rollback path.
+7. Watch real-user CLS through the full field-data window.
+
+Review published performance histories on [IndieTools Speed](/speed), and use [What Are Core Web Vitals?](/blog/what-are-core-web-vitals) when you need the broader assessment model. The fix is complete when the layout remains stable for real page states, not merely when one screenshot stops moving.
